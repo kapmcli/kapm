@@ -106,8 +106,8 @@
     tools.setOption({
       backgroundColor: bg,
       tooltip: { trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: textColor } },
-      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '42%'], data: items }],
+      legend: { bottom: 0, padding: [20, 0, 0, 0], textStyle: { color: textColor } },
+      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '38%'], data: items }],
     });
   }
   function renderAgents(data) {
@@ -115,8 +115,8 @@
     agents.setOption({
       backgroundColor: bg,
       tooltip: { trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: textColor } },
-      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '42%'], data: items }],
+      legend: { bottom: 0, padding: [20, 0, 0, 0], textStyle: { color: textColor } },
+      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '38%'], data: items }],
     });
   }
   function renderAll(data) { renderHourly(data); renderTools(data); renderAgents(data); }
