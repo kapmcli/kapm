@@ -160,16 +160,6 @@ func repoTestdataRoot() string {
 }
 
 
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q): %v", path, err)
-	}
-	return string(data)
-}
-
 func writeTestFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 

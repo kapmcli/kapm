@@ -12,7 +12,7 @@ fmt:
 	find . -name '*.go' -not -path './.git/*' -exec gofmt -w {} +
 
 lint:
-	golangci-lint run ./...
+	golangci-lint run ./cmd/... ./internal/...
 
 tidy:
 	go mod tidy

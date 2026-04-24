@@ -1,6 +1,8 @@
 # kapm
 
 [![CI](https://github.com/kapmcli/kapm/actions/workflows/ci.yml/badge.svg)](https://github.com/kapmcli/kapm/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/kapmcli/kapm)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) content into Kiro-native `.kiro/` files.
 
