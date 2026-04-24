@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-slim
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -19,7 +19,7 @@ jobs:
           version: v2.11.4
           args: --timeout 5m ./cmd/... ./internal/...
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-slim
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -28,7 +28,7 @@ jobs:
       - run: go build -o internal/agent/kapl ./cmd/kapl
       - run: go test -race -shuffle=on ./cmd/... ./internal/...
   test-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-slim
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
