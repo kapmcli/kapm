@@ -1,0 +1,103 @@
+lockfile_version: '1'
+generated_at: '2026-04-22T03:21:26.155691+00:00'
+apm_version: 0.9.0
+dependencies:
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-cli
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-cli
+  content_hash: sha256:9b0b77175a74b8008332c45b5a1f95568245ac30df4f415505f07e86461a48ce
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-testing
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-testing
+  content_hash: sha256:3806c9c7cc34d5059f62a663f0b3e5c800c9aaeae053c19158ff7e4ac637ff6f
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-error-handling
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-error-handling
+  content_hash: sha256:239f72a302b41907c6cfc328b82cf644467f0eda449c5ab5040d8e9c7edde31b
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-safety
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-safety
+  content_hash: sha256:332794ee183fbcfc7fe865cf20b6e8570862d11d54099a0d856eec600ea3fdc8
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-code-style
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-code-style
+  content_hash: sha256:84bb6764244beea24d1ea04262b39bc14035dc63bf61d9125a5ec1a49c0fbd09
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-naming
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-naming
+  content_hash: sha256:bd0359de848288690d5c168fc62ccdcebcf2aff60a9dc60219a86c053f1c8871
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-linter
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-linter
+  content_hash: sha256:730e01087ba57a096f2881b5c7bb27e7672a63621ffcc811978b96cb04ce0bac
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-dependency-management
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-dependency-management
+  content_hash: sha256:cbc58cfb3f73897d63e3e38cdf646f1d432c52d25491d5ad9377989e569f12ab
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-continuous-integration
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-continuous-integration
+  content_hash: sha256:b2b55aec7c069dcea2ae0325c45fb64be38a8745d83461bde3dfc4b7d4adad88
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-modernize
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-modernize
+  content_hash: sha256:720295a6855bae644ab8976a75903e07affe0e750f87905e2913490f11b5cee0
+- repo_url: samber/cc-skills-golang
+  host: github.com
+  resolved_commit: 26524a3381ed93b43f5983c0e1dc53b0dd04af1d
+  virtual_path: skills/golang-documentation
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/golang-documentation
+  content_hash: sha256:939a28d541e511cbe7deb3c714f463ab86a5b2425e60c28e6cad78d48e6b2f63

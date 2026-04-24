@@ -1,0 +1,11 @@
+{"ts":"2026-04-20T09:00:00Z","agent":"coder","session":"abc12345","event":"agentSpawn","cwd":"/workspace"}
+{"ts":"2026-04-20T09:00:01Z","agent":"coder","session":"abc12345","event":"userPromptSubmit","prompt":"implement feature","cwd":"/workspace"}
+{"ts":"2026-04-20T09:01:00Z","agent":"coder","session":"abc12345","event":"preToolUse","tool":"read_file","cwd":"/workspace"}
+{"ts":"2026-04-20T09:01:01Z","agent":"coder","session":"abc12345","event":"postToolUse","tool":"read_file","cwd":"/workspace"}
+{"ts":"2026-04-20T09:02:00Z","agent":"coder","session":"abc12345","event":"preToolUse","tool":"bash","cwd":"/workspace"}
+{"ts":"2026-04-20T09:02:05Z","agent":"coder","session":"abc12345","event":"postToolUse","tool":"bash","cwd":"/workspace"}
+{"ts":"2026-04-20T09:03:00Z","agent":"coder","session":"abc12345","event":"preToolUse","tool":"write_file","cwd":"/workspace"}
+{"ts":"2026-04-20T09:03:02Z","agent":"coder","session":"abc12345","event":"postToolUse","tool":"write_file","cwd":"/workspace"}
+{"ts":"2026-04-20T09:04:00Z","agent":"coder","session":"abc12345","event":"preToolUse","tool":"bash","cwd":"/workspace"}
+{"ts":"2026-04-20T09:04:10Z","agent":"coder","session":"abc12345","event":"postToolUse","tool":"bash","cwd":"/workspace"}
+{"ts":"2026-04-20T09:05:00Z","agent":"coder","session":"abc12345","event":"stop","cwd":"/workspace"}

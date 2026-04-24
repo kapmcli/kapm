@@ -1,0 +1,3 @@
+{"ts":"2026-04-20T06:00:00Z","agent":"kiro","session":"sess-1","event":"tool_use","tool":"read_file","cwd":"/tmp"}
+{"ts":"2026-04-20T07:00:00Z","agent":"kiro","session":"sess-1","event":"tool_use","tool":"write_file","cwd":"/tmp"}
+{"ts":"2026-04-20T08:00:00Z","agent":"kiro","session":"sess-1","event":"stop","cwd":"/tmp"}

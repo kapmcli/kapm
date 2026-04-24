@@ -1,0 +1,2 @@
+{"ts":"2026-04-20T09:00:00Z","agent":"kiro","session":"sess-2","event":"tool_use","tool":"bash","cwd":"/tmp"}
+{"ts":"2026-04-20T10:00:00Z","agent":"kiro","session":"sess-2","event":"stop

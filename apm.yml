@@ -1,0 +1,19 @@
+name: kapm
+version: 1.0.0
+description: APM project for kapm
+author: yimsk
+dependencies:
+  apm:
+  - samber/cc-skills-golang/skills/golang-cli
+  - samber/cc-skills-golang/skills/golang-testing
+  - samber/cc-skills-golang/skills/golang-error-handling
+  - samber/cc-skills-golang/skills/golang-safety
+  - samber/cc-skills-golang/skills/golang-code-style
+  - samber/cc-skills-golang/skills/golang-naming
+  - samber/cc-skills-golang/skills/golang-linter
+  - samber/cc-skills-golang/skills/golang-dependency-management
+  - samber/cc-skills-golang/skills/golang-continuous-integration
+  - samber/cc-skills-golang/skills/golang-modernize
+  - samber/cc-skills-golang/skills/golang-documentation
+  mcp: []
+scripts: {}

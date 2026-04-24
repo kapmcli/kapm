@@ -1,0 +1,9 @@
+{"ts":"2026-04-20T10:00:00Z","agent":"explorer","session":"def67890","event":"agentSpawn","cwd":"/workspace"}
+{"ts":"2026-04-20T10:00:01Z","agent":"explorer","session":"def67890","event":"userPromptSubmit","prompt":"find files","cwd":"/workspace"}
+{"ts":"2026-04-20T10:01:00Z","agent":"explorer","session":"def67890","event":"preToolUse","tool":"grep","cwd":"/workspace"}
+{"ts":"2026-04-20T10:01:02Z","agent":"explorer","session":"def67890","event":"postToolUse","tool":"grep","cwd":"/workspace"}
+{"ts":"2026-04-20T10:02:00Z","agent":"explorer","session":"def67890","event":"preToolUse","tool":"read_file","cwd":"/workspace"}
+{"ts":"2026-04-20T10:02:03Z","agent":"explorer","session":"def67890","event":"postToolUse","tool":"read_file","cwd":"/workspace"}
+{"ts":"2026-04-20T10:03:00Z","agent":"explorer","session":"def67890","event":"preToolUse","tool":"grep","cwd":"/workspace"}
+{"ts":"2026-04-20T10:03:01Z","agent":"explorer","session":"def67890","event":"postToolUse","tool":"grep","cwd":"/workspace"}
+{"ts":"2026-04-20T10:10:00Z","agent":"explorer","session":"def67890","event":"stop","cwd":"/workspace"}

@@ -1,0 +1,5 @@
+name: kapm-test
+version: 0.0.1
+dependencies:
+  apm:
+    - microsoft/apm-sample-package#v1.0.0

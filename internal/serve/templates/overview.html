@@ -1,0 +1,151 @@
+{{define "content"}}
+{{- $o := .Overview -}}
+<section class="summary" hx-ext="sse" sse-connect="/sse">
+  <div id="summary-cards" sse-swap="summary" hx-swap="innerHTML">
+    {{template "summary-cards" $o}}
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="card">
+    <div class="card-title">Hourly activity</div>
+    <div id="chart-hourly" class="chart"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Tool usage</div>
+    <div id="chart-tools" class="chart"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Agent sessions</div>
+    <div id="chart-agents" class="chart"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Top skills</div>
+    <table>
+      <thead><tr><th>Skill</th><th>Reads</th></tr></thead>
+      <tbody>
+      {{- range .Skills}}
+        <tr><td>{{.Name}}</td><td>{{.ReadCount}}</td></tr>
+      {{- else}}
+        <tr><td colspan="2" class="muted">No skills read</td></tr>
+      {{- end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">Top agents</div>
+    <table>
+      <thead><tr><th>Agent</th><th>Sessions</th><th>Tools</th><th>Prompts</th></tr></thead>
+      <tbody>
+      {{- range $o.Agents}}
+        <tr><td><a href="/agents/{{.Name}}">{{.Name}}</a></td><td>{{.SessionCount}}</td><td>{{.ToolCalls}}</td><td>{{.Prompts}}</td></tr>
+      {{- else}}
+        <tr><td colspan="4" class="muted">No agents</td></tr>
+      {{- end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-title">Recent sessions</div>
+  <table>
+    <thead><tr><th>ID</th><th>Agent</th><th>Title</th><th>Duration</th><th>Status</th><th>Tools</th><th>Prompts</th><th>Last activity</th></tr></thead>
+    <tbody>
+    {{- $prevID := "" }}
+    {{- range $o.Sessions}}
+      <tr>
+        <td>{{if ne .ID $prevID}}<a href="/sessions/{{.ID}}">{{ shortID .ID 8 }}</a>{{end}}</td>
+        <td><a href="/sessions/{{.ID}}/{{.Agent | urlquery}}">{{.Agent}}</a></td>
+        {{truncTitle (or .Title "")}}
+        <td>{{.Duration | dur}}</td>
+        <td>{{template "status-badge" .}}</td>
+        <td>{{.ToolCalls}}</td>
+        <td>{{.Prompts}}</td>
+        <td>{{localtime .LastActivity "datetime"}}</td>
+      </tr>
+      {{- $prevID = .ID}}
+    {{- else}}
+      <tr><td colspan="8" class="muted">No sessions</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+
+<script id="overview-data" type="application/json">{{.OverviewJSON}}</script>
+<script>
+(function () {
+  var root = getComputedStyle(document.documentElement);
+  var chartColor = (root.getPropertyValue('--chart').trim() || '#61AFEF');
+  var textColor = (root.getPropertyValue('--text').trim() || '#FAFAFA');
+  var hourly = echarts.init(document.getElementById('chart-hourly'), 'dark');
+  var tools  = echarts.init(document.getElementById('chart-tools'), 'dark');
+  var agents = echarts.init(document.getElementById('chart-agents'), 'dark');
+  var bg = 'transparent';
+
+  function renderHourly(data) {
+    var xs = (data.HourlyActivity || []).map(function (h) {
+      var d = new Date(h.Hour);
+      if (isNaN(d.getTime())) return '';
+      var hh = String(d.getHours()).padStart(2, '0');
+      var mm = String(d.getMinutes()).padStart(2, '0');
+      return hh + ':' + mm;
+    });
+    var ys = (data.HourlyActivity || []).map(function (h) { return h.EventCount; });
+    hourly.setOption({
+      backgroundColor: bg,
+      tooltip: { trigger: 'axis' },
+      grid: { left: 40, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: 'category', data: xs },
+      yAxis: { type: 'value' },
+      series: [{ type: 'bar', data: ys, itemStyle: { color: chartColor } }],
+    });
+  }
+  function renderTools(data) {
+    var items = (data.Tools || []).slice(0, 8).map(function (t) { return { name: t.Name, value: t.CallCount }; });
+    tools.setOption({
+      backgroundColor: bg,
+      tooltip: { trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: textColor } },
+      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '42%'], data: items }],
+    });
+  }
+  function renderAgents(data) {
+    var items = (data.Agents || []).slice(0, 8).map(function (a) { return { name: a.Name, value: a.SessionCount }; });
+    agents.setOption({
+      backgroundColor: bg,
+      tooltip: { trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: textColor } },
+      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '42%'], data: items }],
+    });
+  }
+  function renderAll(data) { renderHourly(data); renderTools(data); renderAgents(data); }
+
+  try {
+    var initial = JSON.parse(document.getElementById('overview-data').textContent || '{}');
+    renderAll(initial);
+  } catch (e) { console.error('initial render', e); }
+
+  document.body.addEventListener('htmx:sseMessage', function (evt) {
+    if (evt.detail.type !== 'overview') return;
+    try { renderAll(JSON.parse(evt.detail.data)); } catch (e) { console.error('sse render', e); }
+  });
+
+  window.addEventListener('resize', function () { hourly.resize(); tools.resize(); agents.resize(); });
+})();
+</script>
+{{end}}
+
+{{define "summary-cards"}}
+{{- $active := 0 -}}{{- $tools := 0 -}}{{- $prompts := 0 -}}{{- $errors := 0 -}}
+{{- range .Sessions}}{{if .Active}}{{$active = add $active 1}}{{end}}{{$tools = add $tools .ToolCalls}}{{$prompts = add $prompts .Prompts}}{{end}}
+{{- range .Tools}}{{$errors = add $errors .ErrorCount}}{{end}}
+<div class="cards">
+  <div class="card"><div class="card-title">Sessions</div><div class="card-value">{{len .Sessions}}</div></div>
+  <div class="card"><div class="card-title">Active</div><div class="card-value">{{$active}}</div></div>
+  <div class="card"><div class="card-title">Agents</div><div class="card-value">{{len .Agents}}</div></div>
+  <div class="card"><div class="card-title">Tool calls</div><div class="card-value">{{$tools}}</div></div>
+  <div class="card"><div class="card-title">Prompts</div><div class="card-value">{{$prompts}}</div></div>
+  <div class="card"><div class="card-title">Errors</div><div class="card-value">{{$errors}}</div></div>
+</div>
+{{end}}

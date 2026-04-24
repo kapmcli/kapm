@@ -1,0 +1,15 @@
+name: test-pkg
+version: 1.0.0
+dependencies:
+  mcp:
+    - name: stdio-server
+      command: python
+      args:
+        - "-m"
+        - my_server
+      env:
+        API_KEY: "${MY_KEY}"
+    - name: http-server
+      url: https://example.com/mcp
+      headers:
+        Authorization: "Bearer ${TOKEN}"

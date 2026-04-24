@@ -1,0 +1,7 @@
+# Static asset checksums
+# Format: SHA256  filename  (version, bytes)
+
+57d9191515339922bd1356d7b2d80b1ee3b29f1b3a2c65a078bb8b2e8fd9ae5f  htmx.min.js  (htmx 2.0.9, 51332 bytes)
+3b5992a541619babefc4c169505af474df5c3039da51e59b96ccf9241ecd61d2  htmx-sse.js  (htmx-ext-sse 2.2.4, 8921 bytes)
+bf4a223524e40b77c304bec67e1222cf551f14880cf42c69dc046558e11c07b1  echarts.min.js  (echarts 5.6.0, 1034102 bytes)
+1589f425608653a841fa06ef2bb103a59e19f1e6d27064cff894d365efd6d948  idiomorph-ext.min.js  (idiomorph 0.7.3, 9796 bytes)

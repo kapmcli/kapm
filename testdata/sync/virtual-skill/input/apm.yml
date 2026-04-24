@@ -1,0 +1,6 @@
+name: proj
+version: 1.0.0
+dependencies:
+  apm:
+    - samber/cc-skills-golang/skills/golang-cli
+  mcp: []

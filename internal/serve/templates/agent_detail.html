@@ -1,0 +1,63 @@
+{{define "content"}}
+{{- $a := .Agent -}}
+<section class="card" hx-trigger="every 5s" hx-get="/agents/{{$a.Name}}" hx-target="#content" hx-swap="morph:innerHTML">
+  <div class="card-title">Agent {{$a.Name}}</div>
+  <table>
+    <tbody>
+      <tr><th>Sessions</th><td>{{$a.SessionCount}}</td></tr>
+      <tr><th>Tool calls</th><td>{{$a.ToolCalls}}</td></tr>
+      <tr><th>Prompts</th><td>{{$a.Prompts}}</td></tr>
+      <tr><th>Errors</th><td>{{if $a.ToolErrorCnt}}<span class="badge badge-error">{{$a.ToolErrorCnt}}</span>{{else}}0{{end}}</td></tr>
+      <tr><th>Error rate</th><td>{{if $a.ToolCalls}}{{printf "%.1f%%" (mul (div (itof $a.ToolErrorCnt) (itof $a.ToolCalls)) 100)}}{{else}}—{{end}}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+{{- if $a.ToolSummary}}
+{{- $maxCalls := (index $a.ToolSummary 0).CallCount}}
+<section class="card">
+  <div class="card-title">Tool usage</div>
+  <table>
+    <thead><tr><th>Tool</th><th>Calls</th><th>Errors</th><th>Success%</th><th>Avg Duration</th></tr></thead>
+    <tbody>
+    {{- range $a.ToolSummary}}
+      <tr>
+        <td><a href="/tools/{{.Tool}}">{{.Tool}}</a></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div style="width:80px;height:8px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden"><div style="width:{{printf "%.0f" (mul (div (itof .CallCount) (itof $maxCalls)) 100)}}%;height:100%;background:var(--chart);border-radius:3px"></div></div>
+            {{.CallCount}}
+          </div>
+        </td>
+        <td>{{if .ErrorCount}}<span class="badge badge-error">{{.ErrorCount}}</span>{{else}}0{{end}}</td>
+        <td>{{printf "%.0f" (mul .SuccessRate 100)}}%</td>
+        <td>{{.AvgDuration | dur}}</td>
+      </tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{- end}}
+
+<section class="card">
+  <div class="card-title">Sessions</div>
+  <table>
+    <thead><tr><th>ID</th><th>Title</th><th>Duration</th><th>Status</th><th>Tools</th><th>Prompts</th><th>Started</th></tr></thead>
+    <tbody>
+    {{- range $a.Sessions}}
+      <tr>
+        <td><a href="/sessions/{{.ID}}">{{ shortID .ID 8 }}</a></td>
+        {{truncTitle (or .Title "")}}
+        <td>{{.Duration | dur}}</td>
+        <td>{{template "status-badge" .}}</td>
+        <td>{{.ToolCalls}}</td>
+        <td>{{.Prompts}}</td>
+        <td>{{localtime .StartTime "datetime"}}</td>
+      </tr>
+    {{- else}}
+      <tr><td colspan="7" class="muted">No sessions</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{end}}

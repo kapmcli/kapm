@@ -1,0 +1,252 @@
+{
+  "Overview": {
+    "Sessions": [
+      {
+        "ID": "sess-gz",
+        "AgentKey": "sess-gz|kiro",
+        "Agent": "kiro",
+        "Title": "",
+        "Cwd": "/tmp",
+        "StartTime": "2026-04-20T05:00:00Z",
+        "EndTime": "2026-04-20T11:00:00Z",
+        "LastActivity": "2026-04-20T11:00:00Z",
+        "Duration": "6h0m0s",
+        "Active": false,
+        "ToolCalls": 0,
+        "Prompts": 0
+      },
+      {
+        "ID": "sess-2",
+        "AgentKey": "sess-2|kiro",
+        "Agent": "kiro",
+        "Title": "",
+        "Cwd": "/tmp",
+        "StartTime": "2026-04-20T09:00:00Z",
+        "EndTime": "2026-04-20T09:00:00Z",
+        "LastActivity": "2026-04-20T09:00:00Z",
+        "Duration": "0s",
+        "Active": false,
+        "ToolCalls": 0,
+        "Prompts": 0
+      },
+      {
+        "ID": "sess-1",
+        "AgentKey": "sess-1|kiro",
+        "Agent": "kiro",
+        "Title": "",
+        "Cwd": "/tmp",
+        "StartTime": "2026-04-20T06:00:00Z",
+        "EndTime": "2026-04-20T08:00:00Z",
+        "LastActivity": "2026-04-20T08:00:00Z",
+        "Duration": "2h0m0s",
+        "Active": false,
+        "ToolCalls": 0,
+        "Prompts": 0
+      }
+    ],
+    "Tools": null,
+    "Agents": [
+      {
+        "Name": "kiro",
+        "SessionCount": 3,
+        "ToolCalls": 0,
+        "Prompts": 0
+      }
+    ],
+    "HourlyActivity": [
+      {
+        "Hour": "2026-04-20T05:00:00Z",
+        "EventCount": 1
+      },
+      {
+        "Hour": "2026-04-20T06:00:00Z",
+        "EventCount": 1
+      },
+      {
+        "Hour": "2026-04-20T07:00:00Z",
+        "EventCount": 1
+      },
+      {
+        "Hour": "2026-04-20T08:00:00Z",
+        "EventCount": 1
+      },
+      {
+        "Hour": "2026-04-20T09:00:00Z",
+        "EventCount": 1
+      },
+      {
+        "Hour": "2026-04-20T11:00:00Z",
+        "EventCount": 1
+      }
+    ]
+  },
+  "Sessions": [
+    {
+      "ID": "sess-gz",
+      "AgentKey": "sess-gz|kiro",
+      "Agent": "kiro",
+      "Title": "",
+      "Cwd": "/tmp",
+      "StartTime": "2026-04-20T05:00:00Z",
+      "EndTime": "2026-04-20T11:00:00Z",
+      "LastActivity": "2026-04-20T11:00:00Z",
+      "Duration": "6h0m0s",
+      "Active": false,
+      "ToolCalls": 0,
+      "Prompts": 0,
+      "PromptHistory": [],
+      "Timeline": [
+        {
+          "Ts": "2026-04-20T05:00:00Z",
+          "Event": "tool_use",
+          "Tool": "read_file",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        },
+        {
+          "Ts": "2026-04-20T11:00:00Z",
+          "Event": "stop",
+          "Tool": "",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        }
+      ],
+      "ToolSummary": null,
+      "AssistantResponse": ""
+    },
+    {
+      "ID": "sess-2",
+      "AgentKey": "sess-2|kiro",
+      "Agent": "kiro",
+      "Title": "",
+      "Cwd": "/tmp",
+      "StartTime": "2026-04-20T09:00:00Z",
+      "EndTime": "2026-04-20T09:00:00Z",
+      "LastActivity": "2026-04-20T09:00:00Z",
+      "Duration": "0s",
+      "Active": false,
+      "ToolCalls": 0,
+      "Prompts": 0,
+      "PromptHistory": [],
+      "Timeline": [
+        {
+          "Ts": "2026-04-20T09:00:00Z",
+          "Event": "tool_use",
+          "Tool": "bash",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        }
+      ],
+      "ToolSummary": null,
+      "AssistantResponse": ""
+    },
+    {
+      "ID": "sess-1",
+      "AgentKey": "sess-1|kiro",
+      "Agent": "kiro",
+      "Title": "",
+      "Cwd": "/tmp",
+      "StartTime": "2026-04-20T06:00:00Z",
+      "EndTime": "2026-04-20T08:00:00Z",
+      "LastActivity": "2026-04-20T08:00:00Z",
+      "Duration": "2h0m0s",
+      "Active": false,
+      "ToolCalls": 0,
+      "Prompts": 0,
+      "PromptHistory": [],
+      "Timeline": [
+        {
+          "Ts": "2026-04-20T06:00:00Z",
+          "Event": "tool_use",
+          "Tool": "read_file",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        },
+        {
+          "Ts": "2026-04-20T07:00:00Z",
+          "Event": "tool_use",
+          "Tool": "write_file",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        },
+        {
+          "Ts": "2026-04-20T08:00:00Z",
+          "Event": "stop",
+          "Tool": "",
+          "IsError": false,
+          "ErrorDetail": "",
+          "InputSummary": "",
+          "Duration": "0s"
+        }
+      ],
+      "ToolSummary": null,
+      "AssistantResponse": ""
+    }
+  ],
+  "Agents": [
+    {
+      "Name": "kiro",
+      "SessionCount": 3,
+      "ToolCalls": 0,
+      "Prompts": 0,
+      "Sessions": [
+        {
+          "ID": "sess-2",
+          "AgentKey": "sess-2|kiro",
+          "Agent": "kiro",
+          "Title": "",
+          "Cwd": "/tmp",
+          "StartTime": "2026-04-20T09:00:00Z",
+          "EndTime": "2026-04-20T09:00:00Z",
+          "LastActivity": "2026-04-20T09:00:00Z",
+          "Duration": "0s",
+          "Active": false,
+          "ToolCalls": 0,
+          "Prompts": 0
+        },
+        {
+          "ID": "sess-1",
+          "AgentKey": "sess-1|kiro",
+          "Agent": "kiro",
+          "Title": "",
+          "Cwd": "/tmp",
+          "StartTime": "2026-04-20T06:00:00Z",
+          "EndTime": "2026-04-20T08:00:00Z",
+          "LastActivity": "2026-04-20T08:00:00Z",
+          "Duration": "2h0m0s",
+          "Active": false,
+          "ToolCalls": 0,
+          "Prompts": 0
+        },
+        {
+          "ID": "sess-gz",
+          "AgentKey": "sess-gz|kiro",
+          "Agent": "kiro",
+          "Title": "",
+          "Cwd": "/tmp",
+          "StartTime": "2026-04-20T05:00:00Z",
+          "EndTime": "2026-04-20T11:00:00Z",
+          "LastActivity": "2026-04-20T11:00:00Z",
+          "Duration": "6h0m0s",
+          "Active": false,
+          "ToolCalls": 0,
+          "Prompts": 0
+        }
+      ],
+      "ToolSummary": [],
+      "ToolErrorCnt": 0
+    }
+  ],
+  "Tools": [],
+  "Skills": null
+}

@@ -1,0 +1,39 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{.Title}} — kapm</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/htmx.min.js"></script>
+<script src="/assets/htmx-sse.js"></script>
+<script src="/assets/idiomorph-ext.min.js"></script>
+<script src="/assets/echarts.min.js"></script>
+<script src="/assets/js/localtime.js" defer></script>
+<script src="/assets/js/charts-bootstrap.js" defer></script>
+<script src="/assets/js/tool-detail-charts.js" defer></script>
+</head>
+<body hx-ext="morph">
+<div class="layout">
+<header>
+<h1>kapm</h1>
+<div class="header-right">
+<nav id="main-nav">
+{{template "nav" .}}
+</nav>
+<span id="updated-at" class="updated-at">updated: {{.UpdatedAt}}</span>
+</div>
+</header>
+<main id="content">
+{{template "content" .}}
+</main>
+</div>
+</body>
+</html>
+{{end}}
+
+{{define "nav"}}
+{{- $active := .Active -}}
+{{- range .Nav}}
+<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#content" hx-push-url="true"{{if eq .Key $active}} class="active"{{end}}>{{.Label}}</a>
+{{- end}}
+{{end}}

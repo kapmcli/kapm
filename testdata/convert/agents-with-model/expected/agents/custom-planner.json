@@ -1,0 +1,27 @@
+{
+  "name": "custom-planner",
+  "description": "Planning specialist",
+  "prompt": "file://../agent-prompts/custom-planner.md",
+  "model": "claude-opus-4.6",
+  "tools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "resources": [
+    "skill://.kiro/skills/**/SKILL.md"
+  ]
+}

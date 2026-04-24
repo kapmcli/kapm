@@ -1,0 +1,16 @@
+lockfile_version: '1'
+generated_at: '2026-04-17T22:54:48.688462+00:00'
+apm_version: 0.8.11
+dependencies:
+- repo_url: microsoft/apm-sample-package
+  host: github.com
+  resolved_commit: fb2851683be0e0e7711421d518bd8dba23b0b1f6
+  resolved_ref: v1.0.0
+  package_type: apm_package
+  deployed_files:
+  - .github/agents/design-reviewer.agent.md
+  - .github/instructions/design-standards.instructions.md
+  - .github/prompts/accessibility-audit.prompt.md
+  - .github/prompts/design-review.prompt.md
+  - .github/skills/style-checker
+  content_hash: sha256:744cca54cc8ff7ca90aa1dd621c2f98c6291cd793815afe8518001cc94b8aba9

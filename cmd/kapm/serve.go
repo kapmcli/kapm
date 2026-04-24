@@ -1,0 +1,56 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/kapmcli/kapm/internal/serve"
+)
+
+func runServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	port := fs.Int("port", 9090, "HTTP port")
+	open := fs.Bool("open", false, "open browser automatically")
+	since, logsDir, targetDir := addLogsFlags(fs)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm serve [flags]\n\n")
+		_, _ = fmt.Fprintln(fs.Output(), "Serve the kapm WebUI dashboard over HTTP.")
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("serve does not accept positional arguments")
+	}
+
+	lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)
+	if err != nil {
+		return err
+	}
+
+	srv := serve.New(serve.Options{Port: *port, LogsDir: lf.LogsDir, Since: lf.Since})
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	url := fmt.Sprintf("http://%s/", srv.Addr())
+	_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)
+	if *open {
+		if err := serve.OpenBrowser(url); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}
+
+	return srv.Run(ctx)
+}

@@ -1,0 +1,26 @@
+{
+  "name": "design-reviewer",
+  "description": "A design review specialist that enforces design system standards",
+  "prompt": "file://../agent-prompts/design-reviewer.md",
+  "tools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "resources": [
+    "skill://.kiro/skills/**/SKILL.md"
+  ]
+}

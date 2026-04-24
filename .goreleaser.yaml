@@ -1,0 +1,50 @@
+version: 2
+
+builds:
+  - id: kapm
+    main: ./cmd/kapm
+    binary: kapm
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.CommitDate}}
+    hooks:
+      pre:
+        - cmd: go build -ldflags="-s -w" -o internal/agent/kapl ./cmd/kapl
+          env:
+            - GOOS={{ .Os }}
+            - GOARCH={{ .Arch }}
+            - CGO_ENABLED=0
+
+archives:
+  - id: kapm
+    ids: [kapm]
+    formats: [tar.gz]
+    name_template: "kapm_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: kapmcli
+    name: kapm
+
+homebrew_casks:
+  - name: kapm
+    ids: [kapm]
+    binaries:
+      - kapm
+    directory: Casks
+    repository:
+      owner: kapmcli
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/kapmcli/kapm"
+    description: "Kiro Agent Package Manager"

@@ -1,0 +1,25 @@
+{{define "content"}}
+<section class="card">
+  <div class="card-title">Sessions</div>
+  <table>
+    <thead><tr><th>ID</th><th>Agent</th><th>Title</th><th>Duration</th><th>Status</th><th>Tools</th><th>Prompts</th><th>Started</th><th>Last activity</th></tr></thead>
+    <tbody>
+    {{- range .Sessions}}
+      <tr>
+        <td><a href="/sessions/{{.ID}}">{{ shortID .ID 8 }}</a></td>
+        <td><a href="/sessions/{{.ID}}/{{.Agent | urlquery}}">{{.Agent}}</a></td>
+        {{truncTitle (or .Title "")}}
+        <td>{{.Duration | dur}}</td>
+        <td>{{template "status-badge" .}}</td>
+        <td>{{.ToolCalls}}</td>
+        <td>{{.Prompts}}</td>
+        <td>{{localtime .StartTime "datetime"}}</td>
+        <td>{{localtime .LastActivity "datetime"}}</td>
+      </tr>
+    {{- else}}
+      <tr><td colspan="9" class="muted">No sessions</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{end}}

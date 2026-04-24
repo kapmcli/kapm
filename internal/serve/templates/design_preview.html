@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kapm — DESIGN.md preview</title>
+  <style>
+    :root {
+      --bg: {{.Design.Colors.bg}};
+      --bg-2: {{index .Design.Colors "bg-2"}};
+      --card: {{.Design.Colors.card}};
+      --accent: {{.Design.Colors.accent}};
+      --success: {{.Design.Colors.success}};
+      --error: {{.Design.Colors.error}};
+      --warning: {{.Design.Colors.warning}};
+      --chart: {{.Design.Colors.chart}};
+      --text: {{.Design.Colors.text}};
+      --muted: {{.Design.Colors.muted}};
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.75rem; margin-bottom: 0.5rem; color: var(--accent); }
+    h2 { font-size: 1.25rem; margin: 1.5rem 0 0.75rem; color: var(--text); border-bottom: 1px solid var(--bg-2); padding-bottom: 0.25rem; }
+    h3 { font-size: 1rem; margin: 1rem 0 0.5rem; color: var(--text); }
+    p { margin-bottom: 0.5rem; }
+    section { margin-bottom: 2rem; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 1rem; }
+    .swatch-item { background: var(--card); padding: 0.75rem; border-radius: 6px; width: 160px; }
+    .swatch { width: 100%; height: 80px; border-radius: 4px; border: 1px solid var(--bg-2); }
+    .swatch-name { font-family: ui-monospace, monospace; margin-top: 0.5rem; color: var(--text); }
+    .swatch-hex { font-family: ui-monospace, monospace; color: var(--muted); font-size: 0.875rem; }
+    .muted { color: var(--muted); }
+    .card { background: var(--card); padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .badge-success { background: var(--success); color: var(--bg); }
+    .badge-error { background: var(--error); color: var(--bg); }
+    .badge-warning { background: var(--warning); color: var(--bg); }
+    .badge-muted { background: var(--muted); color: var(--bg); }
+    .nav-sample { display: flex; gap: 0.5rem; background: var(--card); padding: 0.5rem; border-radius: 6px; }
+    .nav-link { color: var(--text); padding: 0.25rem 0.75rem; border-radius: 4px; text-decoration: none; }
+    .nav-link:hover { background: var(--bg-2); }
+    .nav-link.active { background: var(--accent); color: var(--bg); }
+  </style>
+</head>
+<body>
+  <h1>DESIGN.md preview</h1>
+  <p class="muted">{{.Design.Description}}</p>
+
+  <section>
+    <h2>Color Palette</h2>
+    <div class="swatches">
+      {{range .ColorEntries}}
+      <div class="swatch-item">
+        <div class="swatch" style="background: {{.Hex}}"></div>
+        <div class="swatch-name">--{{.Name}}</div>
+        <div class="swatch-hex">{{.Hex}}</div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section>
+    <h2>Typography</h2>
+    <h1>Heading 1 — Dashboard title</h1>
+    <h2>Heading 2 — Section heading</h2>
+    <h3>Heading 3 — Subsection</h3>
+    <p>Body text. The quick brown fox jumps over the lazy dog. 0123456789.</p>
+    <p class="muted">Muted text — secondary information, timestamps, captions.</p>
+  </section>
+
+  <section>
+    <h2>Components</h2>
+
+    <h3>Card</h3>
+    <div class="card">
+      <strong>Session abc123</strong>
+      <p class="muted">agent: backend · last activity 12:00:00</p>
+    </div>
+
+    <h3>Badges</h3>
+    <div class="badges">
+      <span class="badge badge-success">success</span>
+      <span class="badge badge-error">error</span>
+      <span class="badge badge-warning">warning</span>
+      <span class="badge badge-muted">muted</span>
+    </div>
+
+    <h3>Nav</h3>
+    <div class="nav-sample">
+      <a class="nav-link active" href="#">Overview</a>
+      <a class="nav-link" href="#">Sessions</a>
+      <a class="nav-link" href="#">Agents</a>
+      <a class="nav-link" href="#">Tools</a>
+      <a class="nav-link" href="#">Skills</a>
+    </div>
+  </section>
+</body>
+</html>

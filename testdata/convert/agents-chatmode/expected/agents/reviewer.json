@@ -1,0 +1,26 @@
+{
+  "name": "reviewer",
+  "description": "Legacy review mode",
+  "prompt": "file://../agent-prompts/reviewer.md",
+  "tools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "code",
+    "grep",
+    "glob",
+    "thinking"
+  ],
+  "resources": [
+    "skill://.kiro/skills/**/SKILL.md"
+  ]
+}

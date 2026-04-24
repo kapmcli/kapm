@@ -1,0 +1,15 @@
+{{define "content"}}
+<section class="card">
+  <div class="card-title">Skills</div>
+  <table>
+    <thead><tr><th>Name</th><th>Reads</th></tr></thead>
+    <tbody>
+    {{- range .Skills}}
+      <tr><td>{{.Name}}</td><td>{{.ReadCount}}</td></tr>
+    {{- else}}
+      <tr><td colspan="2" class="muted">No skills read</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{end}}

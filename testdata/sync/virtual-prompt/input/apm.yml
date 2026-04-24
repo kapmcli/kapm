@@ -1,0 +1,6 @@
+name: proj
+version: 1.0.0
+dependencies:
+  apm:
+    - acme/awesome/prompts/greet
+  mcp: []

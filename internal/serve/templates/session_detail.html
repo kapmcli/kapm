@@ -1,0 +1,112 @@
+{{define "content"}}
+{{- $s := .Session -}}
+<section class="card" hx-trigger="every 5s" hx-get="{{.SelfURL}}" hx-target="#content" hx-swap="morph:innerHTML">
+  <div class="card-title">Session {{$s.ID}}</div>
+  <div class="title">{{ or $s.Title "—" }}</div>
+  {{- if .AgentLinks}}
+  <nav class="per-agent">Per-agent views:
+    {{- range .AgentLinks}} <a href="{{.URL}}">{{.Agent}}</a>{{- end}}
+  </nav>
+  {{- end}}
+  <table>
+    <tbody>
+      <tr><th>Agent</th><td>{{$s.Agent}}</td></tr>
+      <tr><th>CWD</th><td>{{$s.Cwd}}</td></tr>
+      <tr><th>Started</th><td>{{localtime $s.StartTime "datetime"}}</td></tr>
+      <tr><th>Ended</th><td>{{localtime $s.EndTime "datetime"}}</td></tr>
+      <tr><th>Duration</th><td>{{$s.Duration | dur}}</td></tr>
+      <tr><th>Status</th><td>{{template "status-badge" $s}}</td></tr>
+      <tr><th>Tool calls</th><td>{{$s.ToolCalls}}</td></tr>
+      <tr><th>Prompts</th><td>{{$s.Prompts}}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+{{- if $s.ToolSummary}}
+<section class="card">
+  <div class="card-title">Tool Summary</div>
+  {{- $maxCalls := (index $s.ToolSummary 0).CallCount}}
+  <table>
+    <thead><tr><th>Tool</th><th>Calls</th><th>Errors</th><th>Success%</th><th>Avg Duration</th></tr></thead>
+    <tbody>
+    {{- range $s.ToolSummary}}
+      <tr>
+        <td>{{.Tool}}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div style="width:80px;height:8px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden"><div style="width:{{printf "%.0f" (mul (div (itof .CallCount) (itof $maxCalls)) 100)}}%;height:100%;background:var(--chart);border-radius:3px"></div></div>
+            {{.CallCount}}
+          </div>
+        </td>
+        <td>{{if .ErrorCount}}<span class="badge badge-error">{{.ErrorCount}}</span>{{else}}0{{end}}</td>
+        <td>{{printf "%.0f" (mul .SuccessRate 100)}}%</td>
+        <td>{{.AvgDuration | dur}}</td>
+      </tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{- end}}
+
+{{- if $s.AssistantResponse}}
+<section class="card" style="border-color:var(--muted)">
+  <div class="card-title">Session Result</div>
+  <div class="prompt-md">{{renderMarkdown $s.AssistantResponse}}</div>
+</section>
+{{- end}}
+
+<section class="card">
+  <div class="card-title">Prompt history</div>
+  {{- if $s.PromptHistory}}
+  <ol class="prompt-list">
+    {{- range $i, $p := $s.PromptHistory}}
+    <li>
+      <details id="prompt-{{$i}}">
+        <summary style="cursor:pointer">Prompt {{add $i 1}}: {{if gt (len $p) 200}}{{slice $p 0 200}}…{{else}}{{$p}}{{end}}</summary>
+        <div class="prompt-md" style="margin-top:0.5rem">{{renderMarkdown $p}}</div>
+      </details>
+    </li>
+    {{- end}}
+  </ol>
+  {{- else}}
+  <div class="muted">No prompts</div>
+  {{- end}}
+</section>
+
+<section class="card">
+  <div class="card-title">Timeline</div>
+  <table>
+    <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Duration</th><th>Status</th><th>Input</th></tr></thead>
+    <tbody>
+    {{- range $s.Timeline}}
+      {{- if and (eq .Event "postToolUse") (not .IsError)}}{{continue}}{{end}}
+      <tr>
+        <td>{{localtime .Ts "time"}}</td>
+        <td>{{.Event}}</td>
+        <td>{{.Tool}}</td>
+        <td>{{if not (or (eq .Event "agentSpawn") (eq .Event "userPromptSubmit") (eq .Event "postToolUse") (eq .Event "stop"))}}{{.Duration | dur}}{{end}}</td>
+        <td>{{if .IsError}}<span class="badge badge-error">error</span>{{end}}</td>
+        <td>{{.InputSummary}}</td>
+      </tr>
+      {{- if and .IsError .ErrorDetail}}
+      <tr>
+        <td colspan="6" style="background:rgba(224,108,117,0.08);color:var(--error);font-size:0.85em;padding-left:2rem">{{if gt (len .ErrorDetail) 200}}{{slice .ErrorDetail 0 200}}…{{else}}{{.ErrorDetail}}{{end}}</td>
+      </tr>
+      {{- end}}
+    {{- else}}
+      <tr><td colspan="6" class="muted">No events</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+<script>
+document.body.addEventListener('htmx:beforeSwap', function() {
+  window._openDetails = new Set();
+  document.querySelectorAll('details[open]').forEach(function(d) { if (d.id) window._openDetails.add(d.id); });
+});
+document.body.addEventListener('htmx:afterSwap', function() {
+  if (!window._openDetails) return;
+  window._openDetails.forEach(function(id) { var el = document.getElementById(id); if (el) el.open = true; });
+});
+</script>
+{{end}}

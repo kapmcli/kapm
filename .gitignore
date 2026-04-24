@@ -1,0 +1,17 @@
+.DS_Store
+/kapm
+AGENTS.md
+.sisyphus
+/.kiro/
+dist/
+kapl
+internal/agent/kapl
+!cmd/kapl/
+
+
+# APM dependencies
+apm_modules/
+!testdata/**/apm_modules/
+
+# APM CLI Copilot export target (unused by kapm)
+.github/skills/

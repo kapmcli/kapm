@@ -1,0 +1,841 @@
+// Package serve implements the kapm WebUI HTTP server.
+package serve
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html"
+	"html/template"
+	"io"
+	"io/fs"
+	"log/slog"
+	"math"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/sync/singleflight"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/util"
+
+	"github.com/kapmcli/kapm/internal/monitor"
+	"github.com/kapmcli/kapm/internal/stylegen"
+)
+
+// aggregateDetailFn is the function used to compute DetailedMetrics.
+// Overridable in tests via export_test.go.
+var aggregateDetailFn = monitor.AggregateDetail
+
+// loadedMetrics bundles the result of a single loadMetrics call.
+type loadedMetrics struct {
+	dm       monitor.DetailedMetrics
+	sessions []monitor.SessionMetric
+}
+
+// agentLink is a {agent, URL} pair rendered next to a merged session view.
+// URL construction lives here so internal/monitor stays URL-free.
+type agentLink struct {
+	Agent string
+	URL   string
+}
+
+// buildAgentLinks returns URL links for each agent ref, escaping the agent
+// name so values like "(unknown)" survive a URL round-trip.
+func buildAgentLinks(id string, refs []monitor.AgentRef) []agentLink {
+	links := make([]agentLink, 0, len(refs))
+	for _, r := range refs {
+		links = append(links, agentLink{
+			Agent: r.Agent,
+			URL:   "/sessions/" + id + "/" + url.PathEscape(r.Agent),
+		})
+	}
+	return links
+}
+
+// navItems is the fixed top-nav link list shared across pages.
+var navItems = []navItem{
+	{Key: "overview", Label: "Overview", Href: "/"},
+	{Key: "sessions", Label: "Sessions", Href: "/sessions"},
+	{Key: "agents", Label: "Agents", Href: "/agents"},
+	{Key: "tools", Label: "Tools", Href: "/tools"},
+	{Key: "skills", Label: "Skills", Href: "/skills"},
+}
+
+type navItem struct {
+	Key, Label, Href string
+}
+
+// linkRelRenderer adds rel="noopener nofollow" to all <a> tags via goldmark NodeRenderer.
+type linkRelRenderer struct{ gmhtml.Config }
+
+func (r *linkRelRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindLink, r.renderLink)
+	reg.Register(ast.KindAutoLink, r.renderAutoLink)
+}
+
+func (r *linkRelRenderer) renderAutoLink(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	al := n.(*ast.AutoLink)
+	u := util.EscapeHTML(util.URLEscape(al.URL(source), false))
+	_, _ = w.WriteString(`<a rel="noopener nofollow" href="`)
+	_, _ = w.Write(u)
+	_, _ = w.WriteString(`">`)
+	_, _ = w.Write(util.EscapeHTML(al.Label(source)))
+	_, _ = w.WriteString(`</a>`)
+	return ast.WalkSkipChildren, nil
+}
+
+func (r *linkRelRenderer) renderLink(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		_, _ = w.WriteString("</a>")
+		return ast.WalkContinue, nil
+	}
+	link := n.(*ast.Link)
+	dest := link.Destination
+	// Block javascript: scheme (goldmark's built-in sanitization is bypassed by custom renderer).
+	lower := strings.ToLower(strings.TrimSpace(string(dest)))
+	if strings.HasPrefix(lower, "javascript:") {
+		_, _ = w.WriteString(`<a rel="noopener nofollow" href="#">`)
+		return ast.WalkContinue, nil
+	}
+	_, _ = w.WriteString(`<a rel="noopener nofollow" href="`)
+	_, _ = w.Write(util.EscapeHTML(util.URLEscape(dest, true)))
+	_, _ = w.WriteString(`">`)
+	return ast.WalkContinue, nil
+}
+
+var mdRenderer = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithRendererOptions(gmhtml.WithHardWraps()),
+	goldmark.WithRenderer(renderer.NewRenderer(
+		renderer.WithNodeRenderers(
+			util.Prioritized(gmhtml.NewRenderer(), 1000),
+			util.Prioritized(&linkRelRenderer{}, 100),
+		),
+	)),
+)
+
+// renderMarkdown converts markdown s to safe HTML. Raw HTML is escaped because
+// goldmark WithUnsafe is OFF. Empty input returns a placeholder element.
+func renderMarkdown(s string) template.HTML {
+	if strings.TrimSpace(s) == "" {
+		return `<em class="muted">(empty)</em>`
+	}
+	var buf bytes.Buffer
+	if err := mdRenderer.Convert([]byte(s), &buf); err != nil {
+		return template.HTML(html.EscapeString(s))
+	}
+	//nolint:gosec // goldmark WithUnsafe OFF keeps raw HTML escaped
+	return template.HTML(buf.String())
+}
+
+// templateFuncs are the helpers callable from templates.
+var templateFuncs = template.FuncMap{
+	"add":            func(a, b int) int { return a + b },
+	"sub":            func(a, b int) int { return a - b },
+	"mul":            func(a, b float64) float64 { return a * b },
+	"div":            func(a, b float64) float64 { if b == 0 { return 0 }; return a / b },
+	"itof":           func(a int) float64 { return float64(a) },
+	"dur":            func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
+	"renderMarkdown": renderMarkdown,
+	"shortID": func(id string, n int) string {
+		if len(id) <= n {
+			return id
+		}
+		return id[:n]
+	},
+	// localtime renders a <time> element with js-localtime class.
+	// Safe to return template.HTML: all values come from time.Time.Format with hardcoded format strings.
+	"localtime": func(t time.Time, format string) template.HTML {
+		utc := t.UTC().Format("2006-01-02T15:04:05Z")
+		display := t.UTC().Format("2006-01-02 15:04:05 UTC")
+		return template.HTML(fmt.Sprintf(`<time class="js-localtime" datetime="%s" data-format="%s">%s</time>`, utc, format, display))
+	},
+	// truncTitle renders a table cell with truncated text and a title tooltip.
+	"truncTitle": func(title string) template.HTML {
+		display := title
+		if display == "" {
+			display = "—"
+		}
+		return template.HTML(fmt.Sprintf(`<td class="truncate" title="%s">%s</td>`, html.EscapeString(title), html.EscapeString(display)))
+	},
+}
+
+// parsePage returns a template parsed from layout.html + _partials.html + the named page template.
+func parsePage(name string) *template.Template {
+	return template.Must(
+		template.New(name).Funcs(templateFuncs).ParseFS(Templates, "templates/layout.html", "templates/_partials.html", "templates/"+name+".html"),
+	)
+}
+
+var (
+	overviewTmpl      = parsePage("overview")
+	sessionsTmpl      = parsePage("sessions")
+	sessionDetailTmpl = parsePage("session_detail")
+	agentsTmpl        = parsePage("agents")
+	agentDetailTmpl   = parsePage("agent_detail")
+	toolsTmpl         = parsePage("tools")
+	toolDetailTmpl    = parsePage("tool_detail")
+	skillsTmpl        = parsePage("skills")
+	errorTmpl         = parsePage("error")
+	designPreviewTmpl = template.Must(template.New("design_preview").ParseFS(Templates, "templates/design_preview.html"))
+)
+
+// Options configures a Server.
+type Options struct {
+	Port       int
+	LogsDir    string
+	Since      time.Duration
+	MetricsTTL time.Duration // 0 means default 1s
+	// MaxSSE caps concurrent SSE connections. 0 means default 64.
+	MaxSSE int
+}
+
+// metricsCacheEntry holds a cached DetailedMetrics result with its generation time.
+type metricsCacheEntry struct {
+	dm                monitor.DetailedMetrics
+	dashboardSessions []monitor.SessionMetric
+	storedAt          time.Time
+}
+
+// Server serves the kapm WebUI.
+type Server struct {
+	opts         Options
+	now          func() time.Time
+	handler      http.Handler
+	cache        *monitor.RecordCache
+	ttl          time.Duration
+	metricsMu    sync.Mutex
+	metricsCache *metricsCacheEntry
+	metricsSF    singleflight.Group
+	sseMax       int32
+	sseCount     atomic.Int32
+}
+
+// New constructs a Server with the given options.
+func New(opts Options) *Server {
+	ttl := opts.MetricsTTL
+	if ttl == 0 {
+		ttl = time.Second
+	}
+	s := &Server{opts: opts, now: time.Now, cache: monitor.NewRecordCache(), ttl: ttl}
+	s.sseMax = defaultMaxSSE
+	if opts.MaxSSE > 0 {
+		if opts.MaxSSE > math.MaxInt32 {
+			opts.MaxSSE = math.MaxInt32
+		}
+		s.sseMax = int32(opts.MaxSSE)
+	}
+	s.handler = s.buildHandler()
+	return s
+}
+
+// Addr returns the TCP address the server binds to.
+func (s *Server) Addr() string {
+	return fmt.Sprintf("127.0.0.1:%d", s.opts.Port)
+}
+
+// Handler returns the configured HTTP handler (exposed for tests).
+func (s *Server) Handler() http.Handler { return s.handler }
+
+// Run listens on 127.0.0.1:<Port> and serves until ctx is canceled.
+// It returns a clear error on port conflict.
+func (s *Server) Run(ctx context.Context) error {
+	ln, err := net.Listen("tcp", s.Addr())
+	if err != nil {
+		return fmt.Errorf("serve listen %q: %w", s.Addr(), err)
+	}
+	srv := &http.Server{
+		Handler:      s.handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 0, // SSE streams: no write deadline
+		IdleTimeout:  60 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// best-effort graceful shutdown; connection cleanup still happens on timeout
+		_ = srv.Shutdown(shutdownCtx)
+		return nil
+	case err := <-errCh:
+		return err
+	}
+}
+
+// buildHandler constructs the HTTP mux with all routes wrapped by security headers.
+func (s *Server) buildHandler() http.Handler {
+	mux := http.NewServeMux()
+
+	// Static assets.
+	assetFS, err := fs.Sub(Assets, "assets")
+	if err != nil {
+		// embed guarantees this subtree exists; fall back to Assets root.
+		assetFS = Assets
+	}
+	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(assetFS)))
+
+	// HTML pages.
+	mux.HandleFunc("GET /{$}", s.handleDashboard)
+	mux.HandleFunc("GET /sessions", s.handleSessions)
+	mux.HandleFunc("GET /sessions/{id}", s.handleSessionDetail)
+	mux.HandleFunc("GET /sessions/{id}/{agent}", s.handleSessionAgentDetail)
+	mux.HandleFunc("GET /agents", s.handleAgents)
+	mux.HandleFunc("GET /agents/{name}", s.handleAgentDetail)
+	mux.HandleFunc("GET /tools", s.handleTools)
+	mux.HandleFunc("GET /tools/{name}", s.handleToolDetail)
+	mux.HandleFunc("GET /skills", s.handleSkills)
+	mux.HandleFunc("GET /design-preview", s.handleDesignPreview)
+
+	// JSON API and SSE.
+	mux.HandleFunc("GET /api/metrics", s.handleAPIMetrics)
+	mux.HandleFunc("GET /sse", s.handleSSE)
+
+	// 404 for everything else.
+	mux.HandleFunc("/", s.handleNotFound)
+
+	return securityHeaders(mux)
+}
+
+// securityHeaders sets common security response headers on every request.
+func securityHeaders(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "same-origin")
+		h.ServeHTTP(w, r)
+	})
+}
+
+// loadMetrics reads and aggregates records for the configured window.
+// Results are cached for s.ttl to avoid repeated AggregateDetail calls.
+// Only one goroutine runs AggregateDetail per TTL window (singleflight).
+func (s *Server) loadMetrics() (loadedMetrics, error) {
+	now := s.now()
+
+	s.metricsMu.Lock()
+	if s.metricsCache != nil && now.Sub(s.metricsCache.storedAt) < s.ttl {
+		entry := s.metricsCache
+		s.metricsMu.Unlock()
+		return loadedMetrics{dm: entry.dm, sessions: entry.dashboardSessions}, nil
+	}
+	s.metricsMu.Unlock()
+
+	v, err, _ := s.metricsSF.Do("metrics", func() (any, error) {
+		// Re-check: another goroutine may have populated the cache while we waited.
+		s.metricsMu.Lock()
+		if s.metricsCache != nil && now.Sub(s.metricsCache.storedAt) < s.ttl {
+			entry := s.metricsCache
+			s.metricsMu.Unlock()
+			return loadedMetrics{dm: entry.dm, sessions: entry.dashboardSessions}, nil
+		}
+		s.metricsMu.Unlock()
+
+		recs, err := s.cache.Load(s.opts.LogsDir, now.Add(-s.opts.Since))
+		if err != nil {
+			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
+		}
+		dm := aggregateDetailFn(recs, now)
+		sessions := computeDashboardSessions(dm.Overview.Sessions)
+
+		s.metricsMu.Lock()
+		s.metricsCache = &metricsCacheEntry{dm: dm, dashboardSessions: sessions, storedAt: now}
+		s.metricsMu.Unlock()
+
+		return loadedMetrics{dm: dm, sessions: sessions}, nil
+	})
+	if err != nil {
+		return loadedMetrics{}, err
+	}
+	return v.(loadedMetrics), nil
+}
+
+// handleAPIMetrics returns the full DetailedMetrics (optionally filtered) as JSON.
+func (s *Server) handleAPIMetrics(w http.ResponseWriter, r *http.Request) {
+	loaded, err := s.loadMetrics()
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	dm := loaded.dm
+
+	// Optional filters: ?session=<id> or ?agent=<name> narrows the response.
+	if sid := r.URL.Query().Get("session"); sid != "" {
+		dm = filterBySession(dm, sid)
+	} else if ag := r.URL.Query().Get("agent"); ag != "" {
+		dm = filterByAgent(dm, ag)
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(dm); err != nil {
+		slog.Warn("serve encode metrics", "err", err)
+	}
+}
+
+// handleSSE streams Overview summaries (not full DetailedMetrics) every 5s.
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	if s.sseCount.Add(1) > s.sseMax {
+		s.sseCount.Add(-1)
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+		return
+	}
+	defer s.sseCount.Add(-1)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "sse not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	s.sendOverview(w, flusher)
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.sendOverview(w, flusher)
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// sendOverview writes SSE frames with the current overview snapshot:
+//   - `event: summary` with rendered summary-cards HTML (for htmx sse-swap)
+//   - `event: overview` with Overview JSON (for ECharts update in client JS)
+func (s *Server) sendOverview(w io.Writer, flusher http.Flusher) {
+	loaded, err := s.loadMetrics()
+	if err != nil {
+		slog.Warn("serve sse load metrics", "err", err)
+		return
+	}
+
+	// HTML for the summary cards (no newlines inside SSE data).
+	var htmlBuf bytes.Buffer
+	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", loaded.dm.Overview); err != nil {
+		slog.Warn("serve sse render summary", "err", err)
+		return
+	}
+	html := bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
+	if _, err := fmt.Fprintf(w, "event: summary\ndata: %s\n\n", html); err != nil {
+		return
+	}
+
+	payload, err := json.Marshal(loaded.dm.Overview)
+	if err != nil {
+		slog.Warn("serve sse marshal", "err", err)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: overview\ndata: %s\n\n", payload); err != nil {
+		return
+	}
+	flusher.Flush()
+}
+
+// currentUpdatedAt returns the header "updated:" timestamp. If KAPM_UPDATED_AT
+// is set it takes precedence (used by vhs-test and playwright for stable
+// goldens); otherwise the current wall-clock time is formatted as HH:MM:SS.
+func currentUpdatedAt() string {
+	if v := os.Getenv("KAPM_UPDATED_AT"); v != "" {
+		return v
+	}
+	return time.Now().Format("15:04:05")
+}
+
+// renderPage executes tmpl's "layout" (or "content" + OOB "nav" for htmx
+// requests so the active nav link updates) and writes status on success.
+func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, tmpl *template.Template, data map[string]any) {
+	if _, ok := data["Nav"]; !ok {
+		data["Nav"] = navItems
+	}
+	data["UpdatedAt"] = currentUpdatedAt()
+	var buf bytes.Buffer
+	isHX := r != nil && r.Header.Get("HX-Request") == "true"
+	if isHX {
+		if err := tmpl.ExecuteTemplate(&buf, "content", data); err != nil {
+			s.handleError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+		// Out-of-band swap updates the nav's active link alongside #content.
+		buf.WriteString(`<nav id="main-nav" hx-swap-oob="true">`)
+		if err := tmpl.ExecuteTemplate(&buf, "nav", data); err != nil {
+			s.handleError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+		buf.WriteString(`</nav>`)
+		// OOB swap for the header's updated-at stamp so htmx navigation
+		// refreshes the timestamp without a full reload.
+		fmt.Fprintf(&buf, `<span id="updated-at" class="updated-at" hx-swap-oob="true">updated: %s</span>`, html.EscapeString(fmt.Sprint(data["UpdatedAt"])))
+	} else {
+		if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
+			s.handleError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// computeDashboardSessions groups sessions by ID for the dashboard's Recent
+// Sessions panel. Within each ID group rows are ordered by LastActivity desc;
+// groups themselves are ordered by their most-recent LastActivity desc so the
+// panel stays newest-first. The input slice is not modified.
+func computeDashboardSessions(sessions []monitor.SessionMetric) []monitor.SessionMetric {
+	out := slices.Clone(sessions)
+	groupLast := map[string]time.Time{}
+	for _, s := range out {
+		if s.LastActivity.After(groupLast[s.ID]) {
+			groupLast[s.ID] = s.LastActivity
+		}
+	}
+	slices.SortStableFunc(out, func(a, b monitor.SessionMetric) int {
+		if a.ID != b.ID {
+			if c := groupLast[b.ID].Compare(groupLast[a.ID]); c != 0 {
+				return c
+			}
+			return strings.Compare(a.ID, b.ID)
+		}
+		return b.LastActivity.Compare(a.LastActivity)
+	})
+	return out
+}
+
+// withMetrics calls fn with the current metrics. If loading fails, it
+// writes an error response and fn is not called.
+func (s *Server) withMetrics(w http.ResponseWriter, r *http.Request, fn func(loadedMetrics)) {
+	loaded, err := s.loadMetrics()
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	fn(loaded)
+}
+
+// handleDashboard renders the Overview page from embedded templates.
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		overviewJSON, err := json.Marshal(loaded.dm.Overview)
+		if err != nil {
+			s.handleError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+		overview := loaded.dm.Overview
+		overview.Sessions = loaded.sessions
+		s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
+			"Title":    "Overview",
+			"Active":   "overview",
+			"Overview": overview,
+			"Skills":   loaded.dm.Skills,
+			// template.JS is required here: html/template treats content inside a
+			// <script> tag as JS context and will otherwise stringify the JSON,
+			// breaking JSON.parse in the browser. json.Marshal escapes <,>,& so
+			// </script> injection is impossible.
+			"OverviewJSON": template.JS(overviewJSON), //nolint:gosec // see comment above
+		})
+	})
+}
+
+// handleSessions renders the sessions list page.
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		s.renderPage(w, r, http.StatusOK, sessionsTmpl, map[string]any{
+			"Title":    "Sessions",
+			"Active":   "sessions",
+			"Sessions": loaded.dm.Overview.Sessions,
+		})
+	})
+}
+
+// handleSessionDetail serves the merged (all-agents) session detail page;
+// 404 if no SessionDetail has that id.
+func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		var matches []monitor.SessionDetail
+		for _, sd := range loaded.dm.Sessions {
+			if sd.ID == id {
+				matches = append(matches, sd)
+			}
+		}
+		if len(matches) == 0 {
+			s.handleNotFound(w, r)
+			return
+		}
+		merged, refs := monitor.MergeSessionDetails(matches)
+		s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
+			"Title":      "Session " + id,
+			"Active":     "sessions",
+			"Session":    merged,
+			"AgentLinks": buildAgentLinks(id, refs),
+			"SelfURL":    "/sessions/" + id,
+		})
+	})
+}
+
+// handleSessionAgentDetail serves the per-agent session detail page.
+// Returns 400 if the agent segment cannot be URL-decoded, 404 if the
+// (id, agent) pair is unknown.
+func (s *Server) handleSessionAgentDetail(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	rawAgent := r.PathValue("agent")
+	agent, err := url.PathUnescape(rawAgent)
+	if err != nil {
+		s.handleError(w, r, fmt.Errorf("serve decode agent %q: %w", rawAgent, err), http.StatusBadRequest)
+		return
+	}
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		var target *monitor.SessionDetail
+		var others []monitor.AgentRef
+		for i := range loaded.dm.Sessions {
+			sd := loaded.dm.Sessions[i]
+			if sd.ID != id {
+				continue
+			}
+			if sd.Agent == agent {
+				target = &sd
+			} else {
+				others = append(others, monitor.AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
+			}
+		}
+		if target == nil {
+			s.handleNotFound(w, r)
+			return
+		}
+		s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
+			"Title":      "Session " + id + " / " + agent,
+			"Active":     "sessions",
+			"Session":    *target,
+			"AgentLinks": buildAgentLinks(id, others),
+			"SelfURL":    "/sessions/" + id + "/" + url.PathEscape(agent),
+		})
+	})
+}
+
+// handleAgents renders the agents list page.
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		s.renderPage(w, r, http.StatusOK, agentsTmpl, map[string]any{
+			"Title":  "Agents",
+			"Active": "agents",
+			"Agents": loaded.dm.Agents,
+		})
+	})
+}
+
+// handleAgentDetail serves the agent detail page; 404 if the name is unknown.
+func (s *Server) handleAgentDetail(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		for _, a := range loaded.dm.Agents {
+			if a.Name == name {
+				s.renderPage(w, r, http.StatusOK, agentDetailTmpl, map[string]any{
+					"Title":  "Agent " + name,
+					"Active": "agents",
+					"Agent":  a,
+				})
+				return
+			}
+		}
+		s.handleNotFound(w, r)
+	})
+}
+
+// handleTools renders the tools list page.
+func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		s.renderPage(w, r, http.StatusOK, toolsTmpl, map[string]any{
+			"Title":  "Tools",
+			"Active": "tools",
+			"Tools":  loaded.dm.Tools,
+		})
+	})
+}
+
+// toolDetailVM is the JSON payload injected into /tools/{name} for echarts.
+type toolDetailVM struct {
+	Timeseries []monitor.TimeseriesPoint `json:"timeseries"`
+	Patterns   []monitor.PatternCount    `json:"patterns"`
+}
+
+// buildToolDetailVM merges RecentCalls and Errors then aggregates timeseries and patterns.
+func buildToolDetailVM(td monitor.ToolDetail, now time.Time) toolDetailVM {
+	all := make([]monitor.ToolCall, 0, len(td.RecentCalls)+len(td.Errors))
+	all = append(all, td.RecentCalls...)
+	all = append(all, td.Errors...)
+	return toolDetailVM{
+		Timeseries: monitor.AggregateToolTimeseries(all, now),
+		Patterns:   monitor.AggregateToolInputPatterns(all, 10),
+	}
+}
+
+// handleToolDetail serves the tool detail page; 404 if the name is unknown.
+func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		for _, t := range loaded.dm.Tools {
+			if t.Name == name {
+				toolDetailJSON, err := json.Marshal(buildToolDetailVM(t, s.now()))
+				if err != nil {
+					s.handleError(w, r, err, http.StatusInternalServerError)
+					return
+				}
+				s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
+					"Title":          "Tool " + name,
+					"Active":         "tools",
+					"Tool":           t,
+					"ToolDetailJSON": template.JS(toolDetailJSON), //nolint:gosec // json.Marshal escapes <,>,& so </script> injection is impossible
+				})
+				return
+			}
+		}
+		s.handleNotFound(w, r)
+	})
+}
+
+// handleSkills renders the skills list page.
+func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		s.renderPage(w, r, http.StatusOK, skillsTmpl, map[string]any{
+			"Title":  "Skills",
+			"Active": "skills",
+			"Skills": loaded.dm.Skills,
+		})
+	})
+}
+
+// colorEntry is a {name, hex} pair rendered as a swatch on /design-preview.
+type colorEntry struct {
+	Name string
+	Hex  string
+}
+
+// handleDesignPreview renders a standalone visualization of the color tokens
+// defined in the embedded DESIGN.md. It does not depend on runtime metrics
+// or the production style.css.
+func (s *Server) handleDesignPreview(w http.ResponseWriter, r *http.Request) {
+	d, err := stylegen.ParseDesignMD(DesignMDRaw)
+	if err != nil {
+		s.handleError(w, r, fmt.Errorf("design parse: %w", err), http.StatusInternalServerError)
+		return
+	}
+	entries := make([]colorEntry, 0, len(stylegen.ColorKeys))
+	for _, k := range stylegen.ColorKeys {
+		entries = append(entries, colorEntry{Name: k, Hex: d.Colors[k]})
+	}
+	var buf bytes.Buffer
+	if err := designPreviewTmpl.ExecuteTemplate(&buf, "design_preview.html", map[string]any{
+		"Design":       d,
+		"ColorEntries": entries,
+	}); err != nil {
+		s.handleError(w, r, fmt.Errorf("design render: %w", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+}
+
+// handleError logs the full error via slog and writes a generic status response.
+// Internal details never reach the client.
+func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error, status int) {
+	slog.Warn("serve http error",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"status", status,
+		"err", err,
+	)
+	http.Error(w, http.StatusText(status), status)
+}
+
+// handleNotFound renders the error page with HTTP 404.
+func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
+	s.renderPage(w, r, http.StatusNotFound, errorTmpl, map[string]any{
+		"Title":   "Not Found",
+		"Active":  "",
+		"Status":  404,
+		"Heading": "Not Found",
+		"Message": "The requested resource was not found.",
+	})
+}
+
+// filterBySession narrows dm to a single session id and returns a merged
+// SessionDetail across all agents participating in that sid (see
+// monitor.MergeSessionDetails). Tools and Overview.Tools are re-aggregated
+// from the pre-merge per-agent timelines via
+// monitor.AggregateToolsFromTimeline so tool attribution stays per-agent in
+// each ToolCall. Skills are not re-aggregated (session attribution for
+// skills is not preserved in DetailedMetrics) and remain empty.
+func filterBySession(dm monitor.DetailedMetrics, id string) monitor.DetailedMetrics {
+	out := monitor.DetailedMetrics{}
+	var matches []monitor.SessionDetail
+	for _, sd := range dm.Sessions {
+		if sd.ID == id {
+			matches = append(matches, sd)
+		}
+	}
+	if len(matches) == 0 {
+		return out
+	}
+	merged, _ := monitor.MergeSessionDetails(matches)
+	out.Sessions = []monitor.SessionDetail{merged}
+	out.Overview.Sessions = []monitor.SessionMetric{merged.SessionMetric}
+	out.Tools, out.Overview.Tools = monitor.AggregateToolsFromTimeline(matches)
+	return out
+}
+
+// filterByAgent narrows dm to a single agent name. Tools and Overview.Tools
+// are re-aggregated from the agent's session timelines via
+// monitor.AggregateToolsFromTimeline. Skills are not re-aggregated (session
+// attribution for skills is not preserved in DetailedMetrics) and remain
+// empty in the result.
+func filterByAgent(dm monitor.DetailedMetrics, name string) monitor.DetailedMetrics {
+	out := monitor.DetailedMetrics{}
+	for _, a := range dm.Agents {
+		if a.Name == name {
+			out.Agents = append(out.Agents, a)
+			out.Overview.Agents = append(out.Overview.Agents, a.AgentMetric)
+		}
+	}
+	for _, sd := range dm.Sessions {
+		if sd.Agent == name {
+			out.Sessions = append(out.Sessions, sd)
+			out.Overview.Sessions = append(out.Overview.Sessions, sd.SessionMetric)
+		}
+	}
+	out.Tools, out.Overview.Tools = monitor.AggregateToolsFromTimeline(out.Sessions)
+	return out
+}
+
+// defaultMaxSSE is the default cap for concurrent SSE connections.
+const defaultMaxSSE int32 = 64

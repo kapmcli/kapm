@@ -1,0 +1,64 @@
+{{define "content"}}
+{{- $t := .Tool -}}
+<div data-charts="toolDetail">
+<section class="card" hx-trigger="every 5s" hx-get="/tools/{{$t.Name}}" hx-target="#content" hx-swap="morph:innerHTML">
+  <div class="card-title">Tool {{$t.Name}}</div>
+  <table>
+    <tbody>
+      <tr><th>Calls</th><td>{{$t.CallCount}}</td></tr>
+      <tr><th>Errors</th><td>{{$t.ErrorCount}}</td></tr>
+      <tr><th>Error rate</th><td>{{printf "%.1f%%" (mul $t.ErrorRate 100.0)}}</td></tr>
+      <tr><th>Avg duration</th><td>{{$t.AvgDuration | dur}}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="card-title">Trends</div>
+  <div class="charts-row">
+    <div id="chart-tool-timeseries" class="chart"></div>
+    <div id="chart-tool-patterns" class="chart"></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-title">Recent calls</div>
+  <table>
+    <thead><tr><th>Time</th><th>Session</th><th>Agent</th><th>Duration</th><th>Input</th></tr></thead>
+    <tbody>
+    {{- range $t.RecentCalls}}
+      <tr>
+        <td>{{localtime .Ts "datetime"}}</td>
+        <td><a href="/sessions/{{.Session}}">{{.Session}}</a></td>
+        <td><a href="/agents/{{.Agent}}">{{.Agent}}</a></td>
+        <td>{{.Duration | dur}}</td>
+        <td>{{.InputSummary}}</td>
+      </tr>
+    {{- else}}
+      <tr><td colspan="5" class="muted">No recent calls</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="card-title">Errors</div>
+  <table>
+    <thead><tr><th>Time</th><th>Session</th><th>Agent</th><th>Input</th></tr></thead>
+    <tbody>
+    {{- range $t.Errors}}
+      <tr>
+        <td>{{localtime .Ts "datetime"}}</td>
+        <td><a href="/sessions/{{.Session}}">{{.Session}}</a></td>
+        <td><a href="/agents/{{.Agent}}">{{.Agent}}</a></td>
+        <td>{{.InputSummary}}</td>
+      </tr>
+    {{- else}}
+      <tr><td colspan="4" class="muted">No errors</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+<script id="tool-detail-data" type="application/json">{{.ToolDetailJSON}}</script>
+</div>
+{{end}}

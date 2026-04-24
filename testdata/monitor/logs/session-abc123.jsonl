@@ -1,0 +1,13 @@
+{"ts":"2026-04-20T09:00:00Z","agent":"coder","session":"session-abc123","event":"agentSpawn","cwd":"/home/user/project"}
+{"ts":"2026-04-20T09:00:05Z","agent":"coder","session":"session-abc123","event":"userPromptSubmit","prompt":"implement the feature"}
+{"ts":"2026-04-20T09:00:10Z","agent":"coder","session":"session-abc123","event":"preToolUse","tool":"read_file"}
+{"ts":"2026-04-20T09:00:11Z","agent":"coder","session":"session-abc123","event":"postToolUse","tool":"read_file"}
+{"ts":"2026-04-20T09:00:15Z","agent":"coder","session":"session-abc123","event":"preToolUse","tool":"bash"}
+{"ts":"2026-04-20T09:00:18Z","agent":"coder","session":"session-abc123","event":"postToolUse","tool":"bash"}
+{"ts":"2026-04-20T09:00:22Z","agent":"coder","session":"session-abc123","event":"preToolUse","tool":"read_file"}
+{"ts":"2026-04-20T09:00:23Z","agent":"coder","session":"session-abc123","event":"postToolUse","tool":"read_file"}
+{"ts":"2026-04-20T09:00:30Z","agent":"coder","session":"session-abc123","event":"userPromptSubmit","prompt":"run the tests"}
+{"ts":"2026-04-20T09:00:35Z","agent":"coder","session":"session-abc123","event":"preToolUse","tool":"bash"}
+{"ts":"2026-04-20T09:00:40Z","agent":"coder","session":"session-abc123","event":"postToolUse","tool":"bash"}
+{"ts":"2026-04-20T09:00:45Z","agent":"coder","session":"session-abc123","event":"preToolUse","tool":"grep"}
+{"ts":"2026-04-20T09:01:00Z","agent":"coder","session":"session-abc123","event":"stop","cwd":"/home/user/project"}

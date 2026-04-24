@@ -1,0 +1,16 @@
+{"ts":"2026-04-21T10:00:00Z","agent":"orchestrator","session":"ma-session-001","event":"agentSpawn","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:01Z","agent":"orchestrator","session":"ma-session-001","event":"userPromptSubmit","prompt":"orchestrate the build pipeline","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:10Z","agent":"orchestrator","session":"ma-session-001","event":"preToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:12Z","agent":"orchestrator","session":"ma-session-001","event":"postToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:20Z","agent":"orchestrator","session":"ma-session-001","event":"preToolUse","tool":"read","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:21Z","agent":"orchestrator","session":"ma-session-001","event":"postToolUse","tool":"read","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:30Z","agent":"orchestrator","session":"ma-session-001","event":"preToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:35Z","agent":"orchestrator","session":"ma-session-001","event":"postToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:00:40Z","agent":"orchestrator","session":"ma-session-001","event":"preToolUse","tool":"grep","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:00Z","agent":"lead","session":"ma-session-001","event":"userPromptSubmit","prompt":"implement the assigned subtask","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:10Z","agent":"lead","session":"ma-session-001","event":"preToolUse","tool":"read","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:11Z","agent":"lead","session":"ma-session-001","event":"postToolUse","tool":"read","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:20Z","agent":"lead","session":"ma-session-001","event":"preToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:25Z","agent":"lead","session":"ma-session-001","event":"postToolUse","tool":"shell","cwd":"/workspace"}
+{"ts":"2026-04-21T10:01:30Z","agent":"lead","session":"ma-session-001","event":"stop","cwd":"/workspace"}
+{"ts":"2026-04-21T10:02:00Z","agent":"orchestrator","session":"ma-session-001","event":"stop","cwd":"/workspace"}

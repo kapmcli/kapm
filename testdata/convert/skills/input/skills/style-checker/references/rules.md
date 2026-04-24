@@ -1,0 +1,3 @@
+# Rules
+
+- Prefer semantic naming.

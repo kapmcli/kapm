@@ -1,0 +1,12 @@
+{"ts":"2026-04-20T17:55:00Z","agent":"explorer","session":"session-def456","event":"agentSpawn","cwd":"/home/user/project"}
+{"ts":"2026-04-20T17:55:10Z","agent":"explorer","session":"session-def456","event":"userPromptSubmit","prompt":"explore the codebase"}
+{"ts":"2026-04-20T17:55:15Z","agent":"explorer","session":"session-def456","event":"preToolUse","tool":"grep"}
+{"ts":"2026-04-20T17:55:16Z","agent":"explorer","session":"session-def456","event":"postToolUse","tool":"grep"}
+{"ts":"2026-04-20T17:55:20Z","agent":"explorer","session":"session-def456","event":"preToolUse","tool":"read_file"}
+{"ts":"2026-04-20T17:55:21Z","agent":"explorer","session":"session-def456","event":"postToolUse","tool":"read_file"}
+{"ts":"2026-04-20T17:55:30Z","agent":"explorer","session":"session-def456","event":"preToolUse","tool":"bash"}
+{"ts":"2026-04-20T17:55:35Z","agent":"explorer","session":"session-def456","event":"postToolUse","tool":"bash"}
+{"ts":"2026-04-20T17:58:00Z","agent":"explorer","session":"session-def456","event":"userPromptSubmit","prompt":"find all usages"}
+{"ts":"2026-04-20T17:58:05Z","agent":"explorer","session":"session-def456","event":"preToolUse","tool":"grep"}
+{"ts":"2026-04-20T17:58:06Z","agent":"explorer","session":"session-def456","event":"postToolUse","tool":"grep"}
+{"ts":"2026-04-20T18:00:00Z","agent":"explorer","session":"session-def456","event":"preToolUse","tool":"bash"}

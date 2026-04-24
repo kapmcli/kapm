@@ -1,0 +1,6 @@
+name: multi-package-order
+version: 0.0.1
+dependencies:
+  apm:
+    - zeta/package-z
+    - alpha/package-a

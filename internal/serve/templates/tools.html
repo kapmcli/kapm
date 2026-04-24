@@ -1,0 +1,21 @@
+{{define "content"}}
+<section class="card">
+  <div class="card-title">Tools</div>
+  <table>
+    <thead><tr><th>Name</th><th>Calls</th><th>Errors</th><th>Error rate</th><th>Avg duration</th></tr></thead>
+    <tbody>
+    {{- range .Tools}}
+      <tr hx-get="/tools/{{.Name}}" hx-target="#content" hx-push-url="true" style="cursor:pointer">
+        <td><a href="/tools/{{.Name}}">{{.Name}}</a></td>
+        <td>{{.CallCount}}</td>
+        <td>{{.ErrorCount}}</td>
+        <td>{{printf "%.1f%%" (mul .ErrorRate 100.0)}}</td>
+        <td>{{.AvgDuration | dur}}</td>
+      </tr>
+    {{- else}}
+      <tr><td colspan="5" class="muted">No tools</td></tr>
+    {{- end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
