@@ -13,7 +13,7 @@ Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) co
 ```bash
 export HOMEBREW_GITHUB_API_TOKEN=ghp_xxxxxxxxxxxx  # GitHub PAT with repo scope
 brew tap kapmcli/tap
-brew install kapmcli/tap/kapm
+brew install --cask kapmcli/tap/kapm
 ```
 
 ### Build from source
@@ -37,8 +37,11 @@ kapm agent generate
 # Enable session logging
 kapm init-hook
 
-# View session metrics (TUI + WebUI)
+# View session metrics (TUI)
 kapm monitor
+
+# WebUI dashboard
+kapm serve
 ```
 
 ## Commands
@@ -91,13 +94,16 @@ Re-running is safe — existing hooks are replaced, not duplicated. Your own hoo
 
 ### `kapm monitor`
 
-TUI dashboard + WebUI for session metrics from `.kiro/logs/`.
+TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI.
 
 ```bash
-kapm monitor                              # TUI + WebUI on :9090
+kapm monitor                              # TUI
 kapm monitor --json                       # JSON to stdout
 kapm monitor --session=<sid>              # single session (merged)
 kapm monitor --session=<sid> --agent=<a>  # single session, single agent
+
+kapm serve                                # WebUI on :9090
+kapm serve --port 9097                    # custom port
 ```
 
 ![WebUI](vhs/webui-overview.png)
