@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: ubuntu-24.04-slim
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
