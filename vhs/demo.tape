@@ -2,8 +2,8 @@ Output vhs/demo.gif
 
 Require ./kapm
 
-Set Width 1400
-Set Height 900
+Set Width 1920
+Set Height 1080
 Set FontSize 18
 Set WaitTimeout 10s
 
