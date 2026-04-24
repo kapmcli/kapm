@@ -16,8 +16,8 @@ jobs:
       - run: go build -o internal/agent/kapl ./cmd/kapl
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
-          args: --timeout 5m
+          version: v2.11.4
+          args: --timeout 5m ./cmd/... ./internal/...
   test:
     runs-on: ubuntu-latest
     steps:
