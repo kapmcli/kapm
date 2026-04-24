@@ -11,7 +11,6 @@ Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) co
 ### Homebrew (macOS / Linux)
 
 ```bash
-export HOMEBREW_GITHUB_API_TOKEN=ghp_xxxxxxxxxxxx  # GitHub PAT with repo scope
 brew tap kapmcli/tap
 brew install --cask kapmcli/tap/kapm
 ```
