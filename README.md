@@ -1,12 +1,26 @@
-# kapm
+<h1 align="center">kapm</h1>
 
-[![CI](https://github.com/kapmcli/kapm/actions/workflows/ci.yml/badge.svg)](https://github.com/kapmcli/kapm/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/github/go-mod/go-version/kapmcli/kapm)](https://go.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <strong>Kiro Agent Package Manager</strong><br />
+  Adapt <a href="https://microsoft.github.io/apm/">APM</a> content into Kiro-native <code>.kiro/</code> files and monitor Kiro sessions.
+</p>
 
-Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) content into Kiro-native `.kiro/` files.
+<p align="center">
+  <a href="https://github.com/kapmcli/kapm/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kapmcli/kapm/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://go.dev/"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/kapmcli/kapm"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+</p>
 
-![demo](demo-media/demo.gif)
+<p align="center">
+  ⚡ <a href="#installation">Installation</a>
+  · 🚀 <a href="#quick-start">Quick start</a>
+  · 🛰️ <a href="#kapm-monitor">Monitoring</a>
+  · 📦 <a href="https://github.com/kapmcli/kapm/releases">Releases</a>
+</p>
+
+<p align="center">
+  <img src="demo-media/demo.gif" alt="kapm demo" />
+</p>
 
 ## Installation
 
