@@ -13,13 +13,6 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.CommitDate}}
-    hooks:
-      pre:
-        - cmd: go build -ldflags="-s -w" -o internal/agent/kapl ./cmd/kapl
-          env:
-            - GOOS={{ .Os }}
-            - GOARCH={{ .Arch }}
-            - CGO_ENABLED=0
 
 archives:
   - id: kapm

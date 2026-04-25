@@ -1,5 +1,4 @@
 build:
-	go build -o internal/agent/kapl ./cmd/kapl
 	go build -o kapm ./cmd/kapm
 
 test:
