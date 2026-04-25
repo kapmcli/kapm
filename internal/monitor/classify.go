@@ -12,6 +12,7 @@ var shellSubAllowlist = map[string]struct{}{
 	"git":     {},
 	"go":      {},
 	"npm":     {},
+	"npx":     {},
 	"pnpm":    {},
 	"yarn":    {},
 	"cargo":   {},

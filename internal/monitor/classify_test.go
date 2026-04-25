@@ -17,6 +17,8 @@ func TestClassifyShell(t *testing.T) {
 	}{
 		{"git subcommand kept", `{"command":"git push -u origin main"}`, "/w", "shell:git push"},
 		{"go subcommand kept", `{"command":"go test ./..."}`, "/w", "shell:go test"},
+		{"npx package command kept", `{"command":"npx defuddle parse https://example.com --markdown"}`, "/w", "shell:npx defuddle"},
+		{"npx scoped package kept", `{"command":"npx @playwright/cli@latest screenshot page.png"}`, "/w", "shell:npx @playwright/cli@latest"},
 		{"cd to cwd then git", `{"command":"cd /w && git status"}`, "/w", "shell:git status"},
 		{"non-allowlisted collapses to top", `{"command":"ls -la"}`, "/w", "shell:ls"},
 		{"grep not in allowlist", `{"command":"grep -r foo ."}`, "/w", "shell:grep"},
