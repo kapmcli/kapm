@@ -105,9 +105,20 @@ kapm init-hook             # interactive agent selection
 kapm init-hook --remove    # remove kapm-managed hooks
 ```
 
+Generated hook entries invoke `kapm hook-handler --agent <name>` directly, so no separate helper binary is installed under `.kiro/hooks/`.
+
 Re-running is safe — existing hooks are replaced, not duplicated. Your own hook entries are preserved.
 
 **Note**: `kapm sync --force` and `kapm install --sync-force` rewrite agent JSON and remove hooks. Re-run `kapm init-hook` after force-sync.
+
+### `kapm hook-handler`
+
+Consumes a Kiro hook event from stdin and appends a JSONL record to `.kiro/logs/`.
+
+```bash
+kapm hook-handler --agent coder
+AGENT=coder kapm hook-handler
+```
 
 ### `kapm monitor`
 
@@ -169,10 +180,10 @@ On `agentSpawn`, idle session files (>24h since last write) are gzip-compressed 
 
 ## Development
 
-`kapm` embeds the `kapl` binary via `//go:embed`. Always build via the Justfile:
+Always build via the Justfile:
 
 ```bash
-just build   # kapl → embed → kapm
+just build
 just test
 just lint
 ```
@@ -180,14 +191,11 @@ just lint
 Manual build (if `just` is unavailable):
 
 ```bash
-go build -o internal/agent/kapl ./cmd/kapl
 go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
 
 The repo-root `DESIGN.md` is the canonical WebUI design-system document, following the upstream [`design.md`](https://github.com/google-labs-code/design.md) convention. `internal/serve/DESIGN.md` is only the generated embed copy for `/design-preview`.
-
-Release builds rely on GoReleaser's serialized execution (`--parallelism=1`) so the embedded `kapl` helper is rebuilt for each target before `kapm` is compiled.
 
 ## Links
 
