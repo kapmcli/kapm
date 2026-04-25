@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kapmcli/kapm/internal/agent"
 )
 
 // runKapm invokes kapm with args in root, feeding stdin and capturing output.
@@ -109,7 +111,7 @@ func TestInitHookAddAndRemoveIsIdempotent(t *testing.T) {
 			t.Fatalf("event %q: expected 1 entry, got %d", event, len(hooks1[event]))
 		}
 	}
-	loggerPath := filepath.Join(root, ".kiro", "hooks", "kapl")
+	loggerPath := agent.LoggerBinaryPath(root)
 	if _, err := os.Stat(loggerPath); err != nil {
 		t.Fatalf("kapl not deployed: %v", err)
 	}

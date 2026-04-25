@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -37,7 +39,7 @@ func InitHook(opts InitHookOptions) error {
 
 func initHook(opts InitHookOptions) error {
 	agentsDir := filepath.Join(opts.Root, paths.KiroDir, paths.AgentsSubdir)
-	entries, err := os.ReadDir(agentsDir)
+	info, err := os.Stat(agentsDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			_, _ = fmt.Fprintln(opts.Out, "No agents found. Create agents with `kapm agent generate` first.")
@@ -45,11 +47,23 @@ func initHook(opts InitHookOptions) error {
 		}
 		return fmt.Errorf("read agents dir: %w", err)
 	}
+	if !info.IsDir() {
+		return fmt.Errorf("read agents dir: %w", fs.ErrInvalid)
+	}
+
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return fmt.Errorf("read agents dir: %w", err)
+	}
 
 	var names []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+			name, err := validateAndNormalizeName(strings.TrimSuffix(e.Name(), ".json"))
+			if err != nil {
+				return fmt.Errorf("invalid agent file name %q: %w", e.Name(), err)
+			}
+			names = append(names, name)
 		}
 	}
 	slices.Sort(names)
@@ -112,7 +126,7 @@ func processAgent(agentPath, name string, remove bool) error {
 	if remove {
 		removeKapmEntries(hooksMap)
 	} else {
-		command := fmt.Sprintf("AGENT=%s .kiro/hooks/kapl", name)
+		command := hookCommand(name)
 		if err := addKapmEntries(hooksMap, command); err != nil {
 			return err
 		}
@@ -148,9 +162,59 @@ func isKapmEntry(raw json.RawMessage) (match, corrupt bool) {
 	if err := json.Unmarshal(raw, &entry); err != nil {
 		return false, true
 	}
-	match = strings.HasSuffix(entry.Command, " hook-handler") ||
-		strings.HasSuffix(entry.Command, "/kapl")
+	match = isKapmCommand(entry.Command)
 	return match, false
+}
+
+func hookCommand(name string) string {
+	return hookCommandForGOOS(name, runtime.GOOS)
+}
+
+func hookCommandForGOOS(name, goos string) string {
+	loggerName := loggerBinaryNameForGOOS(goos)
+	if goos == "windows" {
+		return fmt.Sprintf(`.kiro\hooks\%s --agent %s`, loggerName, name)
+	}
+	return fmt.Sprintf("%s --agent %s", path.Join(paths.KiroDir, paths.HooksSubdir, loggerName), name)
+}
+
+func isKapmCommand(command string) bool {
+	command = strings.TrimSpace(command)
+	if isLegacyKapmHookHandlerCommand(command) {
+		return true
+	}
+
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	commandPath := fields[0]
+	if strings.HasPrefix(commandPath, "AGENT=") {
+		if len(fields) < 2 {
+			return false
+		}
+		commandPath = fields[1]
+	}
+	commandPath = strings.Trim(commandPath, `"'`)
+	normalized := strings.ReplaceAll(commandPath, `\`, "/")
+	return normalized == ".kiro/hooks/kapl" || normalized == ".kiro/hooks/kapl.exe"
+}
+
+func isLegacyKapmHookHandlerCommand(command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	commandIndex := 0
+	if strings.HasPrefix(fields[0], "AGENT=") {
+		commandIndex = 1
+	}
+	if len(fields) <= commandIndex+1 || fields[len(fields)-1] != "hook-handler" {
+		return false
+	}
+	commandPath := strings.Trim(fields[commandIndex], `"'`)
+	commandBase := path.Base(strings.ReplaceAll(commandPath, `\`, "/"))
+	return commandBase == "kapm" || commandBase == "kapm.exe"
 }
 
 func removeKapmEntries(hooksMap map[string][]json.RawMessage) {

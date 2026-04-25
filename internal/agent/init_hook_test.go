@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestInitHookPreservesUnknownTopLevelFields(t *testing.T) {
 		t.Error("customField was removed")
 	}
 	// Compare parsed values (marshalIndentedJSON reformats whitespace)
-	var gotCustom, wantCustom interface{}
+	var gotCustom, wantCustom any
 	_ = json.Unmarshal(m["customField"], &gotCustom)
 	_ = json.Unmarshal([]byte(`{"a":1,"b":[true]}`), &wantCustom)
 	gotBytes, _ := json.Marshal(gotCustom)
@@ -250,6 +251,19 @@ func TestInitHookNoopOnEmptyAgentsDir(t *testing.T) {
 	}
 }
 
+func TestInitHookRejectsUnsafeAgentFileName(t *testing.T) {
+	root := makeAgentsDir(t)
+	writeAgentJSON(t, root, "bad;touch-pwned", `{"name":"bad;touch-pwned","description":"d","tools":["fs_read"],"allowedTools":["fs_read"]}`)
+
+	_, _, err := runInitHook(t, root, false, "1\n")
+	if err == nil {
+		t.Fatal("expected unsafe agent file name error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid agent file name") {
+		t.Fatalf("error = %v, want invalid agent file name", err)
+	}
+}
+
 func TestInitHookSkipsMalformedAgentFile(t *testing.T) {
 	root := makeAgentsDir(t)
 	writeAgentJSON(t, root, "bad", `not valid json {`)
@@ -298,10 +312,30 @@ func TestInitHookWritesRelativeCommand(t *testing.T) {
 	for _, event := range apmconfig.HookEvents {
 		var entry map[string]string
 		_ = json.Unmarshal(hooksMap[event][0], &entry)
-		want := "AGENT=coder .kiro/hooks/kapl"
+		want := hookCommand("coder")
 		if entry["command"] != want {
 			t.Errorf("event %q command = %q, want %q", event, entry["command"], want)
 		}
+	}
+}
+
+func TestHookCommandForGOOS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		goos string
+		want string
+	}{
+		{goos: "linux", want: ".kiro/hooks/kapl --agent coder"},
+		{goos: "darwin", want: ".kiro/hooks/kapl --agent coder"},
+		{goos: "windows", want: `.kiro\hooks\kapl.exe --agent coder`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			if got := hookCommandForGOOS("coder", tt.goos); got != tt.want {
+				t.Fatalf("hookCommandForGOOS() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -314,12 +348,12 @@ func TestInitHookDeploysKapmLogger(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	loggerPath := filepath.Join(root, ".kiro", "hooks", "kapl")
+	loggerPath := LoggerBinaryPath(root)
 	info, err := os.Stat(loggerPath)
 	if err != nil {
 		t.Fatalf("kapl not found: %v", err)
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Errorf("kapl not executable: mode %o", info.Mode())
 	}
 }
@@ -330,7 +364,12 @@ func TestIsKapmEntryMatchesBothFormats(t *testing.T) {
 		want bool
 	}{
 		{`{"command":"AGENT=coder .kiro/hooks/kapl"}`, true},
+		{`{"command":".kiro/hooks/kapl --agent coder"}`, true},
+		{`{"command":".kiro\\hooks\\kapl.exe --agent coder"}`, true},
 		{`{"command":"AGENT=coder '/usr/local/bin/kapm' hook-handler"}`, true},
+		{`{"command":"AGENT=coder C:\\tools\\kapm.exe hook-handler"}`, true},
+		{`{"command":"AGENT=coder not-kapm hook-handler"}`, false},
+		{`{"command":"not-kapm hook-handler"}`, false},
 		{`{"command":"my-custom.sh"}`, false},
 		{`{"command":"not-kapl"}`, false},
 	}
@@ -358,7 +397,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {original},
 	}
-	err := addKapmEntries(hooksMap, "AGENT=x .kiro/hooks/kapl")
+	err := addKapmEntries(hooksMap, hookCommand("x"))
 	if err == nil {
 		t.Fatal("expected error for corrupt entry, got nil")
 	}
@@ -373,7 +412,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 
 func TestRemoveKapmEntries_PreservesCorrupt(t *testing.T) {
 	corrupt := json.RawMessage("{broken")
-	kapmRaw, _ := json.Marshal(map[string]string{"command": "AGENT=x .kiro/hooks/kapl"})
+	kapmRaw, _ := json.Marshal(map[string]string{"command": hookCommand("x")})
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {corrupt, json.RawMessage(kapmRaw)},
 	}
@@ -388,6 +427,10 @@ func TestRemoveKapmEntries_PreservesCorrupt(t *testing.T) {
 }
 
 func TestInitHookWrapsWriteFileError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX directory write bits for this test")
+	}
+
 	root := makeAgentsDir(t)
 	writeAgentJSON(t, root, "coder", `{"name":"coder","description":"d","tools":["fs_read"],"allowedTools":["fs_read"]}`)
 

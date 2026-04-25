@@ -64,6 +64,42 @@ func TestLoggerWritesJSONL(t *testing.T) {
 	}
 }
 
+func TestLoggerAgentFlagWritesAgent(t *testing.T) {
+	_, logger := binaries(t)
+	root := t.TempDir()
+
+	event := `{"hook_event_name":"preToolUse","session_id":"e2e-agent-flag","cwd":"/w","tool_name":"bash"}`
+	cmd := exec.Command(logger, "--agent", "flag-agent")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "AGENT=env-agent")
+	cmd.Stdin = strings.NewReader(event)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("kapl --agent failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("kapl wrote to stdout: %q", stdout.String())
+	}
+
+	logPath := filepath.Join(root, ".kiro", "logs", "e2e-agent-flag.jsonl")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	var rec struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &rec); err != nil {
+		t.Fatalf("invalid JSONL: %v\nline: %s", err, data)
+	}
+	if rec.Agent != "flag-agent" {
+		t.Fatalf("agent = %q, want flag-agent", rec.Agent)
+	}
+}
+
 // TestLoggerRejectsInvalidJSONExitsZero verifies the logger never breaks the
 // host: invalid stdin still yields exit 0 and writes no log file, only stderr.
 func TestLoggerRejectsInvalidJSONExitsZero(t *testing.T) {

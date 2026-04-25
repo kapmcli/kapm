@@ -2,6 +2,7 @@ package agent
 
 import (
 	"path/filepath"
+	"runtime"
 
 	"github.com/kapmcli/kapm/internal/paths"
 )
@@ -21,7 +22,20 @@ func HooksDir(root string) string {
 	return filepath.Join(root, paths.KiroDir, paths.HooksSubdir)
 }
 
-// LoggerBinaryPath returns "<root>/.kiro/hooks/kapl".
+func loggerBinaryNameForGOOS(goos string) string {
+	if goos == "windows" {
+		return "kapl.exe"
+	}
+	return "kapl"
+}
+
+func loggerBinaryName() string {
+	return loggerBinaryNameForGOOS(runtime.GOOS)
+}
+
+// LoggerBinaryPath returns the installed hook logger path under
+// "<root>/.kiro/hooks". The binary is named "kapl.exe" on Windows and "kapl"
+// elsewhere.
 func LoggerBinaryPath(root string) string {
-	return filepath.Join(root, paths.KiroDir, paths.HooksSubdir, "kapl")
+	return filepath.Join(root, paths.KiroDir, paths.HooksSubdir, loggerBinaryName())
 }
