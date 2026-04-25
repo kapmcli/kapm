@@ -1,7 +1,7 @@
 <h1 align="center">kapm</h1>
 
 <p align="center">
-  Adapt <a href="https://microsoft.github.io/apm/">APM</a> content into Kiro-native <code>.kiro/</code> files and monitor Kiro sessions.
+  Sync <a href="https://microsoft.github.io/apm/">APM</a> content into Kiro-native <code>.kiro/</code> files, install Kiro hooks, and monitor Kiro sessions.
 </p>
 
 <p align="center">
@@ -185,7 +185,7 @@ go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
 
-The repo-root `DESIGN.md` is the canonical WebUI design-system document, following the upstream `design.md` format convention. `internal/serve/DESIGN.md` is a generated copy used only so the serve package can `go:embed` the file for `/design-preview`; edit the root file, not the embedded copy.
+The repo-root `DESIGN.md` is the canonical WebUI design-system document, following the upstream [`design.md`](https://github.com/google-labs-code/design.md) convention. `internal/serve/DESIGN.md` is only the generated embed copy for `/design-preview`.
 
 Release builds rely on GoReleaser's serialized execution (`--parallelism=1`) so the embedded `kapl` helper is rebuilt for each target before `kapm` is compiled.
 
