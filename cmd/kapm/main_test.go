@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"io"
 	"os"
@@ -99,6 +101,7 @@ func TestRunCommandHelpOutputsToStdout(t *testing.T) {
 		{name: "monitor help", args: []string{"monitor", "--help"}, want: "Usage: kapm monitor [flags]"},
 		{name: "serve help", args: []string{"serve", "--help"}, want: "Usage: kapm serve [flags]"},
 		{name: "init-hook help", args: []string{"init-hook", "--help"}, want: "Usage: kapm init-hook [--remove]"},
+		{name: "hook-handler help", args: []string{"hook-handler", "--help"}, want: "Usage: kapm hook-handler [flags]"},
 		{name: "agent generate help", args: []string{"agent", "generate", "--help"}, want: "Usage: kapm agent generate [flags]"},
 		{name: "agent update help", args: []string{"agent", "update", "--help"}, want: "Usage: kapm agent update <name> [flags]"},
 	}
@@ -161,6 +164,11 @@ func TestRunArgumentValidation(t *testing.T) {
 			name:    "init-hook rejects positional args",
 			args:    []string{"init-hook", "extra"},
 			wantErr: "init-hook does not accept positional arguments",
+		},
+		{
+			name:    "hook-handler rejects positional args",
+			args:    []string{"hook-handler", "extra"},
+			wantErr: "hook-handler does not accept positional arguments",
 		},
 	}
 
@@ -355,6 +363,110 @@ func TestRunInitHookUnknownFlag(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("runInitHook(--unknown) error = nil, want non-nil error")
+	}
+}
+
+func TestRunHookHandlerWritesJSONLAndUsesEnvFallback(t *testing.T) {
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Setenv("AGENT", "env-agent")
+
+	origStdin := os.Stdin
+	stdinReader, stdinWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe(stdin): %v", err)
+	}
+	if _, err := io.WriteString(stdinWriter, `{"hook_event_name":"preToolUse","session_id":"hook-handler-env","cwd":"/w","tool_name":"bash"}`); err != nil {
+		t.Fatalf("WriteString(stdin): %v", err)
+	}
+	if err := stdinWriter.Close(); err != nil {
+		t.Fatalf("stdinWriter.Close(): %v", err)
+	}
+	os.Stdin = stdinReader
+	t.Cleanup(func() { os.Stdin = origStdin })
+	t.Cleanup(func() { _ = stdinReader.Close() })
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"hook-handler"})
+	})
+	if err != nil {
+		t.Fatalf("run(hook-handler) error = %v", err)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".kiro", "logs", "hook-handler-env.jsonl"))
+	if err != nil {
+		t.Fatalf("ReadFile(log): %v", err)
+	}
+	var rec struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &rec); err != nil {
+		t.Fatalf("json.Unmarshal(log): %v", err)
+	}
+	if rec.Agent != "env-agent" {
+		t.Fatalf("agent = %q, want env-agent", rec.Agent)
+	}
+}
+
+func TestRunHookHandlerFlagOverridesEnv(t *testing.T) {
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Setenv("AGENT", "env-agent")
+
+	origStdin := os.Stdin
+	stdinReader, stdinWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe(stdin): %v", err)
+	}
+	if _, err := io.WriteString(stdinWriter, `{"hook_event_name":"preToolUse","session_id":"hook-handler-flag","cwd":"/w","tool_name":"bash"}`); err != nil {
+		t.Fatalf("WriteString(stdin): %v", err)
+	}
+	if err := stdinWriter.Close(); err != nil {
+		t.Fatalf("stdinWriter.Close(): %v", err)
+	}
+	os.Stdin = stdinReader
+	t.Cleanup(func() { os.Stdin = origStdin })
+	t.Cleanup(func() { _ = stdinReader.Close() })
+
+	_, _, err = captureOutput(t, func() error {
+		return run([]string{"hook-handler", "--agent", "flag-agent"})
+	})
+	if err != nil {
+		t.Fatalf("run(hook-handler --agent) error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".kiro", "logs", "hook-handler-flag.jsonl"))
+	if err != nil {
+		t.Fatalf("ReadFile(log): %v", err)
+	}
+	var rec struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &rec); err != nil {
+		t.Fatalf("json.Unmarshal(log): %v", err)
+	}
+	if rec.Agent != "flag-agent" {
+		t.Fatalf("agent = %q, want flag-agent", rec.Agent)
 	}
 }
 

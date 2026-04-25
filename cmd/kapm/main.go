@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kapmcli/kapm/internal/agent"
+	"github.com/kapmcli/kapm/internal/hook"
 	"github.com/kapmcli/kapm/internal/install"
 	"github.com/kapmcli/kapm/internal/syncer"
 )
@@ -72,6 +74,11 @@ func run(args []string) error {
 			name:        "init-hook",
 			description: "interactively add monitoring hooks to agents",
 			run:         runInitHook,
+		},
+		"hook-handler": {
+			name:        "hook-handler",
+			description: "handle a Kiro hook event and append logs",
+			run:         runHookHandler,
 		},
 		"monitor": {
 			name:        "monitor",
@@ -323,7 +330,7 @@ func printUsage(w io.Writer, commands map[string]command) {
 	_, _ = fmt.Fprintln(w, "  kapm <command> [arguments]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Available commands:")
-	for _, name := range []string{"sync", "install", "agent", "init-hook", "monitor", "serve", "version"} {
+	for _, name := range []string{"sync", "install", "agent", "init-hook", "hook-handler", "monitor", "serve", "version"} {
 		cmd := commands[name]
 		_, _ = fmt.Fprintf(w, "  %-8s %s\n", cmd.name, cmd.description)
 	}
@@ -380,4 +387,32 @@ func runInitHook(args []string) error {
 		Out:    os.Stdout,
 		Err:    os.Stderr,
 	})
+}
+
+func runHookHandler(args []string) error {
+	fs := flag.NewFlagSet("hook-handler", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	agentName := fs.String("agent", "", "agent name to attach to hook log records")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm hook-handler [flags]\n\n")
+		_, _ = fmt.Fprintln(fs.Output(), "Handle a Kiro hook event from stdin and append a JSONL log record.")
+		fs.PrintDefaults()
+	}
+
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "hook-handler"); err != nil {
+		return err
+	}
+
+	if *agentName == "" {
+		*agentName = os.Getenv("AGENT")
+	}
+	hook.Handle(os.Stdin, os.Stdout, os.Stderr, time.Now, ".", *agentName)
+	return nil
 }
