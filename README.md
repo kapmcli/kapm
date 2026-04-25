@@ -84,7 +84,7 @@ kapm install --update owner/repo
 kapm install github/awesome-copilot/skills/review-and-refactor
 ```
 
-Most arguments are forwarded to `apm install`. kapm also interprets `--sync-force` (overwrites `.kiro/` files during the post-install sync) and `--target-dir` (changes where the post-install sync writes `.kiro/`). `--global` is still forwarded to `apm install`; when present, kapm uses your home directory as the sync root, and `--global` cannot be combined with `--target-dir`.
+Most arguments are forwarded to `apm install`. kapm also adds `--sync-force` (overwrite `.kiro/` files during the post-install sync) and `--target-dir` (change where the post-install sync writes `.kiro/`). `--global` is still forwarded to `apm install`; when present, kapm uses your home directory as the sync root, and it cannot be combined with `--target-dir`.
 
 ### `kapm agent generate` / `kapm agent update`
 
@@ -111,7 +111,7 @@ Re-running is safe — existing hooks are replaced, not duplicated. Your own hoo
 
 ### `kapm monitor`
 
-TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI. `--session` and `--agent` filters require `--json`.
+TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI.
 
 ```bash
 kapm monitor                                     # TUI
