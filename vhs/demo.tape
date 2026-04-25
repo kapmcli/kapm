@@ -7,6 +7,11 @@ Set Height 1080
 Set FontSize 18
 Set WaitTimeout 10s
 
+Hide
+Type "export PS1='$ '; clear"
+Enter
+Show
+
 Sleep 1s
 
 Type "./kapm version"
