@@ -36,6 +36,12 @@ homebrew_casks:
     ids: [kapm]
     binaries:
       - kapm
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/kapm"]
+          end
     directory: Casks
     repository:
       owner: kapmcli
