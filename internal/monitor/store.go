@@ -84,6 +84,10 @@ func (c *RecordCache) Load(logsDir string, since time.Time) ([]Record, error) {
 // fresh cache map containing only files that still exist. Only successful
 // file reads are inserted into the returned cache.
 func loadRecordsWithCache(logsDir string, since time.Time, cache map[string]fileEntry) ([]Record, map[string]fileEntry, error) {
+	return loadRecordsWithCacheLimit(logsDir, since, cache, maxDecompressedLogBytes)
+}
+
+func loadRecordsWithCacheLimit(logsDir string, since time.Time, cache map[string]fileEntry, maxDecompressedBytes int64) ([]Record, map[string]fileEntry, error) {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -126,7 +130,7 @@ func loadRecordsWithCache(logsDir string, since time.Time, cache map[string]file
 			continue
 		}
 
-		recs, err := loadFile(path, isGz)
+		recs, err := loadFileWithLimit(path, isGz, maxDecompressedBytes)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue // rotated away during read
@@ -160,7 +164,7 @@ func loadRecordsWithCache(logsDir string, since time.Time, cache map[string]file
 	return filtered, next, nil
 }
 
-func loadFile(path string, isGz bool) ([]Record, error) {
+func loadFileWithLimit(path string, isGz bool, maxDecompressedBytes int64) ([]Record, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -179,7 +183,7 @@ func loadFile(path string, isGz bool) ([]Record, error) {
 	// Read-only close: ignoring Close error is safe; no data integrity risk on read paths.
 	defer func() { _ = gr.Close() }()
 
-	limited := io.LimitReader(gr, maxDecompressedLogBytes)
+	limited := io.LimitReader(gr, maxDecompressedBytes)
 	recs, err := parseRecords(limited)
 	if err != nil {
 		return nil, err

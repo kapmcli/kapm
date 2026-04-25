@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -385,14 +384,14 @@ func TestLoadRecords_CorruptGzipSkipped(t *testing.T) {
 
 func TestLoadFile_GzipTooLarge(t *testing.T) {
 	tmp := t.TempDir()
-	writeGzipBombForTest(t, tmp, 300<<20) // 300 MiB decompressed
+	const testLimit int64 = 1 << 20
+	writeGzipBombForTest(t, tmp, testLimit+1)
 
-	recs, err := LoadRecords(tmp, time.Time{})
-	// Expect either ErrLogTooLarge propagated or empty records (skip+warn strategy).
-	if err != nil && !errors.Is(err, ErrLogTooLarge) {
+	recs, _, err := loadRecordsWithCacheLimit(tmp, time.Time{}, nil, testLimit)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// The bomb file must not have been fully loaded (skip strategy: recs empty).
+	// The bomb file must be skipped once it exceeds the configured decompression limit.
 	for _, r := range recs {
 		if r.Session == "bomb" {
 			t.Errorf("bomb record should have been skipped, got session=%q", r.Session)
