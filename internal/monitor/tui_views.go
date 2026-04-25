@@ -488,15 +488,15 @@ func (m *model) renderSessionDetail() string {
 		}
 		maxCalls := tools[0].CallCount
 		interior := m.interiorWidth()
-		// Fixed: 2(indent) + 12(tool) + 1 + 5(Calls) + 1 + 6(Errors) + 1 + 8(Success%) + 1 + 8(Avg Dur) = 45
-		barW := interior - 45
+		// Fixed: 2(indent) + 12(tool) + 2 + bar + 1 + 4(Calls) + 2 + 6(Errors) + 2 + 8(Success%) + 2 + 8(Avg Dur)
+		barW := interior - 49
 		if barW < 3 {
 			barW = 3
 		}
 		if barW > 20 {
 			barW = 20
 		}
-		fmt.Fprintf(&b, "  %-12s  %5s  %6s  %8s  %8s\n", "Tool", "Calls", "Errors", "Success%", "Avg Dur")
+		fmt.Fprintf(&b, "  %-12s  %-*s %4s  %6s  %8s  %8s\n", "Tool", barW, "Bar", "Calls", "Errors", "Success%", "Avg Dur")
 		for _, t := range tools {
 			bar := barChart(t.CallCount, maxCalls, barW)
 			fmt.Fprintf(&b, "  %-12s  %s %4d  %6d  %7.1f%%  %8s\n",
