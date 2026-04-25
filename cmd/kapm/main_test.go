@@ -89,6 +89,38 @@ func TestRunAgentUsageAndHelp(t *testing.T) {
 	}
 }
 
+func TestRunCommandHelpOutputsToStdout(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "sync help", args: []string{"sync", "--help"}, want: "Usage: kapm sync [flags]"},
+		{name: "monitor help", args: []string{"monitor", "--help"}, want: "Usage: kapm monitor [flags]"},
+		{name: "serve help", args: []string{"serve", "--help"}, want: "Usage: kapm serve [flags]"},
+		{name: "init-hook help", args: []string{"init-hook", "--help"}, want: "Usage: kapm init-hook [--remove]"},
+		{name: "agent generate help", args: []string{"agent", "generate", "--help"}, want: "Usage: kapm agent generate [flags]"},
+		{name: "agent update help", args: []string{"agent", "update", "--help"}, want: "Usage: kapm agent update <name> [flags]"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, err := captureOutput(t, func() error {
+				return run(tt.args)
+			})
+			if err != nil {
+				t.Fatalf("run(%v) error = %v", tt.args, err)
+			}
+			if !strings.Contains(stdout, tt.want) {
+				t.Fatalf("stdout = %q, want usage text containing %q", stdout, tt.want)
+			}
+			if stderr != "" {
+				t.Fatalf("stderr = %q, want empty", stderr)
+			}
+		})
+	}
+}
+
 func TestRunArgumentValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -99,6 +131,16 @@ func TestRunArgumentValidation(t *testing.T) {
 			name:    "sync rejects positional args",
 			args:    []string{"sync", "extra"},
 			wantErr: "sync does not accept positional arguments",
+		},
+		{
+			name:    "monitor rejects positional args",
+			args:    []string{"monitor", "extra"},
+			wantErr: "monitor does not accept positional arguments",
+		},
+		{
+			name:    "serve rejects positional args",
+			args:    []string{"serve", "extra"},
+			wantErr: "serve does not accept positional arguments",
 		},
 		{
 			name:    "agent generate rejects positional args",
@@ -114,6 +156,11 @@ func TestRunArgumentValidation(t *testing.T) {
 			name:    "agent rejects unknown subcommand",
 			args:    []string{"agent", "bogus"},
 			wantErr: `unknown agent subcommand "bogus"`,
+		},
+		{
+			name:    "init-hook rejects positional args",
+			args:    []string{"init-hook", "extra"},
+			wantErr: "init-hook does not accept positional arguments",
 		},
 	}
 
@@ -195,6 +242,12 @@ func TestSplitInstallArgs(t *testing.T) {
 			args:            []string{"--target-dir=/tmp/y", "owner/repo"},
 			wantTargetDir:   "/tmp/y",
 			wantInstallArgs: []string{"owner/repo"},
+		},
+		{
+			name:            "single-dash target-dir is forwarded to apm",
+			args:            []string{"-target-dir=/tmp/y", "owner/repo"},
+			wantTargetDir:   ".",
+			wantInstallArgs: []string{"-target-dir=/tmp/y", "owner/repo"},
 		},
 	}
 

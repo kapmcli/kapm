@@ -110,13 +110,45 @@ func run(args []string) error {
 	return cmd.run(args[1:])
 }
 
+func parseFlagSet(fs *flag.FlagSet, args []string) (bool, error) {
+	originalOutput := fs.Output()
+	if hasHelpFlag(args) {
+		fs.SetOutput(os.Stdout)
+		defer fs.SetOutput(originalOutput)
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "-h", "--help", "-help":
+			return true
+		}
+	}
+	return false
+}
+
+func rejectPositionalArgs(fs *flag.FlagSet, command string) error {
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("%s does not accept positional arguments", command)
+	}
+	return nil
+}
+
 func runInstall(args []string) error {
 	force, targetDirRaw, installArgs := splitInstallArgs(args)
 
 	hasGlobal := slices.Contains(installArgs, "--global") || slices.Contains(installArgs, "-g")
 	targetDirSet := targetDirRaw != "." && targetDirRaw != ""
 	if hasGlobal && targetDirSet {
-		return fmt.Errorf("--global と --target-dir は併用できません")
+		return fmt.Errorf("--global and --target-dir cannot be used together")
 	}
 
 	targetDir, err := expandTarget(targetDirRaw)
@@ -149,7 +181,7 @@ func splitInstallArgs(args []string) (force bool, targetDir string, installArgs 
 			force = true
 			continue
 		}
-		if arg == "--target-dir" || arg == "-target-dir" {
+		if arg == "--target-dir" {
 			if i+1 < len(args) {
 				i++
 				targetDir = args[i]
@@ -157,10 +189,6 @@ func splitInstallArgs(args []string) (force bool, targetDir string, installArgs 
 			continue
 		}
 		if v, ok := strings.CutPrefix(arg, "--target-dir="); ok {
-			targetDir = v
-			continue
-		}
-		if v, ok := strings.CutPrefix(arg, "-target-dir="); ok {
 			targetDir = v
 			continue
 		}
@@ -181,14 +209,15 @@ func runSync(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
 	}
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("sync does not accept positional arguments")
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "sync"); err != nil {
+		return err
 	}
 
 	targetDir, err := expandTarget(*targetDirFlag)
@@ -229,14 +258,15 @@ func runAgentGenerate(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
 	}
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("agent generate does not accept positional arguments")
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "agent generate"); err != nil {
+		return err
 	}
 
 	targetDir, err := expandTarget(*targetDirFlag)
@@ -262,11 +292,12 @@ func runAgentUpdate(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
+	}
+	if !ok {
+		return nil
 	}
 	if len(fs.Args()) != 1 {
 		return fmt.Errorf("agent update requires exactly one argument: <name>")
@@ -326,14 +357,15 @@ func runInitHook(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
 	}
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("init-hook does not accept positional arguments")
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "init-hook"); err != nil {
+		return err
 	}
 
 	targetDir, err := expandTarget(*targetDirFlag)

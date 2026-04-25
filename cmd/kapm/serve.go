@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -24,14 +23,15 @@ func runServe(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
 	}
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("serve does not accept positional arguments")
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "serve"); err != nil {
+		return err
 	}
 
 	lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)

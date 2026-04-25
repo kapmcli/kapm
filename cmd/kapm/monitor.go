@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -22,15 +21,16 @@ func runMonitor(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
 		return err
 	}
+	if !ok {
+		return nil
+	}
 
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("monitor does not accept positional arguments")
+	if err := rejectPositionalArgs(fs, "monitor"); err != nil {
+		return err
 	}
 
 	if (*session != "" || *agent != "") && !*jsonOut {
