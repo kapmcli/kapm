@@ -77,30 +77,50 @@ func compressFile(src, dst string) error {
 		}
 		return err
 	}
-	// read-only close: ignoring Close error is safe; no data integrity concern
-	defer func() { _ = f.Close() }()
+
+	locked := false
+	closeRotating := func() error {
+		if locked {
+			flockUnlock(f)
+			locked = false
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("close rotating file: %w", err)
+		}
+		return nil
+	}
 
 	if err := flockRotate(f); err != nil {
 		// Another process holds the lock — leave rotating in place; it will finish.
+		_ = f.Close()
 		return nil
 	}
-	defer flockUnlock(f)
+	locked = true
 
 	// Re-check: another process may have already created the .gz.
 	if _, err := os.Stat(dst); err == nil {
+		closeErr := closeRotating()
 		// best-effort; file may have been removed by another process
 		_ = os.Remove(rotating)
-		return nil
+		return closeErr
 	}
 
 	tmp := dst + ".tmp"
 	if err := writeGzip(f, tmp); err != nil {
+		closeErr := closeRotating()
 		_ = os.Remove(tmp) // best-effort; tmp may not exist
 		// Restore source on failure so data isn't lost.
 		if rerr := os.Rename(rotating, src); rerr != nil {
-			return errors.Join(fmt.Errorf("compress %s: %w", src, err), fmt.Errorf("restore: %w", rerr))
+			return errors.Join(fmt.Errorf("compress %s: %w", src, err), closeErr, fmt.Errorf("restore: %w", rerr))
 		}
-		return fmt.Errorf("compress %s: %w", src, err)
+		return errors.Join(fmt.Errorf("compress %s: %w", src, err), closeErr)
+	}
+	if err := closeRotating(); err != nil {
+		_ = os.Remove(tmp) // best-effort; tmp may not exist
+		if rerr := os.Rename(rotating, src); rerr != nil {
+			return errors.Join(err, fmt.Errorf("restore: %w", rerr))
+		}
+		return err
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp) // best-effort; tmp may not exist

@@ -176,6 +176,9 @@ func TestRotateConcurrentNoDoubleProcess(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl.gz.tmp")); !os.IsNotExist(err) {
 		t.Error("tmp file should not remain")
 	}
+	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl.rotating")); !os.IsNotExist(err) {
+		t.Error("rotating file should not remain")
+	}
 	// Content intact.
 	got := readGzip(t, filepath.Join(dir, "shared.jsonl.gz"))
 	if got != content {
