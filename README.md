@@ -71,7 +71,7 @@ kapm install --update owner/repo
 kapm install github/awesome-copilot/skills/review-and-refactor
 ```
 
-All arguments are forwarded to `apm install`. The only kapm-specific flag is `--sync-force` (overwrites `.kiro/` files during the post-install sync).
+Most arguments are forwarded to `apm install`. kapm also interprets `--sync-force` (overwrites `.kiro/` files during the post-install sync) and `--target-dir` (changes where the post-install sync writes `.kiro/`). `--global` is still forwarded to `apm install`; when present, kapm uses your home directory as the sync root, and `--global` cannot be combined with `--target-dir`.
 
 ### `kapm agent generate` / `kapm agent update`
 
@@ -98,13 +98,13 @@ Re-running is safe — existing hooks are replaced, not duplicated. Your own hoo
 
 ### `kapm monitor`
 
-TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI.
+TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI. `--session` and `--agent` filters require `--json`.
 
 ```bash
-kapm monitor                              # TUI
-kapm monitor --json                       # JSON to stdout
-kapm monitor --session=<sid>              # single session (merged)
-kapm monitor --session=<sid> --agent=<a>  # single session, single agent
+kapm monitor                                     # TUI
+kapm monitor --json                              # JSON to stdout
+kapm monitor --json --session=<sid>              # single session (merged)
+kapm monitor --json --session=<sid> --agent=<a>  # single session, single agent
 
 kapm serve                                # WebUI on :9090
 kapm serve --port 9097                    # custom port
@@ -169,6 +169,8 @@ go build -o internal/agent/kapl ./cmd/kapl
 go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
+
+The repo-root `DESIGN.md` is the canonical WebUI design-system document, following the upstream `design.md` format convention. `internal/serve/DESIGN.md` is a generated copy used only so the serve package can `go:embed` the file for `/design-preview`; edit the root file, not the embedded copy.
 
 Release builds rely on GoReleaser's serialized execution (`--parallelism=1`) so the embedded `kapl` helper is rebuilt for each target before `kapm` is compiled.
 
