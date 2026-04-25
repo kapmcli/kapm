@@ -3,8 +3,8 @@ package monitor
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -330,13 +330,39 @@ func abbrevHome(home, p string) string {
 	if home == "" {
 		return p
 	}
-	if p == home {
+	home = filepath.Clean(home)
+	p = filepath.Clean(p)
+	if samePathText(p, home) {
 		return "~"
 	}
-	if strings.HasPrefix(p, home+string(os.PathSeparator)) {
-		return "~" + p[len(home):]
+	if suffix, ok := trimPathPrefix(p, home); ok {
+		return "~" + string(filepath.Separator) + suffix
 	}
 	return p
+}
+
+func trimPathPrefix(p, prefix string) (string, bool) {
+	prefix = strings.TrimRight(prefix, `/\`)
+	if prefix == "" || len(p) <= len(prefix) {
+		return "", false
+	}
+	if !samePathText(p[:len(prefix)], prefix) || !isPathSeparator(p[len(prefix)]) {
+		return "", false
+	}
+	return p[len(prefix)+1:], true
+}
+
+func samePathText(a, b string) bool {
+	a = strings.ReplaceAll(a, `\`, `/`)
+	b = strings.ReplaceAll(b, `\`, `/`)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func isPathSeparator(ch byte) bool {
+	return ch == '/' || ch == '\\'
 }
 
 // truncateLeft returns a string whose visible length is <= n, keeping the
@@ -504,8 +530,6 @@ func (m *model) renderSessionDetail() string {
 		b.WriteString("\n")
 	}
 
-
-
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Prompts (newest first)"))
 	if len(s.PromptHistory) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
@@ -584,8 +608,10 @@ func shortenPath(home, s, cwd string) string {
 	if s == "" {
 		return s
 	}
-	if cwd != "" && strings.HasPrefix(s, cwd+string(filepath.Separator)) {
-		return s[len(cwd)+1:]
+	if cwd != "" {
+		if suffix, ok := trimPathPrefix(s, cwd); ok {
+			return suffix
+		}
 	}
 	return abbrevHome(home, s)
 }
