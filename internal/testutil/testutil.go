@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -86,10 +87,16 @@ func AssertDirEqual(t testing.TB, gotDir, wantDir string) {
 		if err != nil {
 			t.Fatalf("ReadFile(want %q): %v", wantFiles[i], err)
 		}
-		if string(gotData) != string(wantData) {
+		gotText := normalizeTextForCompare(string(gotData))
+		wantText := normalizeTextForCompare(string(wantData))
+		if gotText != wantText {
 			t.Fatalf("content mismatch for %q\n\n--- got ---\n%s\n--- want ---\n%s", gotFiles[i], gotData, wantData)
 		}
 	}
+}
+
+func normalizeTextForCompare(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
 }
 
 func listFiles(t testing.TB, root string) []string {

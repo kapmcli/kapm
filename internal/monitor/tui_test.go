@@ -2,6 +2,8 @@ package monitor
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -660,24 +662,32 @@ func TestTUIDetailUnrecognizedKeyDoesNotAffectListCursor(t *testing.T) {
 // syscall. We prove this by setting m.homeDir directly and confirming the
 // function uses it without re-reading the environment.
 func TestAbbrevHome_SinglyResolved(t *testing.T) {
-	fakeHome := "/tmp/fakehome"
+	fakeHome := filepath.Join(t.TempDir(), "fakehome")
 	// abbrevHome uses the passed-in home, not os.UserHomeDir.
-	if got := abbrevHome(fakeHome, fakeHome+"/foo"); got != "~/foo" {
-		t.Errorf("abbrevHome(%q, %q) = %q, want %q", fakeHome, fakeHome+"/foo", got, "~/foo")
+	childPath := filepath.Join(fakeHome, "foo")
+	if got, want := abbrevHome(fakeHome, childPath), "~"+string(filepath.Separator)+"foo"; got != want {
+		t.Errorf("abbrevHome(%q, %q) = %q, want %q", fakeHome, childPath, got, want)
 	}
 	if got := abbrevHome(fakeHome, fakeHome); got != "~" {
 		t.Errorf("abbrevHome(%q, %q) = %q, want %q", fakeHome, fakeHome, got, "~")
 	}
-	if got := abbrevHome(fakeHome, "/other/path"); got != "/other/path" {
-		t.Errorf("abbrevHome(%q, %q) = %q, want %q", fakeHome, "/other/path", got, "/other/path")
+	otherPath := filepath.Join(t.TempDir(), "other", "path")
+	if got := abbrevHome(fakeHome, otherPath); got != otherPath {
+		t.Errorf("abbrevHome(%q, %q) = %q, want %q", fakeHome, otherPath, got, otherPath)
 	}
-	if got := abbrevHome("", "/some/path"); got != "/some/path" {
-		t.Errorf("abbrevHome(%q, %q) = %q, want %q", "", "/some/path", got, "/some/path")
+	somePath := filepath.Join(t.TempDir(), "some", "path")
+	if got := abbrevHome("", somePath); got != somePath {
+		t.Errorf("abbrevHome(%q, %q) = %q, want %q", "", somePath, got, somePath)
 	}
 
 	// Verify model stores homeDir once at construction.
 	t.Setenv("HOME", fakeHome)
-	m := NewModel("/tmp/logs", 24*time.Hour)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", fakeHome)
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	}
+	m := NewModel(filepath.Join(t.TempDir(), "logs"), 24*time.Hour)
 	if m.homeDir != fakeHome {
 		t.Errorf("NewModel homeDir = %q, want %q", m.homeDir, fakeHome)
 	}

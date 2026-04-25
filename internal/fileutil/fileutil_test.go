@@ -3,6 +3,7 @@ package fileutil_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestWarnIfKiroSymlink_Symlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 	fileutil.WarnIfKiroSymlink(filepath.Join(link, "logs"))
 	if !strings.Contains(buf.String(), "symlink") {
@@ -132,7 +133,7 @@ func TestIsSymlinkPath_Symlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 	got, err := fileutil.IsSymlinkPath(link)
 	if err != nil {
@@ -251,7 +252,7 @@ func TestWriteFilePair_RejectsSymlinkDest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, a); err != nil {
-		t.Fatal(err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 	written, err := fileutil.WriteFilePair(a, []byte("data"), b, []byte("data"), true)
 	if err == nil {
@@ -280,7 +281,7 @@ func TestWriteFilePair_RollbackPreservesOriginalMetadata(t *testing.T) {
 	if written {
 		t.Fatal("expected written=false")
 	}
-	// pathA must be restored with original content and mode
+	// pathA must be restored with original content and mode on POSIX filesystems.
 	got, readErr := os.ReadFile(a)
 	if readErr != nil {
 		t.Fatalf("a missing after rollback: %v", readErr)
@@ -288,11 +289,13 @@ func TestWriteFilePair_RollbackPreservesOriginalMetadata(t *testing.T) {
 	if string(got) != "original" {
 		t.Fatalf("a content after rollback: got %q", got)
 	}
-	info, statErr := os.Stat(a)
-	if statErr != nil {
-		t.Fatal(statErr)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("a mode after rollback: got %o", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		info, statErr := os.Stat(a)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("a mode after rollback: got %o", info.Mode().Perm())
+		}
 	}
 }

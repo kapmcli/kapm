@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"math"
@@ -173,18 +174,17 @@ func TestAssetServed(t *testing.T) {
 }
 
 func TestHandleErrorDoesNotLeakPath(t *testing.T) {
-	// Use a file path as LogsDir so os.ReadDir returns a non-ErrNotExist error.
-	// /etc/hosts exists and is a file, not a directory.
-	s := New(Options{Port: 0, LogsDir: "/etc/hosts", Since: time.Hour})
+	logsPath := filepath.Join(t.TempDir(), "logs.jsonl")
+	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	req := httptest.NewRequest("GET", "/sessions", nil)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
+	s.handleError(rec, req, errors.New(logsPath+": not a directory"), http.StatusInternalServerError)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status: got %d, want 500", rec.Code)
 	}
 	body := rec.Body.String()
-	if strings.Contains(body, "/etc/hosts") || strings.Contains(body, "not a directory") {
+	if strings.Contains(body, logsPath) || strings.Contains(body, "not a directory") {
 		t.Errorf("response leaks internal path: %q", body)
 	}
 	if !strings.Contains(body, "Internal Server Error") {
@@ -199,14 +199,21 @@ func TestHandleErrorLogsDetail(t *testing.T) {
 	slog.SetDefault(slog.New(h))
 	t.Cleanup(func() { slog.SetDefault(old) })
 
-	s := New(Options{Port: 0, LogsDir: "/etc/hosts", Since: time.Hour})
+	logsPath := filepath.Join(t.TempDir(), "logs.jsonl")
+	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	req := httptest.NewRequest("GET", "/sessions", nil)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
+	s.handleError(rec, req, errors.New(logsPath+": not a directory"), http.StatusInternalServerError)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "err=") {
 		t.Errorf("slog output missing err field: %q", logged)
+	}
+	if !strings.Contains(logged, "method=GET") || !strings.Contains(logged, "path=/sessions") || !strings.Contains(logged, "status=500") {
+		t.Errorf("slog output missing request context: %q", logged)
+	}
+	if !strings.Contains(logged, filepath.Base(logsPath)) || !strings.Contains(logged, "not a directory") {
+		t.Errorf("slog output missing error detail: %q", logged)
 	}
 }
 

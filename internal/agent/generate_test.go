@@ -230,7 +230,7 @@ func TestGenerateRejectsSymlinkedKiroParent(t *testing.T) {
 	external := t.TempDir()
 	kiroPath := filepath.Join(root, ".kiro")
 	if err := os.Symlink(external, kiroPath); err != nil {
-		t.Fatalf("Symlink(%q, %q): %v", external, kiroPath, err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 
 	err := agent.Generate(agent.GenerateOptions{

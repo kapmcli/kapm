@@ -268,7 +268,7 @@ func TestHandleRejectsSymlinkedKiro(t *testing.T) {
 	target := t.TempDir()
 	kiroLink := filepath.Join(dir, ".kiro")
 	if err := os.Symlink(target, kiroLink); err != nil {
-		t.Fatalf("symlink: %v", err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s-sym","cwd":"/tmp"}`)
 	var stderr bytes.Buffer

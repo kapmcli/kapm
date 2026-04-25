@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,10 @@ func TestRotateNoPriorFiles(t *testing.T) {
 }
 
 func TestRotateFailureRecovery(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows permits replacing a directory with os.Rename in this setup")
+	}
+
 	dir := t.TempDir()
 	content := `{"event":"x"}` + "\n"
 	src := filepath.Join(dir, "old.jsonl")
@@ -233,6 +238,9 @@ func TestRotateSkipsRecentFiles(t *testing.T) {
 // TestCompressFile_RestoreJoinsErrors verifies that when the restore rename fails during
 // recovery, the returned error contains both the primary cause and the restore failure.
 func TestCompressFile_RestoreJoinsErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX directory write bits for this test")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("cannot test permission errors as root")
 	}

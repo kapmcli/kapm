@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -353,7 +354,7 @@ func TestExpandTarget(t *testing.T) {
 	}{
 		{"", "."},
 		{"~", home},
-		{"~/foo", home + "/foo"},
+		{"~/foo", filepath.Join(home, "foo")},
 		{"/abs", "/abs"},
 		{"./rel", "./rel"},
 	}
@@ -429,6 +430,11 @@ func TestLogsDirResolution(t *testing.T) {
 func TestInstallGlobalSetsRoot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	}
 
 	origInstallRun := installRun
 	t.Cleanup(func() { installRun = origInstallRun })

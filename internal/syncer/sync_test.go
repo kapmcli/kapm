@@ -3,6 +3,7 @@ package syncer_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -109,6 +110,9 @@ func TestRun_RejectsUnknownManifestField(t *testing.T) {
 
 func TestRun_WrapsWalkError(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX directory read bits for this test")
+	}
 
 	root := t.TempDir()
 	// Create apm_modules with a sub-dir that has no-read perms to trigger WalkDir error.
@@ -158,7 +162,6 @@ func runSyncGoldenTestWithOptions(t *testing.T, fixture string, opts syncer.Opti
 func repoTestdataRoot() string {
 	return filepath.Join("..", "..", "testdata")
 }
-
 
 func writeTestFile(t *testing.T, path string, data []byte) {
 	t.Helper()

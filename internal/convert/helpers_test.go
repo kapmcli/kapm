@@ -3,6 +3,7 @@ package convert
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -47,13 +48,14 @@ func TestWriteFileAtomicForce(t *testing.T) {
 		}
 	}
 
-	// Permissions are 0o644.
-	info, err := os.Stat(dst)
-	if err != nil {
-		t.Fatalf("Stat: %v", err)
-	}
-	if info.Mode().Perm() != 0o644 {
-		t.Fatalf("perm = %o, want 644", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(dst)
+		if err != nil {
+			t.Fatalf("Stat: %v", err)
+		}
+		if info.Mode().Perm() != 0o644 {
+			t.Fatalf("perm = %o, want 644", info.Mode().Perm())
+		}
 	}
 }
 
@@ -96,7 +98,7 @@ func TestWriteFileSymlinkAttack(t *testing.T) {
 	dstDir := t.TempDir()
 	dst := filepath.Join(dstDir, "dst.txt")
 	if err := os.Symlink(external, dst); err != nil {
-		t.Fatalf("Symlink: %v", err)
+		t.Skipf("os.Symlink not available: %v", err)
 	}
 
 	written, err := fileutil.WriteFileAtomic(dst, []byte("new"), true)
@@ -143,6 +145,9 @@ func TestWriteFileDirAtTarget(t *testing.T) {
 
 func TestCopyFileStripsUnsafePermissions(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not preserve POSIX file mode bits")
+	}
 
 	tests := []struct {
 		name     string
