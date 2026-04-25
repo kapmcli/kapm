@@ -132,6 +132,24 @@ func TestRunArgumentValidation(t *testing.T) {
 	}
 }
 
+func TestRunMonitorJSONFilterValidationDoesNotPrintTwice(t *testing.T) {
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"monitor", "--session", "abc"})
+	})
+	if err == nil {
+		t.Fatal("run(monitor --session) error = nil, want non-nil error")
+	}
+	if !strings.Contains(err.Error(), "--session and --agent require --json") {
+		t.Fatalf("error = %v, want json filter validation error", err)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty (caller should print once)", stderr)
+	}
+}
+
 func TestSplitInstallArgs(t *testing.T) {
 	tests := []struct {
 		name            string

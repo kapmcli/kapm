@@ -34,7 +34,6 @@ func runMonitor(args []string) error {
 	}
 
 	if (*session != "" || *agent != "") && !*jsonOut {
-		_, _ = fmt.Fprintln(os.Stderr, "error: --session and --agent require --json")
 		return fmt.Errorf("--session and --agent require --json")
 	}
 
