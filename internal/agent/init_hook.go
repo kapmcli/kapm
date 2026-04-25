@@ -8,11 +8,12 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path"
+	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
 	"github.com/kapmcli/kapm/internal/cli"
@@ -23,6 +24,7 @@ import (
 type InitHookOptions struct {
 	Root   string
 	Remove bool
+	Executable string
 	In     io.Reader
 	Out    io.Writer
 	Err    io.Writer
@@ -34,7 +36,38 @@ func InitHook(opts InitHookOptions) error {
 	if opts.Err == nil {
 		opts.Err = os.Stderr
 	}
+	executablePath, err := resolveHookExecutablePath(opts.Executable)
+	if err != nil {
+		return err
+	}
+	opts.Executable = executablePath
 	return initHook(opts)
+}
+
+func resolveHookExecutablePath(executable string) (string, error) {
+	if executable == "" {
+		invokedPath := os.Args[0]
+		if invokedPath == "" {
+			detected, err := os.Executable()
+			if err != nil {
+				return "", fmt.Errorf("determine kapm executable: %w", err)
+			}
+			executable = detected
+		} else if strings.ContainsRune(invokedPath, os.PathSeparator) {
+			executable = invokedPath
+		} else {
+			lookedUp, err := exec.LookPath(invokedPath)
+			if err != nil {
+				return "", fmt.Errorf("resolve kapm executable %q: %w", invokedPath, err)
+			}
+			executable = lookedUp
+		}
+	}
+	absPath, err := filepath.Abs(executable)
+	if err != nil {
+		return "", fmt.Errorf("abs kapm executable %q: %w", executable, err)
+	}
+	return absPath, nil
 }
 
 func initHook(opts InitHookOptions) error {
@@ -81,22 +114,14 @@ func initHook(opts InitHookOptions) error {
 	if len(selected) == 0 {
 		return nil
 	}
-
-	if !opts.Remove {
-		hooksDir := HooksDir(opts.Root)
-		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
-			return fmt.Errorf("mkdir hooks: %w", err)
-		}
-		loggerPath := LoggerBinaryPath(opts.Root)
-		if err := os.WriteFile(loggerPath, kaplBinary, 0o755); err != nil {
-			return fmt.Errorf("write kapl: %w", err)
-		}
+	if err := cleanupLegacyHookArtifacts(opts.Root); err != nil {
+		return err
 	}
 
 	var failed []string
 	for _, name := range selected {
 		agentPath := AgentFile(opts.Root, name)
-		if err := processAgent(agentPath, name, opts.Remove); err != nil {
+		if err := processAgent(agentPath, opts.Executable, name, opts.Remove); err != nil {
 			_, _ = fmt.Fprintf(opts.Err, "  ✗ %s: %v\n", name, err)
 			failed = append(failed, name)
 		} else {
@@ -110,7 +135,30 @@ func initHook(opts InitHookOptions) error {
 	return nil
 }
 
-func processAgent(agentPath, name string, remove bool) error {
+func cleanupLegacyHookArtifacts(root string) error {
+	hooksDir := filepath.Join(root, paths.KiroDir, paths.HooksSubdir)
+	for _, name := range []string{"kapl", "kapl.exe"} {
+		legacyPath := filepath.Join(hooksDir, name)
+		if err := os.Remove(legacyPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove legacy hook helper %q: %w", legacyPath, err)
+		}
+	}
+	entries, err := os.ReadDir(hooksDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read hooks dir %q: %w", hooksDir, err)
+	}
+	if len(entries) == 0 {
+		if err := os.Remove(hooksDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove empty hooks dir %q: %w", hooksDir, err)
+		}
+	}
+	return nil
+}
+
+func processAgent(agentPath, executablePath, name string, remove bool) error {
 	rawMap, _, err := readAgentRawJSON(agentPath)
 	if err != nil {
 		return err
@@ -126,7 +174,7 @@ func processAgent(agentPath, name string, remove bool) error {
 	if remove {
 		removeKapmEntries(hooksMap)
 	} else {
-		command := hookCommand(name)
+		command := hookCommand(executablePath, name)
 		if err := addKapmEntries(hooksMap, command); err != nil {
 			return err
 		}
@@ -166,55 +214,72 @@ func isKapmEntry(raw json.RawMessage) (match, corrupt bool) {
 	return match, false
 }
 
-func hookCommand(name string) string {
-	return hookCommandForGOOS(name, runtime.GOOS)
-}
-
-func hookCommandForGOOS(name, goos string) string {
-	loggerName := loggerBinaryNameForGOOS(goos)
-	if goos == "windows" {
-		return fmt.Sprintf(`.kiro\hooks\%s --agent %s`, loggerName, name)
-	}
-	return fmt.Sprintf("%s --agent %s", path.Join(paths.KiroDir, paths.HooksSubdir, loggerName), name)
+func hookCommand(executablePath, name string) string {
+	return fmt.Sprintf("%s hook-handler --agent %s", strconv.Quote(executablePath), name)
 }
 
 func isKapmCommand(command string) bool {
 	command = strings.TrimSpace(command)
-	if isLegacyKapmHookHandlerCommand(command) {
-		return true
-	}
-
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
+	if command == "" {
 		return false
 	}
-	commandPath := fields[0]
+	commandPath, rest, ok := consumeCommandToken(command)
+	if !ok {
+		return false
+	}
 	if strings.HasPrefix(commandPath, "AGENT=") {
-		if len(fields) < 2 {
+		commandPath, rest, ok = consumeCommandToken(rest)
+		if !ok {
 			return false
 		}
-		commandPath = fields[1]
 	}
-	commandPath = strings.Trim(commandPath, `"'`)
-	normalized := strings.ReplaceAll(commandPath, `\`, "/")
-	return normalized == ".kiro/hooks/kapl" || normalized == ".kiro/hooks/kapl.exe"
+	normalizedPath := strings.ReplaceAll(commandPath, `\`, "/")
+	if strings.Contains(normalizedPath, ".kiro/hooks/kapl") {
+		return true
+	}
+	commandBase := filepath.Base(normalizedPath)
+	if commandBase != "kapm" && commandBase != "kapm.exe" {
+		return false
+	}
+	subcommand, _, ok := consumeCommandToken(rest)
+	if !ok || subcommand != "hook-handler" {
+		return false
+	}
+	return true
 }
 
-func isLegacyKapmHookHandlerCommand(command string) bool {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return false
+func consumeCommandToken(command string) (token, rest string, ok bool) {
+	command = strings.TrimLeftFunc(command, unicode.IsSpace)
+	if command == "" {
+		return "", "", false
 	}
-	commandIndex := 0
-	if strings.HasPrefix(fields[0], "AGENT=") {
-		commandIndex = 1
+	if command[0] != '"' && command[0] != '\'' {
+		i := 0
+		for i < len(command) && !unicode.IsSpace(rune(command[i])) {
+			i++
+		}
+		return command[:i], command[i:], true
 	}
-	if len(fields) <= commandIndex+1 || fields[len(fields)-1] != "hook-handler" {
-		return false
+	quote := command[0]
+	var tokenBuilder strings.Builder
+	escaped := false
+	for i := 1; i < len(command); i++ {
+		ch := command[i]
+		if quote == '"' && escaped {
+			tokenBuilder.WriteByte(ch)
+			escaped = false
+			continue
+		}
+		if quote == '"' && ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == quote {
+			return tokenBuilder.String(), command[i+1:], true
+		}
+		tokenBuilder.WriteByte(ch)
 	}
-	commandPath := strings.Trim(fields[commandIndex], `"'`)
-	commandBase := path.Base(strings.ReplaceAll(commandPath, `\`, "/"))
-	return commandBase == "kapm" || commandBase == "kapm.exe"
+	return "", "", false
 }
 
 func removeKapmEntries(hooksMap map[string][]json.RawMessage) {

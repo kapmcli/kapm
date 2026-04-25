@@ -3,9 +3,9 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -49,6 +49,7 @@ func runInitHook(t *testing.T, root string, remove bool, input string) (string, 
 	err := InitHook(InitHookOptions{
 		Root:   root,
 		Remove: remove,
+		Executable: "/usr/local/bin/kapm",
 		In:     strings.NewReader(input),
 		Out:    &outBuf,
 		Err:    &errBuf,
@@ -239,6 +240,7 @@ func TestInitHookNoopOnEmptyAgentsDir(t *testing.T) {
 	var out bytes.Buffer
 	err := InitHook(InitHookOptions{
 		Root: root,
+		Executable: "/usr/local/bin/kapm",
 		In:   strings.NewReader(""),
 		Out:  &out,
 		Err:  &bytes.Buffer{},
@@ -312,7 +314,7 @@ func TestInitHookWritesRelativeCommand(t *testing.T) {
 	for _, event := range apmconfig.HookEvents {
 		var entry map[string]string
 		_ = json.Unmarshal(hooksMap[event][0], &entry)
-		want := hookCommand("coder")
+		want := hookCommand("/usr/local/bin/kapm", "coder")
 		if entry["command"] != want {
 			t.Errorf("event %q command = %q, want %q", event, entry["command"], want)
 		}
@@ -322,56 +324,25 @@ func TestInitHookWritesRelativeCommand(t *testing.T) {
 func TestHookCommandForGOOS(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		goos string
-		want string
-	}{
-		{goos: "linux", want: ".kiro/hooks/kapl --agent coder"},
-		{goos: "darwin", want: ".kiro/hooks/kapl --agent coder"},
-		{goos: "windows", want: `.kiro\hooks\kapl.exe --agent coder`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.goos, func(t *testing.T) {
-			if got := hookCommandForGOOS("coder", tt.goos); got != tt.want {
-				t.Fatalf("hookCommandForGOOS() = %q, want %q", got, tt.want)
-			}
-		})
+	if got := hookCommand("/tmp/kapm binary", "coder"); got != `"/tmp/kapm binary" hook-handler --agent coder` {
+		t.Fatalf("hookCommand() = %q, want %q", got, `"/tmp/kapm binary" hook-handler --agent coder`)
 	}
 }
 
-func TestInitHookDeploysKapmLogger(t *testing.T) {
-	root := makeAgentsDir(t)
-	writeAgentJSON(t, root, "coder", `{"name":"coder","description":"d","tools":["fs_read"],"allowedTools":["fs_read"]}`)
-
-	_, _, err := runInitHook(t, root, false, "1\n")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	loggerPath := LoggerBinaryPath(root)
-	info, err := os.Stat(loggerPath)
-	if err != nil {
-		t.Fatalf("kapl not found: %v", err)
-	}
-	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
-		t.Errorf("kapl not executable: mode %o", info.Mode())
-	}
-}
-
-func TestIsKapmEntryMatchesBothFormats(t *testing.T) {
+func TestIsKapmEntryMatchesBuiltInCommandFormat(t *testing.T) {
 	cases := []struct {
 		raw  string
 		want bool
 	}{
-		{`{"command":"AGENT=coder .kiro/hooks/kapl"}`, true},
+		{`{"command":"\"/usr/local/bin/kapm\" hook-handler --agent coder"}`, true},
+		{`{"command":"AGENT=coder /usr/local/bin/kapm hook-handler"}`, true},
+		{`{"command":"AGENT=coder C:\\tools\\kapm.exe hook-handler --agent other"}`, true},
 		{`{"command":".kiro/hooks/kapl --agent coder"}`, true},
 		{`{"command":".kiro\\hooks\\kapl.exe --agent coder"}`, true},
-		{`{"command":"AGENT=coder '/usr/local/bin/kapm' hook-handler"}`, true},
-		{`{"command":"AGENT=coder C:\\tools\\kapm.exe hook-handler"}`, true},
 		{`{"command":"AGENT=coder not-kapm hook-handler"}`, false},
 		{`{"command":"not-kapm hook-handler"}`, false},
 		{`{"command":"my-custom.sh"}`, false},
-		{`{"command":"not-kapl"}`, false},
+		{`{"command":"kapm not-hook-handler"}`, false},
 	}
 	for _, c := range cases {
 		got, corrupt := isKapmEntry(json.RawMessage(c.raw))
@@ -397,7 +368,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {original},
 	}
-	err := addKapmEntries(hooksMap, hookCommand("x"))
+	err := addKapmEntries(hooksMap, hookCommand("/usr/local/bin/kapm", "x"))
 	if err == nil {
 		t.Fatal("expected error for corrupt entry, got nil")
 	}
@@ -412,7 +383,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 
 func TestRemoveKapmEntries_PreservesCorrupt(t *testing.T) {
 	corrupt := json.RawMessage("{broken")
-	kapmRaw, _ := json.Marshal(map[string]string{"command": hookCommand("x")})
+	kapmRaw, _ := json.Marshal(map[string]string{"command": hookCommand("/usr/local/bin/kapm", "x")})
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {corrupt, json.RawMessage(kapmRaw)},
 	}
@@ -426,25 +397,77 @@ func TestRemoveKapmEntries_PreservesCorrupt(t *testing.T) {
 	}
 }
 
-func TestInitHookWrapsWriteFileError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows does not enforce POSIX directory write bits for this test")
+func TestInitHookMigratesLegacyKaplEntries(t *testing.T) {
+	root := makeAgentsDir(t)
+	writeAgentJSON(t, root, "coder", `{"name":"coder","description":"d","tools":["fs_read"],"allowedTools":["fs_read"],"hooks":{"preToolUse":[{"matcher":"*","command":".kiro/hooks/kapl --agent coder"}],"postToolUse":[{"matcher":"*","command":".kiro/hooks/kapl --agent coder"}]}}`)
+
+	_, _, err := runInitHook(t, root, false, "1\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
+	m := readAgentJSON(t, root, "coder")
+	var hooksMap map[string][]json.RawMessage
+	if err := json.Unmarshal(m["hooks"], &hooksMap); err != nil {
+		t.Fatalf("hooks not valid JSON: %v", err)
+	}
+
+	for _, event := range []string{"preToolUse", "postToolUse"} {
+		if len(hooksMap[event]) != 1 {
+			t.Fatalf("event %q: want 1 entry after migration, got %d", event, len(hooksMap[event]))
+		}
+		var entry map[string]string
+		if err := json.Unmarshal(hooksMap[event][0], &entry); err != nil {
+			t.Fatalf("unmarshal entry: %v", err)
+		}
+		if strings.Contains(entry["command"], "kapl") {
+			t.Fatalf("event %q retained legacy command: %q", event, entry["command"])
+		}
+	}
+}
+
+func TestInitHookRemoveStripsLegacyKaplEntries(t *testing.T) {
+	root := makeAgentsDir(t)
+	writeAgentJSON(t, root, "coder", `{"name":"coder","description":"d","tools":["fs_read"],"allowedTools":["fs_read"],"hooks":{"preToolUse":[{"matcher":"*","command":".kiro/hooks/kapl --agent coder"}],"postToolUse":[{"matcher":"*","command":"my-custom.sh"}]}}`)
+
+	_, _, err := runInitHook(t, root, true, "1\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	m := readAgentJSON(t, root, "coder")
+	var hooksMap map[string][]json.RawMessage
+	if err := json.Unmarshal(m["hooks"], &hooksMap); err != nil {
+		t.Fatalf("hooks not valid JSON: %v", err)
+	}
+	if _, ok := hooksMap["preToolUse"]; ok {
+		t.Fatal("legacy kapl entry should be removed")
+	}
+	if len(hooksMap["postToolUse"]) != 1 {
+		t.Fatalf("custom postToolUse entry should remain, got %d", len(hooksMap["postToolUse"]))
+	}
+}
+
+func TestInitHookRemovesLegacyHelperArtifact(t *testing.T) {
 	root := makeAgentsDir(t)
 	writeAgentJSON(t, root, "coder", `{"name":"coder","description":"d","tools":["fs_read"],"allowedTools":["fs_read"]}`)
-
-	// Create hooks dir with no write permission
 	hooksDir := filepath.Join(root, ".kiro", "hooks")
-	if err := os.MkdirAll(hooksDir, 0o555); err != nil {
-		t.Fatal(err)
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	legacyPath := filepath.Join(hooksDir, "kapl")
+	if err := os.WriteFile(legacyPath, []byte("legacy"), 0o755); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 
 	_, _, err := runInitHook(t, root, false, "1\n")
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "write kapl") {
-		t.Errorf("error should contain 'write kapl', got: %v", err)
+	if _, err := os.Stat(legacyPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy helper should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(hooksDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("empty hooks dir should be removed, stat err = %v", err)
 	}
 }
