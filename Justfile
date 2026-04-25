@@ -30,14 +30,20 @@ media-demo: build
 
 media-webui port="9097" logs-dir="testdata/monitor/logs" since="8760h": build
 	@which npx > /dev/null 2>&1 || (echo "npx not installed" && exit 1)
-	bash -lc 'set -euo pipefail; cleanup() { just serve-stop >/dev/null 2>&1 || true; }; trap cleanup EXIT; npx -y playwright@latest install chromium >/dev/null; KAPM_UPDATED_AT=12:00:00 just serve {{port}} {{logs-dir}} {{since}} >/dev/null; for _ in {1..40}; do if curl -fsS "http://127.0.0.1:{{port}}/" >/dev/null; then break; fi; sleep 0.5; done; curl -fsS "http://127.0.0.1:{{port}}/" >/dev/null; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/" demo-media/webui-overview.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/sessions" demo-media/webui-sessions.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/sessions/cd75bf13-61bf-48ca-94ae-d444e19cb59d" demo-media/webui-session-detail.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/agents" demo-media/webui-agents.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/tools" demo-media/webui-tools.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/skills" demo-media/webui-skills.png'
+	bash -lc 'set -euo pipefail; port="{{port}}"; port="${port#port=}"; logs_dir="{{logs-dir}}"; logs_dir="${logs_dir#logs-dir=}"; since="{{since}}"; since="${since#since=}"; cleanup() { just serve-stop >/dev/null 2>&1 || true; }; trap cleanup EXIT; npx -y playwright@latest install chromium >/dev/null; KAPM_UPDATED_AT=12:00:00 just serve "$port" "$logs_dir" "$since" >/dev/null; for _ in {1..40}; do if curl -fsS "http://127.0.0.1:${port}/" >/dev/null; then break; fi; sleep 0.5; done; curl -fsS "http://127.0.0.1:${port}/" >/dev/null; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/" demo-media/webui-overview.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/sessions" demo-media/webui-sessions.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/sessions/cd75bf13-61bf-48ca-94ae-d444e19cb59d" demo-media/webui-session-detail.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/agents" demo-media/webui-agents.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/tools" demo-media/webui-tools.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:${port}/skills" demo-media/webui-skills.png'
 
 # Launch the WebUI server in the background, or stop it with `just serve stop`.
 # Logs to /tmp/kapm-serve.log, PID to /tmp/kapm-serve.pid.
 serve port="9090" logs-dir=".kiro/logs" since="24h":
 	#!/usr/bin/env bash
 	set -eu
-	if [ "{{port}}" = "stop" ]; then
+	port="{{port}}"
+	port="${port#port=}"
+	logs_dir="{{logs-dir}}"
+	logs_dir="${logs_dir#logs-dir=}"
+	since="{{since}}"
+	since="${since#since=}"
+	if [ "$port" = "stop" ]; then
 		pkill -f '[k]apm serve' 2>/dev/null || true
 		rm -f /tmp/kapm-serve.pid
 		echo "stopped"
@@ -46,10 +52,10 @@ serve port="9090" logs-dir=".kiro/logs" since="24h":
 	just build
 	pkill -f '[k]apm serve' 2>/dev/null || true
 	rm -f /tmp/kapm-serve.pid
-	nohup ./kapm serve --port {{port}} --logs-dir {{logs-dir}} --since {{since}} > /tmp/kapm-serve.log 2>&1 &
+	nohup ./kapm serve --port "$port" --logs-dir "$logs_dir" --since "$since" > /tmp/kapm-serve.log 2>&1 &
 	echo $! > /tmp/kapm-serve.pid
 	sleep 0.5
-	echo "kapm serve pid $(cat /tmp/kapm-serve.pid) on http://127.0.0.1:{{port}}/ (log: /tmp/kapm-serve.log)"
+	echo "kapm serve pid $(cat /tmp/kapm-serve.pid) on http://127.0.0.1:${port}/ (log: /tmp/kapm-serve.log)"
 
 serve-stop:
 	@pkill -f '[k]apm serve' 2>/dev/null && echo "stopped" || echo "not running"
