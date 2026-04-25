@@ -22,6 +22,32 @@ import (
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
+type failingResponseWriter struct {
+	header http.Header
+	code   int
+	err    error
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *failingResponseWriter) WriteHeader(status int) {
+	w.code = status
+}
+
+func (w *failingResponseWriter) Write(_ []byte) (int, error) {
+	return 0, w.err
+}
+
+type failingSSEWriter struct{ err error }
+
+func (w *failingSSEWriter) Write(_ []byte) (int, error) { return 0, w.err }
+func (w *failingSSEWriter) Flush()                      {}
+
 const testdataLogsDir = "../../testdata/monitor"
 
 func newTestServer(t *testing.T) *Server {
@@ -214,6 +240,63 @@ func TestHandleErrorLogsDetail(t *testing.T) {
 	}
 	if !strings.Contains(logged, filepath.Base(logsPath)) || !strings.Contains(logged, "not a directory") {
 		t.Errorf("slog output missing error detail: %q", logged)
+	}
+}
+
+func TestRenderPageLogsWriteFailure(t *testing.T) {
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	rw := &failingResponseWriter{err: errors.New("write failed")}
+
+	s.renderPage(rw, req, http.StatusOK, errorTmpl, map[string]any{
+		"Title":   "Not Found",
+		"Active":  "",
+		"Status":  404,
+		"Heading": "Not Found",
+		"Message": "The requested resource was not found.",
+	})
+
+	if rw.code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.code)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "serve write failed") || !strings.Contains(logged, `context="html response"`) {
+		t.Fatalf("missing write failure log: %q", logged)
+	}
+	if !strings.Contains(logged, "method=GET") || !strings.Contains(logged, "path=/sessions") {
+		t.Fatalf("missing request context in log: %q", logged)
+	}
+	if !strings.Contains(logged, "write failed") {
+		t.Fatalf("missing write error detail in log: %q", logged)
+	}
+}
+
+func TestSendOverviewLogsWriteFailure(t *testing.T) {
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
+	w := &failingSSEWriter{err: errors.New("stream write failed")}
+
+	if ok := s.sendOverview(w, w, req); ok {
+		t.Fatal("sendOverview() = true, want false on write failure")
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "serve write failed") || !strings.Contains(logged, `context="sse summary"`) {
+		t.Fatalf("missing sse write failure log: %q", logged)
+	}
+	if !strings.Contains(logged, "path=/sse") || !strings.Contains(logged, "stream write failed") {
+		t.Fatalf("missing request/error detail in log: %q", logged)
 	}
 }
 

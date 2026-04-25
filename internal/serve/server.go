@@ -417,14 +417,18 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	s.sendOverview(w, flusher)
+	if !s.sendOverview(w, flusher, r) {
+		return
+	}
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			s.sendOverview(w, flusher)
+			if !s.sendOverview(w, flusher, r) {
+				return
+			}
 		case <-r.Context().Done():
 			return
 		}
@@ -434,33 +438,36 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 // sendOverview writes SSE frames with the current overview snapshot:
 //   - `event: summary` with rendered summary-cards HTML (for htmx sse-swap)
 //   - `event: overview` with Overview JSON (for ECharts update in client JS)
-func (s *Server) sendOverview(w io.Writer, flusher http.Flusher) {
+func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request) bool {
 	loaded, err := s.loadMetrics()
 	if err != nil {
 		slog.Warn("serve sse load metrics", "err", err)
-		return
+		return false
 	}
 
 	// HTML for the summary cards (no newlines inside SSE data).
 	var htmlBuf bytes.Buffer
 	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", loaded.dm.Overview); err != nil {
 		slog.Warn("serve sse render summary", "err", err)
-		return
+		return false
 	}
 	html := bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
 	if _, err := fmt.Fprintf(w, "event: summary\ndata: %s\n\n", html); err != nil {
-		return
+		s.logWriteFailure(r, "sse summary", err)
+		return false
 	}
 
 	payload, err := json.Marshal(loaded.dm.Overview)
 	if err != nil {
 		slog.Warn("serve sse marshal", "err", err)
-		return
+		return false
 	}
 	if _, err := fmt.Fprintf(w, "event: overview\ndata: %s\n\n", payload); err != nil {
-		return
+		s.logWriteFailure(r, "sse overview", err)
+		return false
 	}
 	flusher.Flush()
+	return true
 }
 
 // currentUpdatedAt returns the header "updated:" timestamp. If KAPM_UPDATED_AT
@@ -503,9 +510,23 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 			return
 		}
 	}
+	s.writeHTML(w, r, status, buf.Bytes())
+}
+
+func (s *Server) writeHTML(w http.ResponseWriter, r *http.Request, status int, body []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write(buf.Bytes())
+	if _, err := w.Write(body); err != nil {
+		s.logWriteFailure(r, "html response", err)
+	}
+}
+
+func (s *Server) logWriteFailure(r *http.Request, context string, err error) {
+	attrs := []any{"context", context, "err", err}
+	if r != nil {
+		attrs = append(attrs, "method", r.Method, "path", r.URL.Path)
+	}
+	slog.Warn("serve write failed", attrs...)
 }
 
 // computeDashboardSessions groups sessions by ID for the dashboard's Recent
@@ -762,8 +783,7 @@ func (s *Server) handleDesignPreview(w http.ResponseWriter, r *http.Request) {
 		s.handleError(w, r, fmt.Errorf("design render: %w", err), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(buf.Bytes())
+	s.writeHTML(w, r, http.StatusOK, buf.Bytes())
 }
 
 // handleError logs the full error via slog and writes a generic status response.
