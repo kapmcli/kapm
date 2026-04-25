@@ -16,6 +16,10 @@ Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) co
 brew install --cask kapmcli/tap/kapm
 ```
 
+### Windows
+
+Download the Windows zip archive from the [GitHub Releases](https://github.com/kapmcli/kapm/releases) page and place `kapm.exe` on your `PATH`.
+
 ### Build from source
 
 ```bash
@@ -162,8 +166,11 @@ Manual build (if `just` is unavailable):
 
 ```bash
 go build -o internal/agent/kapl ./cmd/kapl
-go build -o kapm ./cmd/kapm
+go build -o kapm ./cmd/kapm      # macOS / Linux
+go build -o kapm.exe ./cmd/kapm  # Windows
 ```
+
+Release builds rely on GoReleaser's serialized execution (`--parallelism=1`) so the embedded `kapl` helper is rebuilt for each target before `kapm` is compiled.
 
 ## Links
 

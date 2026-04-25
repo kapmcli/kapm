@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -32,8 +33,8 @@ func binaries(t *testing.T) (kapm, logger string) {
 			buildErr = err
 			return
 		}
-		kapmBin = filepath.Join(dir, "kapm")
-		loggerBin = filepath.Join(dir, "kapl")
+		kapmBin = filepath.Join(dir, executableName("kapm"))
+		loggerBin = filepath.Join(dir, executableName("kapl"))
 
 		repoRoot, err := findRepoRoot()
 		if err != nil {
@@ -58,6 +59,13 @@ func binaries(t *testing.T) (kapm, logger string) {
 		t.Fatalf("build binaries: %v", buildErr)
 	}
 	return kapmBin, loggerBin
+}
+
+func executableName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
 }
 
 // findRepoRoot walks up from CWD looking for go.mod.

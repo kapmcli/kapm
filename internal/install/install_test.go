@@ -3,6 +3,7 @@ package install_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -110,6 +111,17 @@ func mockCommand(t *testing.T, binDir, name string, exitCode int) string {
 	t.Helper()
 
 	argsFile := filepath.Join(binDir, name+".args")
+	if runtime.GOOS == "windows" {
+		script := filepath.Join(binDir, name+".bat")
+		content := "@echo off\r\n" +
+			"<nul set /p \"=%*\" > " + quoteBatchPath(argsFile) + "\r\n" +
+			"exit /b " + strconv.Itoa(exitCode) + "\r\n"
+		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+			t.Fatalf("WriteFile(%q): %v", script, err)
+		}
+		return argsFile
+	}
+
 	script := filepath.Join(binDir, name)
 	content := "#!/bin/sh\n" +
 		"printf '%s' \"$*\" > " + strconv.Quote(argsFile) + "\n" +
@@ -118,6 +130,10 @@ func mockCommand(t *testing.T, binDir, name string, exitCode int) string {
 		t.Fatalf("WriteFile(%q): %v", script, err)
 	}
 	return argsFile
+}
+
+func quoteBatchPath(path string) string {
+	return `"` + strings.ReplaceAll(path, `"`, `""`) + `"`
 }
 
 func assertCommandArgs(t *testing.T, argsFile, want string) {

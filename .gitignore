@@ -1,11 +1,14 @@
 .DS_Store
 /kapm
+/kapm.exe
 AGENTS.md
 .sisyphus
 /.kiro/
 dist/
 kapl
+kapl.exe
 internal/agent/kapl
+internal/agent/kapl.exe
 !cmd/kapl/
 
 
