@@ -372,7 +372,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 │ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
 │   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
 │ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx    █     34  │ │   lead          2    49  │ │                         │
+│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
 │ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
 │   shell:grep   █     16  │ │   reviewer      1    48  │
 │ err:  0.0%               │ │ 1                        │
@@ -403,7 +403,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 │ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
 │   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
 │ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx    █     34  │ │   lead          2    49  │ │                         │
+│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
 │ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
 │   shell:grep   █     16  │ │   reviewer      1    48  │
 │ err:  0.0%               │ │ 1                        │
@@ -434,7 +434,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 │ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
 │   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
 │ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx    █     34  │ │   lead          2    49  │ │                         │
+│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
 │ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
 │   shell:grep   █     16  │ │   reviewer      1    48  │
 │ err:  0.0%               │ │ 1                        │
@@ -465,7 +465,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 │ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
 │   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
 │ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx    █     34  │ │   lead          2    49  │ │                         │
+│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
 │ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
 │   shell:grep   █     16  │ │   reviewer      1    48  │
 │ err:  0.0%               │ │ 1                        │
@@ -496,7 +496,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 │ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
 │   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
 │ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx    █     34  │ │   lead          2    49  │ │                         │
+│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
 │ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
 │   shell:grep   █     16  │ │   reviewer      1    48  │
 │ err:  0.0%               │ │ 1                        │
@@ -705,13 +705,14 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ read                     64  ████████████████████        0    0.0%       122ms  │
 │   grep                     36  ███████████                 2    5.6%       561ms  │
-│   shell:npx                34  ██████████                  0    0.0%          2s  │
+│   shell:npx defuddle       21  ██████                      0    0.0%          2s  │
 │   shell:grep               16  █████                       0    0.0%          1s  │
 │   write                    15  ████                        0    0.0%        46ms  │
 │   shell:curl               13  ████                        0    0.0%       465ms  │
 │   shell:uvx ddgs           13  ████                        0    0.0%          4s  │
 │   shell:git diff           10  ███                         0    0.0%       170ms  │
 │   shell:go test             7  ██                          0    0.0%          7s  │
+│   shell:npx @playwr…        7  ██                          0    0.0%          1s  │
 │   bash                      6  █                           1   16.7%          5s  │
 │   shell:mkdir               6  █                           0    0.0%          1s  │
 │   read_file                 5  █                           0    0.0%          1s  │
@@ -724,9 +725,8 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │   shell:printf              4  █                           0    0.0%       275ms  │
 │   todo_list                 4  █                           0    0.0%        54ms  │
 │   code                      3  █                           0    0.0%          2s  │
-│   shell                     3  █                           0    0.0%          4s  │
 │                                                                                   │
-│ showing  22/42                                                                    │
+│ showing  22/46                                                                    │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -736,13 +736,14 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ read                     64  ████████████████████        0    0.0%       122ms  │
 │   grep                     36  ███████████                 2    5.6%       561ms  │
-│   shell:npx                34  ██████████                  0    0.0%          2s  │
+│   shell:npx defuddle       21  ██████                      0    0.0%          2s  │
 │   shell:grep               16  █████                       0    0.0%          1s  │
 │   write                    15  ████                        0    0.0%        46ms  │
 │   shell:curl               13  ████                        0    0.0%       465ms  │
 │   shell:uvx ddgs           13  ████                        0    0.0%          4s  │
 │   shell:git diff           10  ███                         0    0.0%       170ms  │
 │   shell:go test             7  ██                          0    0.0%          7s  │
+│   shell:npx @playwr…        7  ██                          0    0.0%          1s  │
 │   bash                      6  █                           1   16.7%          5s  │
 │   shell:mkdir               6  █                           0    0.0%          1s  │
 │   read_file                 5  █                           0    0.0%          1s  │
@@ -755,9 +756,8 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │   shell:printf              4  █                           0    0.0%       275ms  │
 │   todo_list                 4  █                           0    0.0%        54ms  │
 │   code                      3  █                           0    0.0%          2s  │
-│   shell                     3  █                           0    0.0%          4s  │
 │                                                                                   │
-│ showing  22/42                                                                    │
+│ showing  22/46                                                                    │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -767,13 +767,14 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ read                     64  ████████████████████        0    0.0%       122ms  │
 │   grep                     36  ███████████                 2    5.6%       561ms  │
-│   shell:npx                34  ██████████                  0    0.0%          2s  │
+│   shell:npx defuddle       21  ██████                      0    0.0%          2s  │
 │   shell:grep               16  █████                       0    0.0%          1s  │
 │   write                    15  ████                        0    0.0%        46ms  │
 │   shell:curl               13  ████                        0    0.0%       465ms  │
 │   shell:uvx ddgs           13  ████                        0    0.0%          4s  │
 │   shell:git diff           10  ███                         0    0.0%       170ms  │
 │   shell:go test             7  ██                          0    0.0%          7s  │
+│   shell:npx @playwr…        7  ██                          0    0.0%          1s  │
 │   bash                      6  █                           1   16.7%          5s  │
 │   shell:mkdir               6  █                           0    0.0%          1s  │
 │   read_file                 5  █                           0    0.0%          1s  │
@@ -786,9 +787,8 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │   shell:printf              4  █                           0    0.0%       275ms  │
 │   todo_list                 4  █                           0    0.0%        54ms  │
 │   code                      3  █                           0    0.0%          2s  │
-│   shell                     3  █                           0    0.0%          4s  │
 │                                                                                   │
-│ showing  22/42                                                                    │
+│ showing  22/46                                                                    │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
