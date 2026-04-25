@@ -1,7 +1,7 @@
 //go:build e2e
 
-// Package e2e exercises the kapm and kapl binaries as end-to-end
-// subprocesses. These tests build the binaries once per package and run them
+// Package e2e exercises the kapm binary as end-to-end
+// subprocesses. These tests build the binary once per package and run it
 // against temporary directories to catch breakage at the CLI contract layer
 // (argument parsing, exit codes, stdin/stdout, on-disk artifacts) that unit
 // tests cannot cover.
@@ -19,13 +19,12 @@ import (
 var (
 	buildOnce sync.Once
 	kapmBin   string
-	loggerBin string
 	buildErr  error
 )
 
-// binaries builds kapm and kapl once per test process and returns their
-// absolute paths. Subsequent calls reuse the cached result.
-func binaries(t *testing.T) (kapm, logger string) {
+// binary builds kapm once per test process and returns its absolute path.
+// Subsequent calls reuse the cached result.
+func binary(t *testing.T) string {
 	t.Helper()
 	buildOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "kapm-e2e-bin-*")
@@ -34,31 +33,25 @@ func binaries(t *testing.T) (kapm, logger string) {
 			return
 		}
 		kapmBin = filepath.Join(dir, executableName("kapm"))
-		loggerBin = filepath.Join(dir, executableName("kapl"))
 
 		repoRoot, err := findRepoRoot()
 		if err != nil {
 			buildErr = err
 			return
 		}
-		for _, b := range []struct{ out, pkg string }{
-			{kapmBin, "./cmd/kapm"},
-			{loggerBin, "./cmd/kapl"},
-		} {
-			cmd := exec.Command("go", "build", "-o", b.out, b.pkg)
-			cmd.Dir = repoRoot
-			cmd.Stdout = os.Stderr
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				buildErr = err
-				return
-			}
+		cmd := exec.Command("go", "build", "-o", kapmBin, "./cmd/kapm")
+		cmd.Dir = repoRoot
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			buildErr = err
+			return
 		}
 	})
 	if buildErr != nil {
 		t.Fatalf("build binaries: %v", buildErr)
 	}
-	return kapmBin, loggerBin
+	return kapmBin
 }
 
 func executableName(name string) string {

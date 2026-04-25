@@ -12,16 +12,16 @@ import (
 	"testing"
 )
 
-// TestLoggerWritesJSONL verifies the kapl binary consumes a hook event
+// TestLoggerWritesJSONL verifies `kapm hook-handler` consumes a hook event
 // on stdin, writes a single JSONL record under .kiro/logs/<session>.jsonl,
 // exits 0, and emits nothing on stdout.
 func TestLoggerWritesJSONL(t *testing.T) {
-	_, logger := binaries(t)
+	kapm := binary(t)
 	root := t.TempDir()
 
 	event := `{"hook_event_name":"preToolUse","session_id":"e2e-1","cwd":"/w","tool_name":"bash","tool_input":{"command":"echo hi"}}`
 
-	cmd := exec.Command(logger)
+	cmd := exec.Command(kapm, "hook-handler")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "AGENT=e2e")
 	cmd.Stdin = strings.NewReader(event)
@@ -30,10 +30,10 @@ func TestLoggerWritesJSONL(t *testing.T) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("kapl failed: %v\nstderr: %s", err, stderr.String())
+		t.Fatalf("kapm hook-handler failed: %v\nstderr: %s", err, stderr.String())
 	}
 	if stdout.Len() != 0 {
-		t.Fatalf("kapl wrote to stdout: %q", stdout.String())
+		t.Fatalf("kapm hook-handler wrote to stdout: %q", stdout.String())
 	}
 
 	logPath := filepath.Join(root, ".kiro", "logs", "e2e-1.jsonl")
@@ -65,11 +65,11 @@ func TestLoggerWritesJSONL(t *testing.T) {
 }
 
 func TestLoggerAgentFlagWritesAgent(t *testing.T) {
-	_, logger := binaries(t)
+	kapm := binary(t)
 	root := t.TempDir()
 
 	event := `{"hook_event_name":"preToolUse","session_id":"e2e-agent-flag","cwd":"/w","tool_name":"bash"}`
-	cmd := exec.Command(logger, "--agent", "flag-agent")
+	cmd := exec.Command(kapm, "hook-handler", "--agent", "flag-agent")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "AGENT=env-agent")
 	cmd.Stdin = strings.NewReader(event)
@@ -78,10 +78,10 @@ func TestLoggerAgentFlagWritesAgent(t *testing.T) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("kapl --agent failed: %v\nstderr: %s", err, stderr.String())
+		t.Fatalf("kapm hook-handler --agent failed: %v\nstderr: %s", err, stderr.String())
 	}
 	if stdout.Len() != 0 {
-		t.Fatalf("kapl wrote to stdout: %q", stdout.String())
+		t.Fatalf("kapm hook-handler wrote to stdout: %q", stdout.String())
 	}
 
 	logPath := filepath.Join(root, ".kiro", "logs", "e2e-agent-flag.jsonl")
@@ -100,13 +100,13 @@ func TestLoggerAgentFlagWritesAgent(t *testing.T) {
 	}
 }
 
-// TestLoggerRejectsInvalidJSONExitsZero verifies the logger never breaks the
+// TestLoggerRejectsInvalidJSONExitsZero verifies the hook handler never breaks the
 // host: invalid stdin still yields exit 0 and writes no log file, only stderr.
 func TestLoggerRejectsInvalidJSONExitsZero(t *testing.T) {
-	_, logger := binaries(t)
+	kapm := binary(t)
 	root := t.TempDir()
 
-	cmd := exec.Command(logger)
+	cmd := exec.Command(kapm, "hook-handler")
 	cmd.Dir = root
 	cmd.Stdin = strings.NewReader("not json")
 	var stderr bytes.Buffer

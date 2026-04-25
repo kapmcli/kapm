@@ -10,14 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/kapmcli/kapm/internal/agent"
 )
 
 // runKapm invokes kapm with args in root, feeding stdin and capturing output.
 func runKapm(t *testing.T, root, stdin string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	kapm, _ := binaries(t)
+	kapm := binary(t)
 	cmd := exec.Command(kapm, args...)
 	cmd.Dir = root
 	cmd.Stdin = strings.NewReader(stdin)
@@ -87,8 +85,8 @@ func TestAgentGenerateWritesExpectedArtifacts(t *testing.T) {
 }
 
 // TestInitHookAddAndRemoveIsIdempotent exercises `kapm init-hook` against a
-// generated agent: adding installs hook entries + kapl binary, adding
-// again is a no-op on entry count, and --remove strips them cleanly.
+// generated agent: adding installs hook entries, adding again is a no-op on
+// entry count, and --remove strips them cleanly.
 func TestInitHookAddAndRemoveIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 
@@ -111,11 +109,6 @@ func TestInitHookAddAndRemoveIsIdempotent(t *testing.T) {
 			t.Fatalf("event %q: expected 1 entry, got %d", event, len(hooks1[event]))
 		}
 	}
-	loggerPath := agent.LoggerBinaryPath(root)
-	if _, err := os.Stat(loggerPath); err != nil {
-		t.Fatalf("kapl not deployed: %v", err)
-	}
-
 	// init-hook add again: must not duplicate entries.
 	if _, stderr, err := runKapm(t, root, "\n", "init-hook"); err != nil {
 		t.Fatalf("init-hook add (second): %v\n%s", err, stderr)
