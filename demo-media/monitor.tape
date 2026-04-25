@@ -1,10 +1,16 @@
-Output vhs/monitor.ascii
+Output demo-media/monitor.ascii
 
 Require ./kapm
 
 Set Width 1400
 Set Height 900
 Set WaitTimeout 15s
+
+Hide
+Type "export PS1='$ '; clear"
+Enter
+Sleep 200ms
+Show
 
 Type "KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/monitor/logs"
 Enter

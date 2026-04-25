@@ -6,7 +6,7 @@
 
 Kiro Agent Package Manager — adapts [APM](https://microsoft.github.io/apm/) content into Kiro-native `.kiro/` files.
 
-![demo](vhs/demo.gif)
+![demo](demo-media/demo.gif)
 
 ## Installation
 
@@ -110,7 +110,7 @@ kapm serve                                # WebUI on :9090
 kapm serve --port 9097                    # custom port
 ```
 
-![WebUI](vhs/webui-overview.png)
+![WebUI](demo-media/webui-overview.png)
 
 #### WebUI routes
 

@@ -1,4 +1,4 @@
-Output vhs/demo.gif
+Output demo-media/demo.gif
 
 Require ./kapm
 
