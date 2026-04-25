@@ -142,11 +142,6 @@ type DetailedMetrics struct {
 	Skills   []SkillUsage
 }
 
-// Aggregate returns the overview metrics (kept for backward compat).
-func Aggregate(records []Record, now time.Time) Metrics {
-	return AggregateDetail(records, now).Overview
-}
-
 // pending is a queued preToolUse awaiting its postToolUse match.
 type pending struct {
 	tool    string // original tool name (bucket key may be tool + input hash)

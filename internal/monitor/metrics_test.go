@@ -23,12 +23,16 @@ func rec(session, agent, event, tool string, offset time.Duration) Record {
 	}
 }
 
+func aggregateOverview(records []Record, now time.Time) Metrics {
+	return AggregateDetail(records, now).Overview
+}
+
 func TestAggregateEmpty(t *testing.T) {
-	m := Aggregate(nil, baseTime)
+	m := aggregateOverview(nil, baseTime)
 	if m.Sessions != nil || m.Tools != nil || m.Agents != nil || m.HourlyActivity != nil {
 		t.Errorf("expected zero-value Metrics, got %+v", m)
 	}
-	m2 := Aggregate([]Record{}, baseTime)
+	m2 := aggregateOverview([]Record{}, baseTime)
 	if m2.Sessions != nil || m2.Tools != nil || m2.Agents != nil || m2.HourlyActivity != nil {
 		t.Errorf("expected zero-value Metrics for empty slice, got %+v", m2)
 	}
@@ -47,7 +51,7 @@ func TestAggregateSession(t *testing.T) {
 		rec("s2", "agent2", apmconfig.EventUserPromptSubmit, "", 8*time.Minute),
 	}
 
-	m := Aggregate(records, now)
+	m := aggregateOverview(records, now)
 
 	byID := map[string]SessionMetric{}
 	for _, s := range m.Sessions {
@@ -85,7 +89,7 @@ func TestAggregateSession_InactiveOld(t *testing.T) {
 		rec("s1", "agent1", apmconfig.EventAgentSpawn, "", 0),
 		rec("s1", "agent1", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
 	}
-	m := Aggregate(records, now)
+	m := aggregateOverview(records, now)
 	if len(m.Sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(m.Sessions))
 	}
@@ -107,7 +111,7 @@ func TestAggregateTool(t *testing.T) {
 		rec("s1", "a", apmconfig.EventPostToolUse, "grep", 4*time.Minute),
 	}
 
-	m := Aggregate(records, now)
+	m := aggregateOverview(records, now)
 
 	byName := map[string]ToolMetric{}
 	for _, tm := range m.Tools {
@@ -154,7 +158,7 @@ func TestAggregateAgent(t *testing.T) {
 		rec("s3", "agent2", apmconfig.EventPostToolUse, "grep", 2*time.Minute),
 	}
 
-	m := Aggregate(records, now)
+	m := aggregateOverview(records, now)
 
 	byName := map[string]AgentMetric{}
 	for _, a := range m.Agents {
@@ -193,7 +197,7 @@ func TestAggregateHourly(t *testing.T) {
 		rec("s1", "a", apmconfig.EventStop, "", 80*time.Minute),             // 11:20
 	}
 
-	m := Aggregate(records, now)
+	m := aggregateOverview(records, now)
 
 	byHour := map[time.Time]int{}
 	for _, h := range m.HourlyActivity {
