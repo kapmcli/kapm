@@ -55,14 +55,8 @@ serve-stop:
 	@pkill -f '[k]apm serve' 2>/dev/null && echo "stopped" || echo "not running"
 	@rm -f /tmp/kapm-serve.pid
 
-vhs-test: build
-	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)
-	PS1='$ ' VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs demo-media/monitor.tape
-	@grep -q "updated: 12:00:00" demo-media/monitor.ascii || (echo "FAIL: updated timestamp missing" && exit 1)
-	@grep -q "1 Overview" demo-media/monitor.ascii || (echo "FAIL: Overview tab missing" && exit 1)
-	@grep -q "Top tools" demo-media/monitor.ascii || (echo "FAIL: Top tools missing" && exit 1)
-	@grep -q "Last act" demo-media/monitor.ascii || (echo "FAIL: Sessions tab missing" && exit 1)
-	@echo "vhs-test PASS"
+vhs-test:
+	bash demo-media/vhs-test.sh
 
 vhs:
 	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)

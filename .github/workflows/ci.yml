@@ -44,3 +44,15 @@ jobs:
           go-version-file: go.mod
       - run: go build -o internal/agent/kapl ./cmd/kapl
       - run: go test -tags=e2e ./internal/e2e/...
+  vhs-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: charmbracelet/vhs-action@v1
+        with:
+          version: v0.11.0
+          install-fonts: 'false'
+      - run: bash demo-media/vhs-test.sh
