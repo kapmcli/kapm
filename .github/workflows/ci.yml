@@ -52,8 +52,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          curl -fsSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
           sudo install -m 0755 /tmp/ttyd /usr/local/bin/ttyd
-          curl -fsSL https://github.com/charmbracelet/vhs/releases/download/v0.11.0/vhs_0.11.0_amd64.deb -o /tmp/vhs.deb
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://github.com/charmbracelet/vhs/releases/download/v0.11.0/vhs_0.11.0_amd64.deb -o /tmp/vhs.deb
           sudo dpkg -i /tmp/vhs.deb
       - run: bash demo-media/vhs-test.sh
