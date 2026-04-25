@@ -1,7 +1,6 @@
 <h1 align="center">kapm</h1>
 
 <p align="center">
-  <strong>Kiro Agent Package Manager</strong><br />
   Adapt <a href="https://microsoft.github.io/apm/">APM</a> content into Kiro-native <code>.kiro/</code> files and monitor Kiro sessions.
 </p>
 
@@ -125,6 +124,8 @@ kapm serve --port 9097                    # custom port
 ```
 
 ![WebUI](demo-media/webui-overview.png)
+
+![WebUI session detail](demo-media/webui-session-detail.png)
 
 #### WebUI routes
 
