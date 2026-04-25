@@ -16,17 +16,17 @@ Sleep 1s
 
 Type "./kapm version"
 Enter
-Sleep 1.5s
+Sleep 2.5s
 
 Type "./kapm monitor --since 8760h --logs-dir testdata/monitor/logs"
 Enter
 Wait+Screen /Overview/
-Sleep 1.5s
+Sleep 2.5s
 
 # Sessions tab
 Type "2"
 Wait+Screen /Last act/
-Sleep 1.5s
+Sleep 2.5s
 
 # Enter session detail
 Enter
@@ -40,7 +40,7 @@ Sleep 300ms
 Type "j"
 Sleep 300ms
 Type "j"
-Sleep 1.5s
+Sleep 2.5s
 
 # Back to list
 Escape
@@ -49,17 +49,17 @@ Sleep 1s
 # Agents tab
 Type "3"
 Wait+Screen /Agent/
-Sleep 1.5s
+Sleep 2.5s
 
 # Tools tab
 Type "4"
 Wait+Screen /Calls/
-Sleep 1.5s
+Sleep 2.5s
 
 # Skills tab
 Type "5"
 Wait+Screen /Skills/
-Sleep 1.5s
+Sleep 2.5s
 
 Type "q"
 Sleep 500ms
