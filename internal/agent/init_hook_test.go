@@ -12,6 +12,15 @@ import (
 	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
+func testKapmExecutable(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.Abs("/usr/local/bin/kapm")
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	return path
+}
+
 func makeAgentsDir(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -49,7 +58,7 @@ func runInitHook(t *testing.T, root string, remove bool, input string) (string, 
 	err := InitHook(InitHookOptions{
 		Root:   root,
 		Remove: remove,
-		Executable: "/usr/local/bin/kapm",
+		Executable: testKapmExecutable(t),
 		In:     strings.NewReader(input),
 		Out:    &outBuf,
 		Err:    &errBuf,
@@ -240,7 +249,7 @@ func TestInitHookNoopOnEmptyAgentsDir(t *testing.T) {
 	var out bytes.Buffer
 	err := InitHook(InitHookOptions{
 		Root: root,
-		Executable: "/usr/local/bin/kapm",
+		Executable: testKapmExecutable(t),
 		In:   strings.NewReader(""),
 		Out:  &out,
 		Err:  &bytes.Buffer{},
@@ -314,7 +323,7 @@ func TestInitHookWritesRelativeCommand(t *testing.T) {
 	for _, event := range apmconfig.HookEvents {
 		var entry map[string]string
 		_ = json.Unmarshal(hooksMap[event][0], &entry)
-		want := hookCommand("/usr/local/bin/kapm", "coder")
+		want := hookCommand(testKapmExecutable(t), "coder")
 		if entry["command"] != want {
 			t.Errorf("event %q command = %q, want %q", event, entry["command"], want)
 		}
@@ -368,7 +377,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {original},
 	}
-	err := addKapmEntries(hooksMap, hookCommand("/usr/local/bin/kapm", "x"))
+	err := addKapmEntries(hooksMap, hookCommand(testKapmExecutable(t), "x"))
 	if err == nil {
 		t.Fatal("expected error for corrupt entry, got nil")
 	}
@@ -383,7 +392,7 @@ func TestAddKapmEntries_AbortsOnCorrupt(t *testing.T) {
 
 func TestRemoveKapmEntries_PreservesCorrupt(t *testing.T) {
 	corrupt := json.RawMessage("{broken")
-	kapmRaw, _ := json.Marshal(map[string]string{"command": hookCommand("/usr/local/bin/kapm", "x")})
+	kapmRaw, _ := json.Marshal(map[string]string{"command": hookCommand(testKapmExecutable(t), "x")})
 	hooksMap := map[string][]json.RawMessage{
 		"PreToolUse": {corrupt, json.RawMessage(kapmRaw)},
 	}
