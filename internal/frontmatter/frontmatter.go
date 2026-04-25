@@ -9,8 +9,6 @@ import (
 
 const maxFrontmatterBytes = 256 << 10 // 256 KiB
 
-const delimiter = "---\n"
-
 // Document is a markdown-like file split into YAML front matter and body.
 type Document struct {
 	Meta map[string]any
@@ -19,26 +17,20 @@ type Document struct {
 
 // Parse separates leading YAML front matter from the remaining body.
 func Parse(content string) (Document, error) {
-	if !strings.HasPrefix(content, delimiter) {
+	remaining, ok := cutOpeningDelimiter(content)
+	if !ok {
 		return Document{Body: content}, nil
 	}
-
-	remaining := content[len(delimiter):]
 
 	var (
 		metaText string
 		body     string
 	)
 
-	switch {
-	case strings.HasPrefix(remaining, delimiter):
-		body = remaining[len(delimiter):]
-	default:
-		var found bool
-		metaText, body, found = strings.Cut(remaining, "\n"+delimiter)
-		if !found {
-			return Document{}, fmt.Errorf("front matter parse: missing closing delimiter")
-		}
+	var found bool
+	metaText, body, found = cutClosingDelimiter(remaining)
+	if !found {
+		return Document{}, fmt.Errorf("front matter parse: missing closing delimiter")
 	}
 
 	if metaText == "" {
@@ -61,4 +53,38 @@ func Parse(content string) (Document, error) {
 		Meta: meta,
 		Body: body,
 	}, nil
+}
+
+func cutOpeningDelimiter(content string) (string, bool) {
+	switch {
+	case strings.HasPrefix(content, "---\r\n"):
+		return content[len("---\r\n"):], true
+	case strings.HasPrefix(content, "---\n"):
+		return content[len("---\n"):], true
+	default:
+		return "", false
+	}
+}
+
+func cutClosingDelimiter(content string) (metaText, body string, found bool) {
+	lineStart := 0
+	for lineStart <= len(content) {
+		lineEnd := strings.IndexByte(content[lineStart:], '\n')
+		if lineEnd < 0 {
+			line := strings.TrimSuffix(content[lineStart:], "\r")
+			if line == "---" {
+				return strings.TrimSuffix(content[:lineStart], "\r\n"), "", true
+			}
+			return "", "", false
+		}
+
+		lineEnd += lineStart
+		line := strings.TrimSuffix(content[lineStart:lineEnd], "\r")
+		if line == "---" {
+			return strings.TrimSuffix(content[:lineStart], "\r\n"), content[lineEnd+1:], true
+		}
+		lineStart = lineEnd + 1
+	}
+
+	return "", "", false
 }

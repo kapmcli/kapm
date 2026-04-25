@@ -26,6 +26,27 @@ func TestParseWithFrontMatter(t *testing.T) {
 	}
 }
 
+func TestParseWithCRLFFrontMatter(t *testing.T) {
+	t.Parallel()
+
+	content := "---\r\napplyTo: \"**\"\r\ndescription: test\r\n---\r\n\r\n# Title\r\n"
+
+	doc, err := Parse(content)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := doc.Meta["applyTo"], "**"; got != want {
+		t.Fatalf("Meta[applyTo] = %v, want %q", got, want)
+	}
+	if got, want := doc.Meta["description"], "test"; got != want {
+		t.Fatalf("Meta[description] = %v, want %q", got, want)
+	}
+	if got, want := doc.Body, "\r\n# Title\r\n"; got != want {
+		t.Fatalf("Body = %q, want %q", got, want)
+	}
+}
+
 func TestParseWithoutFrontMatter(t *testing.T) {
 	t.Parallel()
 
@@ -93,6 +114,16 @@ func TestParseMissingClosingDelimiter(t *testing.T) {
 	t.Parallel()
 
 	content := "---\nname: kapm\nbody\n"
+
+	if _, err := Parse(content); err == nil {
+		t.Fatal("Parse() error = nil, want error")
+	}
+}
+
+func TestParseMissingCRLFClosingDelimiter(t *testing.T) {
+	t.Parallel()
+
+	content := "---\r\nname: kapm\r\nbody\r\n"
 
 	if _, err := Parse(content); err == nil {
 		t.Fatal("Parse() error = nil, want error")
