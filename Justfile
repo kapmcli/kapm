@@ -17,6 +17,21 @@ lint:
 tidy:
 	go mod tidy
 
+# Refresh the README/demo media assets.
+media-refresh: build media-monitor media-demo media-webui
+
+media-monitor: build
+	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)
+	PS1='$ ' VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs demo-media/monitor.tape
+
+media-demo: build
+	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)
+	VHS_NO_SANDBOX=1 vhs demo-media/demo.tape
+
+media-webui port="9097" logs-dir="testdata/monitor/logs" since="8760h": build
+	@which npx > /dev/null 2>&1 || (echo "npx not installed" && exit 1)
+	bash -lc 'set -euo pipefail; cleanup() { just serve-stop >/dev/null 2>&1 || true; }; trap cleanup EXIT; npx -y playwright@latest install chromium >/dev/null; KAPM_UPDATED_AT=12:00:00 just serve {{port}} {{logs-dir}} {{since}} >/dev/null; sleep 2; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/" demo-media/webui-overview.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/sessions" demo-media/webui-sessions.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/sessions/cd75bf13-61bf-48ca-94ae-d444e19cb59d" demo-media/webui-session-detail.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/agents" demo-media/webui-agents.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/tools" demo-media/webui-tools.png; npx -y playwright@latest screenshot --browser chromium --viewport-size "1440,1024" --wait-for-timeout 1500 "http://127.0.0.1:{{port}}/skills" demo-media/webui-skills.png'
+
 # Launch the WebUI server in the background, or stop it with `just serve stop`.
 # Logs to /tmp/kapm-serve.log, PID to /tmp/kapm-serve.pid.
 serve port="9090" logs-dir=".kiro/logs" since="24h":
@@ -42,14 +57,14 @@ serve-stop:
 
 vhs-test: build
 	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)
-	VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs vhs/monitor.tape
-	@grep -q "updated: 12:00:00" vhs/monitor.ascii || (echo "FAIL: updated timestamp missing" && exit 1)
-	@grep -q "1 Overview" vhs/monitor.ascii || (echo "FAIL: Overview tab missing" && exit 1)
-	@grep -q "Top tools" vhs/monitor.ascii || (echo "FAIL: Top tools missing" && exit 1)
-	@grep -q "Last act" vhs/monitor.ascii || (echo "FAIL: Sessions tab missing" && exit 1)
+	PS1='$ ' VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs demo-media/monitor.tape
+	@grep -q "updated: 12:00:00" demo-media/monitor.ascii || (echo "FAIL: updated timestamp missing" && exit 1)
+	@grep -q "1 Overview" demo-media/monitor.ascii || (echo "FAIL: Overview tab missing" && exit 1)
+	@grep -q "Top tools" demo-media/monitor.ascii || (echo "FAIL: Top tools missing" && exit 1)
+	@grep -q "Last act" demo-media/monitor.ascii || (echo "FAIL: Sessions tab missing" && exit 1)
 	@echo "vhs-test PASS"
 
 vhs:
 	@which vhs > /dev/null 2>&1 || (echo "vhs not installed" && exit 1)
-	VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs vhs/monitor.tape
-	git diff --exit-code vhs/monitor.ascii
+	PS1='$ ' VHS_NO_SANDBOX=1 KAPM_UPDATED_AT=12:00:00 vhs demo-media/monitor.tape
+	git diff --exit-code demo-media/monitor.ascii
