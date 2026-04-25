@@ -279,6 +279,49 @@ func TestAggregateDetail(t *testing.T) {
 	}
 }
 
+func TestAggregateDetailSameTimestampKeepsPreBeforePost(t *testing.T) {
+	now := baseTime.Add(30 * time.Minute)
+	toolInput := json.RawMessage(`{"command":"echo hi"}`)
+	records := []Record{
+		{Ts: baseTime, Session: "s1", Agent: "coder", Event: apmconfig.EventPreToolUse, Tool: "bash", ToolInput: toolInput},
+		{Ts: baseTime, Session: "s1", Agent: "coder", Event: apmconfig.EventPostToolUse, Tool: "bash", ToolInput: toolInput},
+	}
+
+	d := AggregateDetail(records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session detail, got %d", len(d.Sessions))
+	}
+	sd := d.Sessions[0]
+	if len(sd.Timeline) != 2 {
+		t.Fatalf("timeline: want 2 events, got %d", len(sd.Timeline))
+	}
+	if sd.Timeline[0].Event != apmconfig.EventPreToolUse || sd.Timeline[1].Event != apmconfig.EventPostToolUse {
+		t.Fatalf("timeline order: want pre/post, got %q/%q", sd.Timeline[0].Event, sd.Timeline[1].Event)
+	}
+	if sd.Timeline[0].IsError {
+		t.Fatalf("preToolUse should stay matched, got IsError=true")
+	}
+
+	var bash ToolDetail
+	for _, td := range d.Tools {
+		if td.Name == "bash" {
+			bash = td
+		}
+	}
+	if bash.CallCount != 1 {
+		t.Fatalf("CallCount: want 1, got %d", bash.CallCount)
+	}
+	if bash.ErrorCount != 0 {
+		t.Fatalf("ErrorCount: want 0, got %d", bash.ErrorCount)
+	}
+	if len(bash.Errors) != 0 {
+		t.Fatalf("Errors: want 0, got %d", len(bash.Errors))
+	}
+	if len(bash.RecentCalls) != 1 {
+		t.Fatalf("RecentCalls: want 1, got %d", len(bash.RecentCalls))
+	}
+}
+
 // --- New-feature tests ------------------------------------------------------
 
 func TestAggregateLastActivitySort(t *testing.T) {
@@ -785,6 +828,7 @@ func TestAggregateDetailGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
+	got = normalizeGoldenBytes(got)
 	goldenPath := filepath.Join(dir, "aggregate.golden.json")
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		if err := os.WriteFile(goldenPath, append(got, '\n'), 0o644); err != nil {
@@ -795,10 +839,21 @@ func TestAggregateDetailGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden (run with UPDATE_GOLDEN=1 to create): %v", err)
 	}
-	want = []byte(strings.TrimRight(string(want), "\n"))
+	want = normalizeGoldenBytes(want)
 	if string(got) != string(want) {
 		t.Errorf("AggregateDetail golden mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
+}
+
+func TestNormalizeGoldenBytes(t *testing.T) {
+	got := string(normalizeGoldenBytes([]byte("{\r\n  \"ok\": true\r\n}\r\n")))
+	if got != "{\n  \"ok\": true\n}" {
+		t.Fatalf("normalizeGoldenBytes() = %q", got)
+	}
+}
+
+func normalizeGoldenBytes(b []byte) []byte {
+	return []byte(strings.TrimRight(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n"))
 }
 
 // --- AggregateToolsFromTimeline ---------------------------------------------
@@ -1549,4 +1604,3 @@ func TestSessionAssistantResponse(t *testing.T) {
 		t.Errorf("AssistantResponse: want %q, got %q", want, got)
 	}
 }
-

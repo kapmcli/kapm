@@ -202,7 +202,15 @@ func AggregateDetail(records []Record, now time.Time) DetailedMetrics {
 	// Sort records chronologically once so timelines and pre/post matching are ordered.
 	sorted := make([]Record, len(records))
 	copy(sorted, records)
-	slices.SortFunc(sorted, func(a, b Record) int { return a.Ts.Compare(b.Ts) })
+	slices.SortStableFunc(sorted, func(a, b Record) int {
+		if c := a.Ts.Compare(b.Ts); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Session, b.Session); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Agent, b.Agent)
+	})
 
 	st := newAggState(len(sorted), now)
 	for _, r := range sorted {
@@ -483,7 +491,12 @@ func foldSessionIntoAgents(st *aggState) {
 		}
 	}
 	for name, a := range st.agents {
-		slices.SortFunc(a.Sessions, func(x, y SessionMetric) int { return y.StartTime.Compare(x.StartTime) })
+		slices.SortFunc(a.Sessions, func(x, y SessionMetric) int {
+			if c := y.StartTime.Compare(x.StartTime); c != 0 {
+				return c
+			}
+			return cmp.Compare(x.AgentKey, y.AgentKey)
+		})
 		tm := agentTools[name]
 		out := make([]SessionToolSummary, 0, len(tm))
 		for tool, ta := range tm {
@@ -522,12 +535,40 @@ func finalizeToolDetails(td *ToolDetail) {
 			total += time.Duration(c.Duration)
 		}
 		td.AvgDuration = JSONDuration(total / time.Duration(len(td.RecentCalls)))
-		slices.SortFunc(td.RecentCalls, func(a, b ToolCall) int { return b.Ts.Compare(a.Ts) })
+		slices.SortFunc(td.RecentCalls, func(a, b ToolCall) int {
+			if c := b.Ts.Compare(a.Ts); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(a.Session, b.Session); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(a.Agent, b.Agent); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(a.Tool, b.Tool); c != 0 {
+				return c
+			}
+			return cmp.Compare(a.InputSummary, b.InputSummary)
+		})
 		if len(td.RecentCalls) > maxRecentCalls {
 			td.RecentCalls = td.RecentCalls[:maxRecentCalls]
 		}
 	}
-	slices.SortFunc(td.Errors, func(a, b ToolCall) int { return b.Ts.Compare(a.Ts) })
+	slices.SortFunc(td.Errors, func(a, b ToolCall) int {
+		if c := b.Ts.Compare(a.Ts); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Session, b.Session); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Agent, b.Agent); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Tool, b.Tool); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.InputSummary, b.InputSummary)
+	})
 	if len(td.Errors) > maxErrors {
 		td.Errors = td.Errors[:maxErrors]
 	}
@@ -540,7 +581,10 @@ func assembleDetails(st *aggState) DetailedMetrics {
 		if !a.LastActivity.Equal(b.LastActivity) {
 			return b.LastActivity.Compare(a.LastActivity)
 		}
-		return b.StartTime.Compare(a.StartTime)
+		if !a.StartTime.Equal(b.StartTime) {
+			return b.StartTime.Compare(a.StartTime)
+		}
+		return cmp.Compare(a.AgentKey, b.AgentKey)
 	})
 	for _, sd := range st.sessionDetails {
 		overview.Sessions = append(overview.Sessions, sd.SessionMetric)
@@ -575,8 +619,18 @@ func assembleDetails(st *aggState) DetailedMetrics {
 		}
 		return cmp.Compare(a.Name, b.Name)
 	})
-	slices.SortFunc(overview.Agents, func(a, b AgentMetric) int { return cmp.Compare(b.ToolCalls, a.ToolCalls) })
-	slices.SortFunc(agentDetails, func(a, b AgentDetail) int { return cmp.Compare(b.ToolCalls, a.ToolCalls) })
+	slices.SortFunc(overview.Agents, func(a, b AgentMetric) int {
+		if c := cmp.Compare(b.ToolCalls, a.ToolCalls); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
+	slices.SortFunc(agentDetails, func(a, b AgentDetail) int {
+		if c := cmp.Compare(b.ToolCalls, a.ToolCalls); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
 	slices.SortFunc(toolDetails, func(a, b ToolDetail) int {
 		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
 			return c
@@ -644,7 +698,7 @@ func oldestPendingForTool(buckets map[string][]pending, tool string) ([]pending,
 		}
 		qFirst, _ := first(q)
 		bestFirst, bestOk := first(best)
-		if !bestOk || qFirst.ts.Before(bestFirst.ts) {
+		if !bestOk || qFirst.ts.Before(bestFirst.ts) || (qFirst.ts.Equal(bestFirst.ts) && cmp.Compare(k, bestKey) < 0) {
 			best, bestKey = q, k
 		}
 	}
