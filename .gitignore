@@ -21,3 +21,6 @@ apm_modules/
 
 # Local OpenCode workspace state
 .opencode/
+
+# Local Playwright MCP debug artifacts
+.playwright-mcp/
