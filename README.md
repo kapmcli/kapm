@@ -28,7 +28,7 @@ kapm helps you understand and maintain Kiro agent workspaces.
 
 ## Installation
 
-### Homebrew (macOS)
+### Homebrew (macOS / Linux)
 
 ```bash
 brew install --cask kapmcli/tap/kapm

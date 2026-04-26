@@ -28,7 +28,7 @@ kapm 是一个 CLI，用于理解和维护 Kiro Agent 工作区。
 
 ## 安装
 
-### Homebrew (macOS)
+### Homebrew (macOS / Linux)
 
 ```bash
 brew install --cask kapmcli/tap/kapm

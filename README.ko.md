@@ -28,7 +28,7 @@ kapm은 Kiro 에이전트 워크스페이스를 이해하고 관리하기 쉽게
 
 ## 설치
 
-### Homebrew (macOS)
+### Homebrew (macOS / Linux)
 
 ```bash
 brew install --cask kapmcli/tap/kapm
