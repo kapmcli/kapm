@@ -22,12 +22,12 @@ import (
 
 // InitHookOptions configures an init-hook run.
 type InitHookOptions struct {
-	Root   string
-	Remove bool
+	Root       string
+	Remove     bool
 	Executable string
-	In     io.Reader
-	Out    io.Writer
-	Err    io.Writer
+	In         io.Reader
+	Out        io.Writer
+	Err        io.Writer
 }
 
 // InitHook interactively adds or removes kapm hook entries in .kiro/agents/*.json.
@@ -71,43 +71,16 @@ func resolveHookExecutablePath(executable string) (string, error) {
 }
 
 func initHook(opts InitHookOptions) error {
-	agentsDir := filepath.Join(opts.Root, paths.KiroDir, paths.AgentsSubdir)
-	info, err := os.Stat(agentsDir)
+	names, err := loadAgentNames(opts.Root)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			_, _ = fmt.Fprintln(opts.Out, "No agents found. Create agents with `kapm agent generate` first.")
-			return nil
-		}
-		return fmt.Errorf("read agents dir: %w", err)
+		return err
 	}
-	if !info.IsDir() {
-		return fmt.Errorf("read agents dir: %w", fs.ErrInvalid)
-	}
-
-	entries, err := os.ReadDir(agentsDir)
-	if err != nil {
-		return fmt.Errorf("read agents dir: %w", err)
-	}
-
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			name, err := validateAndNormalizeName(strings.TrimSuffix(e.Name(), ".json"))
-			if err != nil {
-				return fmt.Errorf("invalid agent file name %q: %w", e.Name(), err)
-			}
-			names = append(names, name)
-		}
-	}
-	slices.Sort(names)
-
 	if len(names) == 0 {
-		_, _ = fmt.Fprintln(opts.Out, "No agents found. Create agents with `kapm agent generate` first.")
+		printNoAgentsFound(opts.Out)
 		return nil
 	}
 
-	p := cli.NewPrompter(opts.In, opts.Out)
-	selected, err := p.MultiSelect("Select agents", names, true)
+	selected, err := selectAgents(opts.In, opts.Out, names)
 	if err != nil {
 		return fmt.Errorf("agent selection: %w", err)
 	}
@@ -117,7 +90,55 @@ func initHook(opts InitHookOptions) error {
 	if err := cleanupLegacyHookArtifacts(opts.Root); err != nil {
 		return err
 	}
+	return processSelectedAgents(opts, selected)
+}
 
+func loadAgentNames(root string) ([]string, error) {
+	agentsDir := filepath.Join(root, paths.KiroDir, paths.AgentsSubdir)
+	info, err := os.Stat(agentsDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read agents dir: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("read agents dir: %w", fs.ErrInvalid)
+	}
+
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return nil, fmt.Errorf("read agents dir: %w", err)
+	}
+	return collectAgentNames(entries)
+}
+
+func collectAgentNames(entries []os.DirEntry) ([]string, error) {
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		name, err := validateAndNormalizeName(strings.TrimSuffix(e.Name(), ".json"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid agent file name %q: %w", e.Name(), err)
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+func printNoAgentsFound(out io.Writer) {
+	_, _ = fmt.Fprintln(out, "No agents found. Create agents with `kapm agent generate` first.")
+}
+
+func selectAgents(in io.Reader, out io.Writer, names []string) ([]string, error) {
+	p := cli.NewPrompter(in, out)
+	return p.MultiSelect("Select agents", names, true)
+}
+
+func processSelectedAgents(opts InitHookOptions, selected []string) error {
 	var failed []string
 	for _, name := range selected {
 		agentPath := AgentFile(opts.Root, name)
@@ -163,41 +184,63 @@ func processAgent(agentPath, executablePath, name string, remove bool) error {
 	if err != nil {
 		return err
 	}
+	return updateAgentHooks(rawMap, executablePath, name, remove, agentPath)
+}
 
+func updateAgentHooks(rawMap map[string]json.RawMessage, executablePath, name string, remove bool, agentPath string) error {
+	hooksMap, err := decodeHooksMap(rawMap)
+	if err != nil {
+		return err
+	}
+	if err := applyHookChanges(hooksMap, executablePath, name, remove); err != nil {
+		return err
+	}
+	compactHooksMap(hooksMap)
+	if err := storeHooksMap(rawMap, hooksMap); err != nil {
+		return err
+	}
+	return writeAgentRawJSON(agentPath, rawMap)
+}
+
+func decodeHooksMap(rawMap map[string]json.RawMessage) (map[string][]json.RawMessage, error) {
 	hooksMap := make(map[string][]json.RawMessage)
 	if raw, ok := rawMap["hooks"]; ok {
 		if err := json.Unmarshal(raw, &hooksMap); err != nil {
-			return err
+			return nil, err
 		}
 	}
+	return hooksMap, nil
+}
 
+func applyHookChanges(hooksMap map[string][]json.RawMessage, executablePath, name string, remove bool) error {
 	if remove {
 		removeKapmEntries(hooksMap)
-	} else {
-		command := hookCommand(executablePath, name)
-		if err := addKapmEntries(hooksMap, command); err != nil {
-			return err
-		}
+		return nil
 	}
+	command := hookCommand(executablePath, name)
+	return addKapmEntries(hooksMap, command)
+}
 
+func compactHooksMap(hooksMap map[string][]json.RawMessage) {
 	// Clean up empty event arrays
 	for k, v := range hooksMap {
 		if len(v) == 0 {
 			delete(hooksMap, k)
 		}
 	}
+}
 
+func storeHooksMap(rawMap map[string]json.RawMessage, hooksMap map[string][]json.RawMessage) error {
 	if len(hooksMap) == 0 {
 		delete(rawMap, "hooks")
-	} else {
-		hooksRaw, err := json.Marshal(hooksMap)
-		if err != nil {
-			return fmt.Errorf("marshal hooks: %w", err)
-		}
-		rawMap["hooks"] = json.RawMessage(hooksRaw)
+		return nil
 	}
-
-	return writeAgentRawJSON(agentPath, rawMap)
+	hooksRaw, err := json.Marshal(hooksMap)
+	if err != nil {
+		return fmt.Errorf("marshal hooks: %w", err)
+	}
+	rawMap["hooks"] = json.RawMessage(hooksRaw)
+	return nil
 }
 
 // isKapmEntry reports whether raw is a kapm-managed hook entry.
