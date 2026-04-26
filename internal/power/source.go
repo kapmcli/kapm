@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -65,12 +66,19 @@ func isGitRootSource(raw string) bool {
 }
 
 func expandLocalSource(raw string) (string, error) {
-	if raw == "~" || strings.HasPrefix(raw, "~/") {
+	if raw == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return home + strings.TrimPrefix(raw, "~"), nil
+		return home, nil
+	}
+	if strings.HasPrefix(raw, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, filepath.FromSlash(strings.TrimPrefix(raw, "~/"))), nil
 	}
 	return raw, nil
 }

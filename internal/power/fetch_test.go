@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -169,29 +170,60 @@ func writeFakeGitScript(t *testing.T, opts fakeGitOptions) (string, string) {
 
 	binDir := t.TempDir()
 	logPath := filepath.Join(binDir, "git.log")
-	scriptPath := filepath.Join(binDir, "git")
-	script := "#!/usr/bin/env bash\n" +
-		"set -euo pipefail\n" +
-		"printf '%s|%s\\n' \"${GIT_TERMINAL_PROMPT:-}\" \"$*\" >> " + shellQuote(logPath) + "\n" +
-		"if [[ -n ${FAIL_ON:-} && \"$*\" == \"$FAIL_ON\" ]]; then exit 17; fi\n" +
-		"case \"$1\" in\n" +
-		"  init)\n" +
-		"    mkdir -p .git\n" +
-		"    ;;\n" +
-		"  clone)\n" +
-		"    dest=\"${@: -1}\"\n" +
-		"    mkdir -p \"$dest/.git\"\n" +
-		"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$dest/$SUBPATH\"; fi\n" +
-		"    ;;\n" +
-		"  checkout)\n" +
-		"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$PWD/$SUBPATH\"; fi\n" +
-		"    ;;\n" +
-		"  rev-parse)\n" +
-		"    printf '%s\\n' \"${COMMIT:-deadbeef}\"\n" +
-		"    ;;\n" +
-		"esac\n"
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("WriteFile(%q): %v", scriptPath, err)
+	if runtime.GOOS == "windows" {
+		scriptPath := filepath.Join(binDir, "git.bat")
+		script := "@echo off\r\n" +
+			"setlocal EnableDelayedExpansion\r\n" +
+			">> \"" + logPath + "\" echo %GIT_TERMINAL_PROMPT%|%*\r\n" +
+			"if not \"%FAIL_ON%\"==\"\" if \"%*\"==\"%FAIL_ON%\" exit /b 17\r\n" +
+			"if \"%1\"==\"init\" (\r\n" +
+			"  mkdir .git 2>nul\r\n" +
+			"  exit /b 0\r\n" +
+			")\r\n" +
+			"if \"%1\"==\"clone\" (\r\n" +
+			"  set \"dest=\"\r\n" +
+			"  for %%A in (%*) do set \"dest=%%~A\"\r\n" +
+			"  mkdir \"%dest%\\.git\" 2>nul\r\n" +
+			"  if not \"%SUBPATH%\"==\"\" mkdir \"%dest%\\%SUBPATH%\" 2>nul\r\n" +
+			"  exit /b 0\r\n" +
+			")\r\n" +
+			"if \"%1\"==\"checkout\" (\r\n" +
+			"  if not \"%SUBPATH%\"==\"\" mkdir \"%CD%\\%SUBPATH%\" 2>nul\r\n" +
+			"  exit /b 0\r\n" +
+			")\r\n" +
+			"if \"%1\"==\"rev-parse\" (\r\n" +
+			"  echo %COMMIT%\r\n" +
+			"  exit /b 0\r\n" +
+			")\r\n" +
+			"exit /b 0\r\n"
+		if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+			t.Fatalf("WriteFile(%q): %v", scriptPath, err)
+		}
+	} else {
+		scriptPath := filepath.Join(binDir, "git")
+		script := "#!/usr/bin/env bash\n" +
+			"set -euo pipefail\n" +
+			"printf '%s|%s\\n' \"${GIT_TERMINAL_PROMPT:-}\" \"$*\" >> " + shellQuote(logPath) + "\n" +
+			"if [[ -n ${FAIL_ON:-} && \"$*\" == \"$FAIL_ON\" ]]; then exit 17; fi\n" +
+			"case \"$1\" in\n" +
+			"  init)\n" +
+			"    mkdir -p .git\n" +
+			"    ;;\n" +
+			"  clone)\n" +
+			"    dest=\"${@: -1}\"\n" +
+			"    mkdir -p \"$dest/.git\"\n" +
+			"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$dest/$SUBPATH\"; fi\n" +
+			"    ;;\n" +
+			"  checkout)\n" +
+			"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$PWD/$SUBPATH\"; fi\n" +
+			"    ;;\n" +
+			"  rev-parse)\n" +
+			"    printf '%s\\n' \"${COMMIT:-deadbeef}\"\n" +
+			"    ;;\n" +
+			"esac\n"
+		if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+			t.Fatalf("WriteFile(%q): %v", scriptPath, err)
+		}
 	}
 
 	t.Setenv("FAIL_ON", opts.failOn)
@@ -207,9 +239,13 @@ func readGitLog(t *testing.T, path string) []string {
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", path, err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) == 1 && lines[0] == "" {
+	rawLines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(rawLines) == 1 && rawLines[0] == "" {
 		return nil
+	}
+	lines := make([]string, 0, len(rawLines))
+	for _, line := range rawLines {
+		lines = append(lines, strings.TrimRight(line, "\r"))
 	}
 	return lines
 }
