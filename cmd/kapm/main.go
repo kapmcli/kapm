@@ -1,23 +1,29 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/agent"
 	"github.com/kapmcli/kapm/internal/hook"
 	"github.com/kapmcli/kapm/internal/install"
+	"github.com/kapmcli/kapm/internal/power"
 	"github.com/kapmcli/kapm/internal/syncer"
 )
 
 var installRun = install.Run
+var powerInstallRun = power.Install
 
 var (
 	version = "dev"
@@ -49,7 +55,7 @@ type command struct {
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(exitCodeOf(err))
 	}
 }
 
@@ -74,6 +80,11 @@ func run(args []string) error {
 			name:        "init-hook",
 			description: "interactively add monitoring hooks to agents",
 			run:         runInitHook,
+		},
+		"power": {
+			name:        "power",
+			description: "install Kiro Power packages into .kiro/powers/",
+			run:         runPower,
 		},
 		"hook-handler": {
 			name:        "hook-handler",
@@ -130,6 +141,22 @@ func parseFlagSet(fs *flag.FlagSet, args []string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+type usageError struct {
+	msg string
+}
+
+func (e usageError) Error() string {
+	return e.msg
+}
+
+func exitCodeOf(err error) int {
+	var usage usageError
+	if errors.As(err, &usage) {
+		return 2
+	}
+	return 1
 }
 
 func hasHelpFlag(args []string) bool {
@@ -254,6 +281,184 @@ func runAgent(args []string) error {
 	}
 }
 
+func runPower(args []string) error {
+	if len(args) == 0 {
+		printPowerUsage(os.Stdout)
+		return nil
+	}
+
+	switch args[0] {
+	case "install":
+		return runPowerInstall(args[1:])
+	case "-h", "--help", "help":
+		printPowerUsage(os.Stdout)
+		return nil
+	default:
+		return usageError{msg: fmt.Sprintf("unknown power subcommand %q", args[0])}
+	}
+}
+
+func runPowerInstall(args []string) error {
+	fs := flag.NewFlagSet("power install", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	force := fs.Bool("force", false, "overwrite existing kapm-managed power output")
+	targetDirFlag := fs.String("target-dir", ".", "target directory (default: current directory)")
+	refFlag := fs.String("ref", "", "override git ref for git sources")
+	timeoutFlag := fs.Duration("timeout", power.DefaultTimeout, "git fetch timeout")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm power install <url-or-path> [flags]\n\n")
+		_, _ = fmt.Fprintln(fs.Output(), "Install a Kiro Power package into .kiro/powers/ and suggest raw POWER/steering resources.")
+		fs.PrintDefaults()
+	}
+
+	ok, err := parseFlagSet(fs, normalizePowerInstallArgs(args))
+	if err != nil {
+		return usageError{msg: err.Error()}
+	}
+	if !ok {
+		return nil
+	}
+	if len(fs.Args()) == 0 {
+		return usageError{msg: "power install requires exactly one argument: <url-or-path>"}
+	}
+	if len(fs.Args()) != 1 {
+		return usageError{msg: "power install requires exactly one argument: <url-or-path>"}
+	}
+
+	targetDir, err := expandTarget(*targetDirFlag)
+	if err != nil {
+		return err
+	}
+
+	source, err := power.ParsePowerSource(fs.Args()[0])
+	if err != nil {
+		return err
+	}
+	if *refFlag != "" && source.Kind != power.SourceLocal {
+		source.Ref = *refFlag
+	}
+
+	result, err := powerInstallRun(context.Background(), power.InstallOptions{
+		Source:    source,
+		TargetDir: targetDir,
+		Force:     *force,
+		Timeout:   *timeoutFlag,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(os.Stdout, "Installed power %q to %s\n", result.Name, result.PowerDir)
+	if result.ResolvedCommit != "" {
+		_, _ = fmt.Fprintf(os.Stdout, "Resolved commit: %s\n", result.ResolvedCommit)
+	}
+	printPowerInstallSuggestions(os.Stdout, result)
+	for _, warning := range result.Warnings {
+		_, _ = fmt.Fprintf(os.Stdout, "Warning: %s\n", warning)
+	}
+	return nil
+}
+
+func printPowerInstallSuggestions(w io.Writer, result *power.Result) {
+	_, _ = fmt.Fprintln(w, "Suggested custom agent config:")
+	_, _ = fmt.Fprintln(w, `"resources": [`)
+	for i, resourcePath := range result.ResourcePaths {
+		suffix := ","
+		if i == len(result.ResourcePaths)-1 {
+			suffix = ""
+		}
+		_, _ = fmt.Fprintf(w, "  \"file://%s\"%s\n", filepath.ToSlash(resourcePath), suffix)
+	}
+	_, _ = fmt.Fprintln(w, `]`)
+
+	if result.MCPConfigPath != "" {
+		mcpServers, err := readMCPServers(result.MCPConfigPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(w, "MCP config: copy %s into the agent's mcpServers field (could not render snippet: %v)\n", result.MCPConfigPath, err)
+		} else {
+			_, _ = fmt.Fprintln(w, `"mcpServers":`)
+			_, _ = w.Write(mcpServers)
+			if len(mcpServers) == 0 || mcpServers[len(mcpServers)-1] != '\n' {
+				_, _ = fmt.Fprintln(w)
+			}
+		}
+	}
+
+	if result.HooksDir != "" {
+		hookFiles, err := listPowerHookFiles(result.HooksDir)
+		if err != nil {
+			_, _ = fmt.Fprintf(w, "Hooks: adapt files under %s into the agent's hooks field (could not list files: %v)\n", result.HooksDir, err)
+		} else {
+			_, _ = fmt.Fprintln(w, `Hook files to adapt into the agent's "hooks" field:`)
+			for _, hookFile := range hookFiles {
+				_, _ = fmt.Fprintf(w, "- %s\n", hookFile)
+			}
+		}
+	}
+
+	_, _ = fmt.Fprintf(w, "Remove: rm -rf %s\n", result.PowerDir)
+}
+
+func readMCPServers(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var config struct {
+		MCPServers map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(config.MCPServers, "", "  ")
+}
+
+func listPowerHookFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		files = append(files, filepath.ToSlash(path))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func normalizePowerInstallArgs(args []string) []string {
+	flagArgs := make([]string, 0, len(args))
+	positionals := make([]string, 0, len(args))
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--force":
+			flagArgs = append(flagArgs, arg)
+		case arg == "--target-dir" || arg == "--ref" || arg == "--timeout":
+			flagArgs = append(flagArgs, arg)
+			if i+1 < len(args) {
+				i++
+				flagArgs = append(flagArgs, args[i])
+			}
+		case strings.HasPrefix(arg, "--target-dir=") || strings.HasPrefix(arg, "--ref=") || strings.HasPrefix(arg, "--timeout="):
+			flagArgs = append(flagArgs, arg)
+		case strings.HasPrefix(arg, "-"):
+			flagArgs = append(flagArgs, arg)
+		default:
+			positionals = append(positionals, arg)
+		}
+	}
+
+	return append(flagArgs, positionals...)
+}
+
 func runAgentGenerate(args []string) error {
 	fs := flag.NewFlagSet("agent generate", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -330,7 +535,7 @@ func printUsage(w io.Writer, commands map[string]command) {
 	_, _ = fmt.Fprintln(w, "  kapm <command> [arguments]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Available commands:")
-	for _, name := range []string{"sync", "install", "agent", "init-hook", "hook-handler", "monitor", "serve", "version"} {
+	for _, name := range []string{"sync", "install", "power", "agent", "init-hook", "hook-handler", "monitor", "serve", "version"} {
 		cmd := commands[name]
 		_, _ = fmt.Fprintf(w, "  %-8s %s\n", cmd.name, cmd.description)
 	}
@@ -346,6 +551,15 @@ func printAgentUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  update    interactively update an existing .kiro agent config")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Use \"kapm agent <subcommand> --help\" for more information about an agent subcommand.")
+}
+
+func printPowerUsage(w io.Writer) {
+	_, _ = fmt.Fprintln(w, "Usage: kapm power <subcommand>")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Available subcommands:")
+	_, _ = fmt.Fprintln(w, "  install   install a Kiro Power package as a .kiro skill")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Use \"kapm power <subcommand> --help\" for more information about a power subcommand.")
 }
 
 func runVersion(_ []string) error {

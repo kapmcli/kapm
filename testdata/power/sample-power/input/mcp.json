@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-fetch"]
+    },
+    "search": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-brave-search"]
+    }
+  }
+}

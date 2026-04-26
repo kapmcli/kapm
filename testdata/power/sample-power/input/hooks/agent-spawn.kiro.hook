@@ -1,0 +1,12 @@
+{
+  "name": "Power Hook",
+  "description": "Capture current branch when the agent starts.",
+  "version": "1",
+  "when": {
+    "type": "agentSpawn"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "git branch --show-current"
+  }
+}

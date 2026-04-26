@@ -1,0 +1,219 @@
+package power
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestLocalFetcher(t *testing.T) {
+	f := localFetcher{}
+	src := PowerSource{Kind: SourceLocal, Path: "/some/local/path"}
+
+	dir, commit, cleanup, err := f.Fetch(context.Background(), src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != src.Path {
+		t.Errorf("dir = %q, want %q", dir, src.Path)
+	}
+	if commit != "" {
+		t.Errorf("commit = %q, want empty", commit)
+	}
+	if cleanup == nil {
+		t.Error("cleanup must not be nil")
+	}
+	cleanup()
+}
+
+func TestNewGitCommandEnv(t *testing.T) {
+	cmd := newGitCommand(context.Background(), "", "version")
+	found := false
+	for _, e := range cmd.Env {
+		if e == "GIT_TERMINAL_PROMPT=0" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("GIT_TERMINAL_PROMPT=0 not found in env: %v", cmd.Env)
+	}
+}
+
+func TestNewGitCommandDir(t *testing.T) {
+	cmd := newGitCommand(context.Background(), "/tmp", "version")
+	if cmd.Dir != "/tmp" {
+		t.Errorf("cmd.Dir = %q, want %q", cmd.Dir, "/tmp")
+	}
+	cmd2 := newGitCommand(context.Background(), "", "version")
+	if cmd2.Dir != "" {
+		t.Errorf("cmd.Dir = %q, want empty when dir is empty", cmd2.Dir)
+	}
+}
+
+func TestGitFetcher_SparseCheckoutArgv(t *testing.T) {
+	binDir, logPath := writeFakeGitScript(t, fakeGitOptions{
+		subpath: "sub/dir",
+		commit:  "abc123",
+	})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	src := PowerSource{
+		Kind:       SourceGitHubSubdir,
+		URL:        "https://github.com/o/r",
+		Owner:      "o",
+		Repo:       "r",
+		Ref:        "main",
+		PathInRepo: "sub/dir",
+	}
+
+	localDir, commit, cleanup, err := f.Fetch(context.Background(), src)
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if commit != "abc123" {
+		t.Fatalf("commit = %q, want abc123", commit)
+	}
+	if got := filepath.ToSlash(localDir); !strings.HasSuffix(got, "/sparse/sub/dir") {
+		t.Fatalf("localDir = %q, want sparse subpath", got)
+	}
+	defer cleanup()
+
+	got := readGitLog(t, logPath)
+	want := []string{
+		"0|init",
+		"0|remote add origin https://github.com/o/r.git",
+		"0|sparse-checkout init --cone",
+		"0|sparse-checkout set sub/dir",
+		"0|fetch --depth=1 origin main",
+		"0|checkout FETCH_HEAD",
+		"0|rev-parse HEAD",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("git argv mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestGitFetcher_FullCloneArgv(t *testing.T) {
+	binDir, logPath := writeFakeGitScript(t, fakeGitOptions{
+		commit: "abc123",
+	})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	src := PowerSource{
+		Kind: SourceGitRoot,
+		URL:  "https://github.com/o/r",
+		Ref:  "main",
+	}
+
+	localDir, commit, cleanup, err := f.Fetch(context.Background(), src)
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if commit != "abc123" {
+		t.Fatalf("commit = %q, want abc123", commit)
+	}
+	if got := filepath.ToSlash(localDir); !strings.HasSuffix(got, "/repo") {
+		t.Fatalf("localDir = %q, want repo root", got)
+	}
+	defer cleanup()
+
+	got := readGitLog(t, logPath)
+	wantPrefix := []string{
+		"0|clone --depth=1 --branch main https://github.com/o/r",
+		"0|rev-parse HEAD",
+	}
+	if len(got) < len(wantPrefix) {
+		t.Fatalf("git argv too short: %v", got)
+	}
+	for i, want := range wantPrefix {
+		if !strings.HasPrefix(got[i], want) {
+			t.Fatalf("git argv[%d] = %q, want prefix %q", i, got[i], want)
+		}
+	}
+}
+
+func TestGitFetcher_CleanupRemovesTempDir(t *testing.T) {
+	binDir, _ := writeFakeGitScript(t, fakeGitOptions{commit: "abc123"})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	localDir, _, cleanup, err := f.Fetch(context.Background(), PowerSource{
+		Kind: SourceGitRoot,
+		URL:  "https://example.com/repo.git",
+		Ref:  "main",
+	})
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	root := filepath.Dir(localDir)
+	cleanup()
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("cleanup did not remove %q, stat err = %v", root, err)
+	}
+}
+
+type fakeGitOptions struct {
+	subpath string
+	commit  string
+	failOn  string
+}
+
+func writeFakeGitScript(t *testing.T, opts fakeGitOptions) (string, string) {
+	t.Helper()
+
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "git.log")
+	scriptPath := filepath.Join(binDir, "git")
+	script := "#!/usr/bin/env bash\n" +
+		"set -euo pipefail\n" +
+		"printf '%s|%s\\n' \"${GIT_TERMINAL_PROMPT:-}\" \"$*\" >> " + shellQuote(logPath) + "\n" +
+		"if [[ -n ${FAIL_ON:-} && \"$*\" == \"$FAIL_ON\" ]]; then exit 17; fi\n" +
+		"case \"$1\" in\n" +
+		"  init)\n" +
+		"    mkdir -p .git\n" +
+		"    ;;\n" +
+		"  clone)\n" +
+		"    dest=\"${@: -1}\"\n" +
+		"    mkdir -p \"$dest/.git\"\n" +
+		"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$dest/$SUBPATH\"; fi\n" +
+		"    ;;\n" +
+		"  checkout)\n" +
+		"    if [[ -n ${SUBPATH:-} ]]; then mkdir -p \"$PWD/$SUBPATH\"; fi\n" +
+		"    ;;\n" +
+		"  rev-parse)\n" +
+		"    printf '%s\\n' \"${COMMIT:-deadbeef}\"\n" +
+		"    ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q): %v", scriptPath, err)
+	}
+
+	t.Setenv("FAIL_ON", opts.failOn)
+	t.Setenv("SUBPATH", opts.subpath)
+	t.Setenv("COMMIT", opts.commit)
+	return binDir, logPath
+}
+
+func readGitLog(t *testing.T, path string) []string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil
+	}
+	return lines
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}

@@ -197,6 +197,12 @@ func copyDirectoryContents(src, dst string) error {
 	return nil
 }
 
+// CopyDirectoryContents recursively copies src into dst while skipping symlinks
+// with warnings. It preserves file modes up to 0o755.
+func CopyDirectoryContents(src, dst string) error {
+	return copyDirectoryContents(src, dst)
+}
+
 func copyFile(src, dst string, mode os.FileMode) (err error) {
 	in, err := openNoFollow(src)
 	if err != nil {

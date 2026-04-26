@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,8 +13,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kapmcli/kapm/internal/install"
+	"github.com/kapmcli/kapm/internal/power"
 )
 
 func TestRunUsageAndHelp(t *testing.T) {
@@ -102,6 +106,8 @@ func TestRunCommandHelpOutputsToStdout(t *testing.T) {
 		{name: "serve help", args: []string{"serve", "--help"}, want: "Usage: kapm serve [flags]"},
 		{name: "init-hook help", args: []string{"init-hook", "--help"}, want: "Usage: kapm init-hook [--remove]"},
 		{name: "hook-handler help", args: []string{"hook-handler", "--help"}, want: "Usage: kapm hook-handler [flags]"},
+		{name: "power help", args: []string{"power", "--help"}, want: "Usage: kapm power <subcommand>"},
+		{name: "power install help", args: []string{"power", "install", "--help"}, want: "Usage: kapm power install <url-or-path> [flags]"},
 		{name: "agent generate help", args: []string{"agent", "generate", "--help"}, want: "Usage: kapm agent generate [flags]"},
 		{name: "agent update help", args: []string{"agent", "update", "--help"}, want: "Usage: kapm agent update <name> [flags]"},
 	}
@@ -159,6 +165,16 @@ func TestRunArgumentValidation(t *testing.T) {
 			name:    "agent rejects unknown subcommand",
 			args:    []string{"agent", "bogus"},
 			wantErr: `unknown agent subcommand "bogus"`,
+		},
+		{
+			name:    "power rejects unknown subcommand",
+			args:    []string{"power", "bogus"},
+			wantErr: `unknown power subcommand "bogus"`,
+		},
+		{
+			name:    "power install requires source",
+			args:    []string{"power", "install"},
+			wantErr: "power install requires exactly one argument",
 		},
 		{
 			name:    "init-hook rejects positional args",
@@ -299,6 +315,125 @@ func TestRunInstallForwardsApmArgs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.InstallArgs, []string{"--update", "owner/repo"}) {
 		t.Fatalf("install args = %v, want %v", got.InstallArgs, []string{"--update", "owner/repo"})
+	}
+}
+
+func TestRunPowerInstallCallsPowerInstaller(t *testing.T) {
+	orig := powerInstallRun
+	t.Cleanup(func() { powerInstallRun = orig })
+
+	target := t.TempDir()
+	powerDir := filepath.Join(target, ".kiro", "powers", "sample-power")
+	if err := os.MkdirAll(filepath.Join(powerDir, "hooks"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(powerDir, "steering"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(steering) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(powerDir, "POWER.md"), []byte("---\nname: sample-power\ndescription: test\n---\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(POWER.md) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(powerDir, "steering", "style.md"), []byte("# style\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(steering) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(powerDir, "mcp.json"), []byte("{\"mcpServers\":{\"fetch\":{\"type\":\"http\",\"url\":\"https://example.com/mcp\"}}}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(mcp.json) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(powerDir, "hooks", "agent-spawn.kiro.hook"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(hook) error = %v", err)
+	}
+
+	var got power.InstallOptions
+	powerInstallRun = func(_ context.Context, opts power.InstallOptions) (*power.Result, error) {
+		got = opts
+		return &power.Result{
+			Name:          "sample-power",
+			PowerDir:      powerDir,
+			ResourcePaths: []string{filepath.Join(powerDir, "POWER.md"), filepath.Join(powerDir, "steering", "style.md")},
+			MCPConfigPath: filepath.Join(powerDir, "mcp.json"),
+			HooksDir:      filepath.Join(powerDir, "hooks"),
+		}, nil
+	}
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"power", "install", "./testdata/power/sample-power/input", "--target-dir", target, "--timeout", "7s"})
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if got.Source.Kind != power.SourceLocal || got.Source.Path != "./testdata/power/sample-power/input" {
+		t.Fatalf("source = %#v", got.Source)
+	}
+	if got.TargetDir != target {
+		t.Fatalf("TargetDir = %q, want %q", got.TargetDir, target)
+	}
+	if got.Timeout != 7*time.Second {
+		t.Fatalf("Timeout = %v, want 7s", got.Timeout)
+	}
+	if !strings.Contains(stdout, `Installed power "sample-power"`) {
+		t.Fatalf("stdout = %q, want install summary", stdout)
+	}
+	if !strings.Contains(stdout, "Suggested custom agent config:") {
+		t.Fatalf("stdout = %q, want suggestion header", stdout)
+	}
+	for _, resourcePath := range []string{filepath.Join(powerDir, "POWER.md"), filepath.Join(powerDir, "steering", "style.md")} {
+		if !strings.Contains(stdout, fmt.Sprintf(`"file://%s"`, filepath.ToSlash(resourcePath))) {
+			t.Fatalf("stdout = %q, want resource snippet for %s", stdout, resourcePath)
+		}
+	}
+	if !strings.Contains(stdout, `"mcpServers":`) || !strings.Contains(stdout, `"fetch"`) {
+		t.Fatalf("stdout = %q, want mcpServers snippet", stdout)
+	}
+	if !strings.Contains(stdout, filepath.ToSlash(filepath.Join(powerDir, "hooks", "agent-spawn.kiro.hook"))) {
+		t.Fatalf("stdout = %q, want hook file hint", stdout)
+	}
+	if !strings.Contains(stdout, fmt.Sprintf("Remove: rm -rf %s", powerDir)) {
+		t.Fatalf("stdout = %q, want remove hint", stdout)
+	}
+}
+
+func TestRunPowerInstallRefOverridesGitSource(t *testing.T) {
+	orig := powerInstallRun
+	t.Cleanup(func() { powerInstallRun = orig })
+
+	var got power.InstallOptions
+	powerInstallRun = func(_ context.Context, opts power.InstallOptions) (*power.Result, error) {
+		got = opts
+		return &power.Result{Name: "repo", PowerDir: "/tmp/repo", ResourcePaths: []string{"/tmp/repo/POWER.md"}}, nil
+	}
+
+	if err := run([]string{"power", "install", "https://github.com/o/r", "--ref", "v1.2.3"}); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got.Source.Ref != "v1.2.3" {
+		t.Fatalf("Source.Ref = %q, want v1.2.3", got.Source.Ref)
+	}
+}
+
+func TestRunPowerInstallParsesGitHubShorthand(t *testing.T) {
+	orig := powerInstallRun
+	t.Cleanup(func() { powerInstallRun = orig })
+
+	var got power.InstallOptions
+	powerInstallRun = func(_ context.Context, opts power.InstallOptions) (*power.Result, error) {
+		got = opts
+		return &power.Result{Name: "context7-power", PowerDir: "/tmp/context7-power", ResourcePaths: []string{"/tmp/context7-power/POWER.md"}}, nil
+	}
+
+	if err := run([]string{"power", "install", "upstash/context7/tree/master/plugins/context7-power"}); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got.Source.Kind != power.SourceGitHubSubdir {
+		t.Fatalf("Source.Kind = %q, want %q", got.Source.Kind, power.SourceGitHubSubdir)
+	}
+	if got.Source.URL != "https://github.com/upstash/context7" {
+		t.Fatalf("Source.URL = %q", got.Source.URL)
+	}
+	if got.Source.Ref != "master" || got.Source.PathInRepo != "plugins/context7-power" {
+		t.Fatalf("Source = %#v", got.Source)
 	}
 }
 

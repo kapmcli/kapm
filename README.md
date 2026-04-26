@@ -48,6 +48,9 @@ kapm sync
 # Install an APM package and sync
 kapm install owner/repo
 
+# Install a Kiro Power package into .kiro/powers
+kapm power install ./local/power
+
 # Create a Kiro agent interactively
 kapm agent generate
 
@@ -85,6 +88,19 @@ kapm install github/awesome-copilot/skills/review-and-refactor
 ```
 
 Most arguments are forwarded to `apm install`. kapm also adds `--sync-force` (overwrite `.kiro/` files during the post-install sync) and `--target-dir` (change where the post-install sync writes `.kiro/`). `--global` is still forwarded to `apm install`; when present, kapm uses your home directory as the sync root, and it cannot be combined with `--target-dir`.
+
+### `kapm power install`
+
+Installs a Kiro Power package into `.kiro/powers/<name>/`.
+
+```bash
+kapm power install ./local/power
+kapm power install upstash/context7/plugins/context7-power --ref master
+kapm power install https://github.com/owner/repo
+kapm power install https://github.com/owner/repo/tree/main/sub/path
+```
+
+Use `POWER.md` and `steering/*.md` as custom agent `resources`. If the Power includes `mcp.json` or `hooks/`, wire those into the agent separately. Use `--force` to overwrite an existing kapm-managed Power dir.
 
 ### `kapm agent generate` / `kapm agent update`
 
@@ -158,6 +174,7 @@ kapm serve --port 9097                    # custom port
 | prompts | `.kiro/prompts/<name>.md` |
 | commands | `.kiro/prompts/<name>.md` |
 | skills | `.kiro/skills/<name>/...` |
+| Kiro Power package | `.kiro/powers/<name>/...` |
 | agents / chatmodes | `.kiro/agents/<name>.json` + `.kiro/agent-prompts/<name>.md` |
 | MCP dependencies | `.kiro/settings/mcp.json` (merged) |
 

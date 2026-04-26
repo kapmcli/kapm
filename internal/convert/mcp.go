@@ -54,6 +54,9 @@ type mcpServerEntry struct {
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
+type MCPConfig = mcpConfig
+type MCPServerEntry = mcpServerEntry
+
 // ConvertMCP merges MCP dependencies from `apm.yml` into `.kiro/settings/mcp.json`.
 func ConvertMCP(srcDir, dstDir string, force bool) error {
 	_, err := ConvertMCPWithReport(srcDir, dstDir, force)
