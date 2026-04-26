@@ -2,8 +2,28 @@
 
 package hook
 
-import "os"
+import (
+	"os"
 
-func flockExclusive(_ *os.File) error { return nil }
-func flockUnlock(_ *os.File)          {}
-func flockRotate(_ *os.File) error    { return nil }
+	"golang.org/x/sys/windows"
+)
+
+const wholeFileLock = ^uint32(0)
+
+func flockExclusive(f *os.File) error {
+	return lockFile(f, windows.LOCKFILE_EXCLUSIVE_LOCK)
+}
+
+func flockUnlock(f *os.File) {
+	var overlapped windows.Overlapped
+	_ = windows.UnlockFileEx(windows.Handle(f.Fd()), 0, wholeFileLock, wholeFileLock, &overlapped)
+}
+
+func flockRotate(f *os.File) error {
+	return lockFile(f, windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY)
+}
+
+func lockFile(f *os.File, flags uint32) error {
+	var overlapped windows.Overlapped
+	return windows.LockFileEx(windows.Handle(f.Fd()), flags, 0, wholeFileLock, wholeFileLock, &overlapped)
+}

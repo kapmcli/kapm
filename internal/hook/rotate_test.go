@@ -45,6 +45,29 @@ func readGzip(t *testing.T, path string) string {
 	return string(data)
 }
 
+func waitForPathState(path string, wantExists bool) error {
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		_, err := os.Stat(path)
+		if wantExists && err == nil {
+			return nil
+		}
+		if !wantExists && os.IsNotExist(err) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if wantExists {
+				return err
+			}
+			if err == nil {
+				return errors.New("path still exists")
+			}
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestRotateBasic(t *testing.T) {
 	dir := t.TempDir()
 	content := strings.Repeat(`{"event":"x"}`+"\n", 5)
@@ -166,18 +189,18 @@ func TestRotateConcurrentNoDoubleProcess(t *testing.T) {
 	wg.Wait()
 
 	// Exactly one .gz should exist, original removed.
-	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl.gz")); err != nil {
-		t.Error("shared.jsonl.gz should exist")
+	if err := waitForPathState(filepath.Join(dir, "shared.jsonl.gz"), true); err != nil {
+		t.Errorf("shared.jsonl.gz should exist: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl")); !os.IsNotExist(err) {
-		t.Error("shared.jsonl should be removed")
+	if err := waitForPathState(filepath.Join(dir, "shared.jsonl"), false); err != nil {
+		t.Errorf("shared.jsonl should be removed: %v", err)
 	}
 	// No .tmp leftovers.
-	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl.gz.tmp")); !os.IsNotExist(err) {
-		t.Error("tmp file should not remain")
+	if err := waitForPathState(filepath.Join(dir, "shared.jsonl.gz.tmp"), false); err != nil {
+		t.Errorf("tmp file should not remain: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "shared.jsonl.rotating")); !os.IsNotExist(err) {
-		t.Error("rotating file should not remain")
+	if err := waitForPathState(filepath.Join(dir, "shared.jsonl.rotating"), false); err != nil {
+		t.Errorf("rotating file should not remain: %v", err)
 	}
 	// Content intact.
 	got := readGzip(t, filepath.Join(dir, "shared.jsonl.gz"))
