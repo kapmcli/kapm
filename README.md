@@ -1,7 +1,10 @@
 <h1 align="center">kapm</h1>
 
 <p align="center">
-  Sync <a href="https://microsoft.github.io/apm/">APM</a> content into Kiro-native <code>.kiro/</code> files, install Kiro hooks, and monitor Kiro sessions.
+  Observability for Kiro agent sessions: capture hook events, inspect tool calls, failures, durations, spawned agents, and skill usage from TUI/Web dashboards.
+</p>
+<p align="center">
+  Also includes compatibility helpers for syncing <a href="https://microsoft.github.io/apm/">APM</a> packages and Kiro Powers into project-local <code>.kiro/</code> files.
 </p>
 
 <p align="center">
@@ -13,7 +16,7 @@
 <p align="center">
   ⚡ <a href="#installation">Installation</a>
   · 🚀 <a href="#quick-start">Quick start</a>
-  · 🛰️ <a href="#kapm-monitor">Monitoring</a>
+  · 🛰️ <a href="#kapm-monitor--kapm-serve">Monitoring</a>
   · 📦 <a href="https://github.com/kapmcli/kapm/releases">Releases</a>
 </p>
 
@@ -42,29 +45,86 @@ just build
 ## Quick start
 
 ```bash
-# Convert existing APM content to .kiro/
-kapm sync
-
-# Install an APM package and sync
-kapm install owner/repo
-
-# Install a Kiro Power package into .kiro/powers
-kapm power install ./local/power
-
-# Create a Kiro agent interactively
+# Create or use an existing Kiro agent
 kapm agent generate
 
-# Enable session logging
+# Enable session logging for selected agents
 kapm init-hook
 
-# View session metrics (TUI)
+# Run Kiro as usual, then inspect what happened
+
+# View session metrics in the terminal
 kapm monitor
 
-# WebUI dashboard
+# Open the WebUI dashboard
 kapm serve
+
+# Optional: sync existing APM content into .kiro/
+kapm sync
+
+# Optional: install an APM package and sync
+kapm install owner/repo
+
+# Optional: install a Kiro Power package into .kiro/powers
+kapm power install ./local/power
 ```
 
 ## Commands
+
+### `kapm init-hook`
+
+Installs a structured JSONL logger into selected agents. Every hook event (`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, `stop`) is recorded to `.kiro/logs/{session_id}.jsonl`.
+
+```bash
+kapm init-hook             # interactive agent selection
+kapm init-hook --remove    # remove kapm-managed hooks
+```
+
+Generated hook entries invoke `kapm hook-handler --agent <name>` directly, so no separate helper binary is installed under `.kiro/hooks/`.
+
+Re-running is safe — existing hooks are replaced, not duplicated. Your own hook entries are preserved.
+
+**Note**: `kapm sync --force` and `kapm install --sync-force` rewrite agent JSON and remove hooks. Re-run `kapm init-hook` after force-sync.
+
+### `kapm monitor` / `kapm serve`
+
+Inspect recorded Kiro sessions from `.kiro/logs/`: tool calls, failures, durations, spawned agents, skill reads, and per-agent timelines.
+
+```bash
+kapm monitor                                     # TUI
+kapm monitor --json                              # JSON to stdout
+kapm monitor --json --session=<sid>              # single session (merged)
+kapm monitor --json --session=<sid> --agent=<a>  # single session, single agent
+
+kapm serve                                # WebUI on :9090
+kapm serve --port 9097                    # custom port
+```
+
+![WebUI](demo-media/webui-overview.png)
+
+![WebUI session detail](demo-media/webui-session-detail.png)
+
+#### WebUI routes
+
+| Route | Description |
+|---|---|
+| `GET /` | Overview dashboard |
+| `GET /sessions` | Session list |
+| `GET /sessions/{id}` | Merged session detail |
+| `GET /sessions/{id}/{agent}` | Per-agent session detail |
+| `GET /agents` | Agent list |
+| `GET /tools` | Tool usage |
+| `GET /skills` | Skill reads |
+
+### `kapm agent generate` / `kapm agent update`
+
+Interactively create or update `.kiro/agents/<name>.json` and `.kiro/agent-prompts/<name>.md`.
+
+```bash
+kapm agent generate            # create new agent
+kapm agent generate --force    # overwrite existing
+kapm agent update <name>       # update existing agent
+```
 
 ### `kapm sync`
 
@@ -102,71 +162,9 @@ kapm power install https://github.com/owner/repo/tree/main/sub/path
 
 Use `POWER.md` and `steering/*.md` as custom agent `resources`. If the Power includes `mcp.json` or `hooks/`, wire those into the agent separately. Use `--force` to overwrite an existing kapm-managed Power dir.
 
-### `kapm agent generate` / `kapm agent update`
+## Compatibility mapping
 
-Interactively create or update `.kiro/agents/<name>.json` and `.kiro/agent-prompts/<name>.md`.
-
-```bash
-kapm agent generate            # create new agent
-kapm agent generate --force    # overwrite existing
-kapm agent update <name>       # update existing agent
-```
-
-### `kapm init-hook`
-
-Installs a structured JSONL logger into selected agents. Every hook event (`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, `stop`) is recorded to `.kiro/logs/{session_id}.jsonl`.
-
-```bash
-kapm init-hook             # interactive agent selection
-kapm init-hook --remove    # remove kapm-managed hooks
-```
-
-Generated hook entries invoke `kapm hook-handler --agent <name>` directly, so no separate helper binary is installed under `.kiro/hooks/`.
-
-Re-running is safe — existing hooks are replaced, not duplicated. Your own hook entries are preserved.
-
-**Note**: `kapm sync --force` and `kapm install --sync-force` rewrite agent JSON and remove hooks. Re-run `kapm init-hook` after force-sync.
-
-### `kapm hook-handler`
-
-Consumes a Kiro hook event from stdin and appends a JSONL record to `.kiro/logs/`.
-
-```bash
-kapm hook-handler --agent coder
-AGENT=coder kapm hook-handler
-```
-
-### `kapm monitor`
-
-TUI dashboard for session metrics from `.kiro/logs/`. Use `kapm serve` for the WebUI.
-
-```bash
-kapm monitor                                     # TUI
-kapm monitor --json                              # JSON to stdout
-kapm monitor --json --session=<sid>              # single session (merged)
-kapm monitor --json --session=<sid> --agent=<a>  # single session, single agent
-
-kapm serve                                # WebUI on :9090
-kapm serve --port 9097                    # custom port
-```
-
-![WebUI](demo-media/webui-overview.png)
-
-![WebUI session detail](demo-media/webui-session-detail.png)
-
-#### WebUI routes
-
-| Route | Description |
-|---|---|
-| `GET /` | Overview dashboard |
-| `GET /sessions` | Session list |
-| `GET /sessions/{id}` | Merged session detail |
-| `GET /sessions/{id}/{agent}` | Per-agent session detail |
-| `GET /agents` | Agent list |
-| `GET /tools` | Tool usage |
-| `GET /skills` | Skill reads |
-
-## Output mapping
+These mappings are compatibility helpers for using APM and Power package content from Kiro projects.
 
 | APM source | Kiro output |
 |---|---|
@@ -189,11 +187,6 @@ Each JSONL line contains `ts`, `agent`, `session`, `event`, and where applicable
 ### Rotation
 
 On `agentSpawn`, idle session files (>24h since last write) are gzip-compressed to `.jsonl.gz`. Active sessions are left as `.jsonl`.
-
-## Requirements
-
-- Go 1.26+
-- `apm` on PATH, or [uv](https://github.com/astral-sh/uv) for the `uvx` fallback
 
 ## Development
 
