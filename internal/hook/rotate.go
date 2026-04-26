@@ -45,10 +45,34 @@ func rotate(logDir, currentSessionID string, stderr io.Writer, minAge time.Durat
 			// already compressed
 			continue
 		}
-		if err := compressFile(src, gz); err != nil {
+		if err := compressWithRetry(src, gz); err != nil {
 			_, _ = fmt.Fprintf(stderr, "hook-handler: rotate %q: %v\n", src, err)
 		}
 	}
+}
+
+func compressWithRetry(src, dst string) error {
+	err := compressFile(src, dst)
+	if err == nil {
+		return nil
+	}
+	if !shouldRetryCompress(src, dst) {
+		return err
+	}
+	if retryErr := compressFile(src, dst); retryErr != nil {
+		return errors.Join(err, fmt.Errorf("retry: %w", retryErr))
+	}
+	return nil
+}
+
+func shouldRetryCompress(src, dst string) bool {
+	if _, err := os.Stat(dst); err == nil {
+		return false
+	}
+	if _, err := os.Stat(src); err == nil {
+		return true
+	}
+	return false
 }
 
 // compressFile gzip-compresses src to dst atomically via a .tmp file.

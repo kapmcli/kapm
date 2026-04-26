@@ -154,12 +154,15 @@ func TestRotateFailureRecovery(t *testing.T) {
 	if err := os.Mkdir(tmp, 0o700); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(tmp, "keep"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("setup nested file: %v", err)
+	}
 
 	var stderr bytes.Buffer
 	rotate(dir, "current", &stderr, 0)
 
-	// tmp directory should still exist (we can't remove a dir with os.Remove), but
-	// the original .jsonl must be intact.
+	// tmp directory should still exist because it's non-empty and os.Remove(tmp)
+	// cannot clear it during recovery, so the original .jsonl must be intact.
 	if _, err := os.Stat(src); err != nil {
 		t.Error("original .jsonl should be intact after failure")
 	}
@@ -168,6 +171,48 @@ func TestRotateFailureRecovery(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Error("expected error on stderr")
+	}
+}
+
+func TestRotateRetriesAfterRestoredFailure(t *testing.T) {
+	dir := t.TempDir()
+	content := `{"event":"x"}` + "\n"
+	src := filepath.Join(dir, "old.jsonl")
+	tmp := filepath.Join(dir, "old.jsonl.gz.tmp")
+	writeJSONL(t, src, content)
+
+	calls := 0
+	testHookAfterClaim = func() {
+		calls++
+		switch calls {
+		case 1:
+			if err := os.Mkdir(tmp, 0o700); err != nil {
+				t.Fatalf("setup retry tmp dir: %v", err)
+			}
+		case 2:
+			testHookAfterClaim = nil
+		}
+	}
+	t.Cleanup(func() {
+		testHookAfterClaim = nil
+		_ = os.Remove(tmp)
+	})
+
+	var stderr bytes.Buffer
+	rotate(dir, "current", &stderr, 0)
+
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr after retry: %s", stderr.String())
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 compression attempts, got %d", calls)
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Error("old.jsonl should be removed after successful retry")
+	}
+	got := readGzip(t, src+".gz")
+	if got != content {
+		t.Errorf("gz content mismatch after retry: got %q want %q", got, content)
 	}
 }
 
