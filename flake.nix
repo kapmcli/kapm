@@ -51,6 +51,7 @@
             vhs
             ttyd
             nodejs
+            bash
           ];
 
           shellHook = ''
