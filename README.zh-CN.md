@@ -197,9 +197,8 @@ go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
 
-`DESIGN.md` 是 WebUI 设计系统的权威文档。`internal/serve/DESIGN.md` 是用于 `/design-preview` 的嵌入式生成副本。
-
 ## Links
 
 - [APM docs](https://microsoft.github.io/apm/) · [APM CLI](https://microsoft.github.io/apm/reference/cli-commands/) · [APM source](https://github.com/microsoft/apm)
 - [Kiro prompts](https://kiro.dev/docs/cli/chat/manage-prompts/) · [Kiro skills](https://kiro.dev/docs/skills/) · [Kiro steering](https://kiro.dev/docs/steering/) · [Kiro custom agents](https://kiro.dev/docs/chat/subagents/)
+- [design.md](https://github.com/google-labs-code/design.md)

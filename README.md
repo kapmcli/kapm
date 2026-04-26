@@ -197,9 +197,8 @@ go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
 
-`DESIGN.md` is the canonical WebUI design-system document. `internal/serve/DESIGN.md` is the generated embedded copy used by `/design-preview`.
-
 ## Links
 
 - [APM docs](https://microsoft.github.io/apm/) · [APM CLI](https://microsoft.github.io/apm/reference/cli-commands/) · [APM source](https://github.com/microsoft/apm)
 - [Kiro prompts](https://kiro.dev/docs/cli/chat/manage-prompts/) · [Kiro skills](https://kiro.dev/docs/skills/) · [Kiro steering](https://kiro.dev/docs/steering/) · [Kiro custom agents](https://kiro.dev/docs/chat/subagents/)
+- [design.md](https://github.com/google-labs-code/design.md)
