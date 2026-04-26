@@ -183,8 +183,8 @@ func writeFakeGitScript(t *testing.T, opts fakeGitOptions) (string, string) {
 			"if \"%1\"==\"clone\" (\r\n" +
 			"  set \"dest=\"\r\n" +
 			"  for %%A in (%*) do set \"dest=%%~A\"\r\n" +
-			"  mkdir \"%dest%\\.git\" 2>nul\r\n" +
-			"  if not \"%SUBPATH%\"==\"\" mkdir \"%dest%\\%SUBPATH%\" 2>nul\r\n" +
+			"  mkdir \"!dest!\\.git\" 2>nul\r\n" +
+			"  if not \"%SUBPATH%\"==\"\" mkdir \"!dest!\\%SUBPATH%\" 2>nul\r\n" +
 			"  exit /b 0\r\n" +
 			")\r\n" +
 			"if \"%1\"==\"checkout\" (\r\n" +
