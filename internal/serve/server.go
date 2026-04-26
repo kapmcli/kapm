@@ -147,10 +147,15 @@ func renderMarkdown(s string) template.HTML {
 
 // templateFuncs are the helpers callable from templates.
 var templateFuncs = template.FuncMap{
-	"add":            func(a, b int) int { return a + b },
-	"sub":            func(a, b int) int { return a - b },
-	"mul":            func(a, b float64) float64 { return a * b },
-	"div":            func(a, b float64) float64 { if b == 0 { return 0 }; return a / b },
+	"add": func(a, b int) int { return a + b },
+	"sub": func(a, b int) int { return a - b },
+	"mul": func(a, b float64) float64 { return a * b },
+	"div": func(a, b float64) float64 {
+		if b == 0 {
+			return 0
+		}
+		return a / b
+	},
 	"itof":           func(a int) float64 { return float64(a) },
 	"dur":            func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
 	"renderMarkdown": renderMarkdown,
@@ -604,12 +609,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		var matches []monitor.SessionDetail
-		for _, sd := range loaded.dm.Sessions {
-			if sd.ID == id {
-				matches = append(matches, sd)
-			}
-		}
+		matches := sessionDetailsByID(loaded.dm.Sessions, id)
 		if len(matches) == 0 {
 			s.handleNotFound(w, r)
 			return
@@ -637,27 +637,15 @@ func (s *Server) handleSessionAgentDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		var target *monitor.SessionDetail
-		var others []monitor.AgentRef
-		for i := range loaded.dm.Sessions {
-			sd := loaded.dm.Sessions[i]
-			if sd.ID != id {
-				continue
-			}
-			if sd.Agent == agent {
-				target = &sd
-			} else {
-				others = append(others, monitor.AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
-			}
-		}
-		if target == nil {
+		target, others, ok := sessionDetailByIDAndAgent(loaded.dm.Sessions, id, agent)
+		if !ok {
 			s.handleNotFound(w, r)
 			return
 		}
 		s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
 			"Title":      "Session " + id + " / " + agent,
 			"Active":     "sessions",
-			"Session":    *target,
+			"Session":    target,
 			"AgentLinks": buildAgentLinks(id, others),
 			"SelfURL":    "/sessions/" + id + "/" + url.PathEscape(agent),
 		})
@@ -679,17 +667,16 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgentDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		for _, a := range loaded.dm.Agents {
-			if a.Name == name {
-				s.renderPage(w, r, http.StatusOK, agentDetailTmpl, map[string]any{
-					"Title":  "Agent " + name,
-					"Active": "agents",
-					"Agent":  a,
-				})
-				return
-			}
+		agent, ok := agentDetailByName(loaded.dm.Agents, name)
+		if !ok {
+			s.handleNotFound(w, r)
+			return
 		}
-		s.handleNotFound(w, r)
+		s.renderPage(w, r, http.StatusOK, agentDetailTmpl, map[string]any{
+			"Title":  "Agent " + name,
+			"Active": "agents",
+			"Agent":  agent,
+		})
 	})
 }
 
@@ -725,23 +712,22 @@ func buildToolDetailVM(td monitor.ToolDetail, now time.Time) toolDetailVM {
 func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		for _, t := range loaded.dm.Tools {
-			if t.Name == name {
-				toolDetailJSON, err := json.Marshal(buildToolDetailVM(t, s.now()))
-				if err != nil {
-					s.handleError(w, r, err, http.StatusInternalServerError)
-					return
-				}
-				s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
-					"Title":          "Tool " + name,
-					"Active":         "tools",
-					"Tool":           t,
-					"ToolDetailJSON": template.JS(toolDetailJSON), //nolint:gosec // json.Marshal escapes <,>,& so </script> injection is impossible
-				})
-				return
-			}
+		tool, ok := toolDetailByName(loaded.dm.Tools, name)
+		if !ok {
+			s.handleNotFound(w, r)
+			return
 		}
-		s.handleNotFound(w, r)
+		toolDetailJSON, err := json.Marshal(buildToolDetailVM(tool, s.now()))
+		if err != nil {
+			s.handleError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+		s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
+			"Title":          "Tool " + name,
+			"Active":         "tools",
+			"Tool":           tool,
+			"ToolDetailJSON": template.JS(toolDetailJSON), //nolint:gosec // json.Marshal escapes <,>,& so </script> injection is impossible
+		})
 	})
 }
 
@@ -818,12 +804,7 @@ func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
 // skills is not preserved in DetailedMetrics) and remain empty.
 func filterBySession(dm monitor.DetailedMetrics, id string) monitor.DetailedMetrics {
 	out := monitor.DetailedMetrics{}
-	var matches []monitor.SessionDetail
-	for _, sd := range dm.Sessions {
-		if sd.ID == id {
-			matches = append(matches, sd)
-		}
-	}
+	matches := sessionDetailsByID(dm.Sessions, id)
 	if len(matches) == 0 {
 		return out
 	}
@@ -855,6 +836,52 @@ func filterByAgent(dm monitor.DetailedMetrics, name string) monitor.DetailedMetr
 	}
 	out.Tools, out.Overview.Tools = monitor.AggregateToolsFromTimeline(out.Sessions)
 	return out
+}
+
+func sessionDetailsByID(sessions []monitor.SessionDetail, id string) []monitor.SessionDetail {
+	var matches []monitor.SessionDetail
+	for _, sd := range sessions {
+		if sd.ID == id {
+			matches = append(matches, sd)
+		}
+	}
+	return matches
+}
+
+func sessionDetailByIDAndAgent(sessions []monitor.SessionDetail, id, agent string) (monitor.SessionDetail, []monitor.AgentRef, bool) {
+	var target monitor.SessionDetail
+	var others []monitor.AgentRef
+	var found bool
+	for _, sd := range sessions {
+		if sd.ID != id {
+			continue
+		}
+		if sd.Agent == agent {
+			target = sd
+			found = true
+			continue
+		}
+		others = append(others, monitor.AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
+	}
+	return target, others, found
+}
+
+func agentDetailByName(agents []monitor.AgentDetail, name string) (monitor.AgentDetail, bool) {
+	for _, agent := range agents {
+		if agent.Name == name {
+			return agent, true
+		}
+	}
+	return monitor.AgentDetail{}, false
+}
+
+func toolDetailByName(tools []monitor.ToolDetail, name string) (monitor.ToolDetail, bool) {
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool, true
+		}
+	}
+	return monitor.ToolDetail{}, false
 }
 
 // defaultMaxSSE is the default cap for concurrent SSE connections.

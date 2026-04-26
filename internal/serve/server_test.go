@@ -620,6 +620,59 @@ func TestHandleSessionDetailNotFound(t *testing.T) {
 	}
 }
 
+func TestHandleAgentDetailHappyPath(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/agents/kiro", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Agent kiro") {
+		t.Fatalf("body missing agent detail title: %s", rr.Body.String())
+	}
+}
+
+func TestHandleAgentDetailNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/agents/does-not-exist", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+}
+
+func TestHandleToolDetailHappyPath(t *testing.T) {
+	srv, _ := newMultiAgentServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/tools/bash", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Tool bash") {
+		t.Fatalf("body missing tool detail title: %s", rr.Body.String())
+	}
+}
+
+func TestHandleToolDetailNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/tools/does-not-exist", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Not Found") {
+		t.Fatalf("body = %q, want not found page", rr.Body.String())
+	}
+}
+
 // TestHandleSSE_CapExceededReturns429 verifies that connections beyond MaxSSE
 // receive 429 Too Many Requests with Retry-After: 1, and that the counter
 // decrements on close so a subsequent connection succeeds.
