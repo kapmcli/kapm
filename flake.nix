@@ -1,5 +1,5 @@
 {
-  description = "kamgr - Kiro Asset Manager CLI";
+  description = "kapm - Kiro Agent Package Manager";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -11,6 +11,35 @@
       let
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
+
+        kapm = pkgs.buildGoModule rec {
+          pname = "kapm";
+          version =
+            if self ? shortRev
+            then "unstable-${self.shortRev}"
+            else "unstable";
+
+          src = self;
+          vendorHash = "sha256-Yv4F8xCroefqiYxY/hIV9vZJH3FLCYXor321aNVXugo=";
+          subPackages = [ "cmd/kapm" ];
+
+          ldflags = [
+            "-s"
+            "-w"
+            "-X main.version=${version}"
+            "-X main.commit=${if self ? shortRev then self.shortRev else "dirty"}"
+            "-X main.date=${if self ? lastModifiedDate then self.lastModifiedDate else "unknown"}"
+          ];
+
+          env.CGO_ENABLED = "0";
+
+          meta = {
+            description = "Convert APM content into Kiro-native .kiro files and monitor Kiro sessions";
+            homepage = "https://github.com/kapmcli/kapm";
+            license = lib.licenses.mit;
+            mainProgram = "kapm";
+          };
+        };
 
         indexionPlatform = {
           "aarch64-darwin" = "darwin-arm64";
@@ -38,6 +67,16 @@
         };
       in
       {
+        packages = {
+          kapm = kapm;
+          default = kapm;
+        };
+
+        apps = {
+          kapm = flake-utils.lib.mkApp { drv = kapm; };
+          default = self.apps.${system}.kapm;
+        };
+
         devShell = pkgs.mkShell {
           packages = with pkgs; [
             go_1_26

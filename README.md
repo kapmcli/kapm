@@ -38,6 +38,12 @@ brew install --cask kapmcli/tap/kapm
 
 Download the archive for your platform from [GitHub Releases](https://github.com/kapmcli/kapm/releases), extract it, and place `kapm` or `kapm.exe` on your `PATH`.
 
+### Nix
+
+```bash
+nix profile add github:kapmcli/kapm#kapm
+```
+
 ### From source
 
 ```bash
