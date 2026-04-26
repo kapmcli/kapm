@@ -557,7 +557,7 @@ func printPowerUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage: kapm power <subcommand>")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Available subcommands:")
-	_, _ = fmt.Fprintln(w, "  install   install a Kiro Power package as a .kiro skill")
+	_, _ = fmt.Fprintln(w, "  install   install a Kiro Power package into .kiro/powers/")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Use \"kapm power <subcommand> --help\" for more information about a power subcommand.")
 }

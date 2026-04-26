@@ -1,10 +1,7 @@
 <h1 align="center">kapm</h1>
 
 <p align="center">
-  Observability for Kiro agent sessions: capture hook events and inspect tool calls, failures, durations, spawned agents, and skill usage from TUI/Web dashboards.
-</p>
-<p align="center">
-  Also includes compatibility helpers for syncing <a href="https://microsoft.github.io/apm/">APM</a> packages and Kiro Powers into project-local <code>.kiro/</code> files.
+  Observability and package compatibility tools for Kiro agent projects.
 </p>
 
 <p align="center">
@@ -14,29 +11,34 @@
 </p>
 
 <p align="center">
-  ⚡ <a href="#installation">Installation</a>
-  · 🚀 <a href="#quick-start">Quick start</a>
-  · 🛰️ <a href="#kapm-monitor--kapm-serve">Monitoring</a>
-  · 📦 <a href="https://github.com/kapmcli/kapm/releases">Releases</a>
+  English · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
   <img src="demo-media/demo.gif" alt="kapm demo" />
 </p>
 
+## What kapm does
+
+kapm helps you understand and maintain Kiro agent workspaces.
+
+- **Monitor Kiro sessions**: record hook events to `.kapm/logs` and inspect sessions, tool calls, failures, durations, spawned agents, prompts, responses, and skill reads in a terminal UI or WebUI.
+- **Manage Kiro agents**: create and update `.kiro/agents/*.json` and `.kiro/agent-prompts/*.md` interactively.
+- **Bridge package formats**: sync APM packages and Kiro Powers into project-local `.kiro/` files.
+
 ## Installation
 
-### Homebrew (macOS / Linux)
+### Homebrew (macOS)
 
 ```bash
 brew install --cask kapmcli/tap/kapm
 ```
 
-### Windows
+### Release archives
 
-Download the Windows zip archive from the [GitHub Releases](https://github.com/kapmcli/kapm/releases) page and place `kapm.exe` on your `PATH`.
+Download the archive for your platform from [GitHub Releases](https://github.com/kapmcli/kapm/releases), extract it, and place `kapm` or `kapm.exe` on your `PATH`.
 
-### Build from source
+### From source
 
 ```bash
 just build
@@ -45,66 +47,49 @@ just build
 ## Quick start
 
 ```bash
-# Create or use an existing Kiro agent
+# Create or update a Kiro agent.
 kapm agent generate
 
-# Enable session logging for selected agents
+# Install kapm hook entries for selected agents.
 kapm init-hook
 
-# Run Kiro as usual, then inspect what happened
-
-# View session metrics in the terminal
+# Run Kiro, then inspect the recorded sessions.
 kapm monitor
-
-# Open the WebUI dashboard
 kapm serve
-
-# Sync existing APM content into .kiro/
-kapm sync
-
-# Install an APM package and sync
-kapm install owner/repo
-
-# Install a Kiro Power package into .kiro/powers
-kapm power install ./local/power
 ```
 
-## Commands
+## Monitoring
 
-### `kapm init-hook`
+`kapm init-hook` adds kapm-managed hook entries to selected `.kiro/agents/*.json` files. Those entries run `kapm hook-handler --agent <name>` whenever Kiro emits a hook event.
 
-Installs a structured JSONL logger into selected agents. Every hook event (`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, `stop`) is recorded to `.kapm/logs/{session_id}.jsonl`.
+Hook events are written as JSONL under `.kapm/logs/{session_id}.jsonl`. `kapm monitor` reads those logs in the terminal, and `kapm serve` exposes the same data through a local WebUI.
 
 ```bash
-kapm init-hook             # interactive agent selection
-kapm init-hook --remove    # remove kapm-managed hooks
+kapm init-hook             # select agents interactively
+kapm init-hook --remove    # remove kapm-managed hook entries
+
+kapm monitor
+kapm monitor --json
+kapm monitor --json --session <session-id>
+kapm monitor --json --session <session-id> --agent <agent-name>
+
+kapm serve
+kapm serve --port 9097 --open
 ```
 
-Generated hook entries invoke `kapm hook-handler --agent <name>` directly, so no separate helper binary is installed under `.kiro/hooks/`.
-
-Re-running is safe — existing hooks are replaced, not duplicated. Your own hook entries are preserved.
-
-**Note**: `kapm sync --force` and `kapm install --sync-force` rewrite agent JSON and remove hooks. Re-run `kapm init-hook` after force-sync.
-
-### `kapm monitor` / `kapm serve`
-
-Inspect recorded Kiro sessions from `.kapm/logs/`: tool calls, failures, durations, spawned agents, skill reads, and per-agent timelines.
+Both `monitor` and `serve` support:
 
 ```bash
-kapm monitor                                     # TUI
-kapm monitor --json                              # JSON to stdout
-kapm monitor --json --session=<sid>              # single session (merged)
-kapm monitor --json --session=<sid> --agent=<a>  # single session, single agent
-
-kapm serve                                # WebUI on :9090
-kapm serve --port 9097                    # custom port
+--since 24h
+--logs-dir <path>
+--target-dir <path>
 ```
 
-![WebUI](demo-media/webui-overview.png)
+![WebUI overview](demo-media/webui-overview.png)
 
 ![WebUI session detail](demo-media/webui-session-detail.png)
 
-#### WebUI routes
+### WebUI routes
 
 | Route | Description |
 |---|---|
@@ -113,84 +98,85 @@ kapm serve --port 9097                    # custom port
 | `GET /sessions/{id}` | Merged session detail |
 | `GET /sessions/{id}/{agent}` | Per-agent session detail |
 | `GET /agents` | Agent list |
+| `GET /agents/{name}` | Agent detail |
 | `GET /tools` | Tool usage |
+| `GET /tools/{name}` | Tool detail |
 | `GET /skills` | Skill reads |
 
-### `kapm agent generate` / `kapm agent update`
-
-Interactively create or update `.kiro/agents/<name>.json` and `.kiro/agent-prompts/<name>.md`.
+## Agent configuration
 
 ```bash
-kapm agent generate            # create new agent
-kapm agent generate --force    # overwrite existing
-kapm agent update <name>       # update existing agent
+kapm agent generate
+kapm agent generate --force
+kapm agent update <name>
 ```
 
-### `kapm sync`
+`agent generate` creates `.kiro/agents/<name>.json` and `.kiro/agent-prompts/<name>.md`. `agent update` edits an existing agent and preserves unknown JSON fields.
 
-Reads APM content from `.apm/`, `apm_modules/`, and MCP dependencies in `apm.yml`, then writes the corresponding `.kiro/` output.
-
-```bash
-kapm sync            # skip existing files
-kapm sync --force    # overwrite existing files
-```
-
-Source precedence: local `.apm/` > installed modules (in `apm.yml` dependency order) > fallback path sort. Existing files are skipped unless `--force` is passed.
-
-### `kapm install`
-
-Runs `apm install` (or `uvx --from apm-cli apm install` as fallback), then syncs the result into `.kiro/`.
+## APM compatibility
 
 ```bash
+kapm sync
+kapm sync --force
+
 kapm install owner/repo
 kapm install --update owner/repo
 kapm install github/awesome-copilot/skills/review-and-refactor
 ```
 
-Most arguments are forwarded to `apm install`. kapm also adds `--sync-force` (overwrite `.kiro/` files during the post-install sync) and `--target-dir` (change where the post-install sync writes `.kiro/`). `--global` is still forwarded to `apm install`; when present, kapm uses your home directory as the sync root, and it cannot be combined with `--target-dir`.
+`kapm sync` reads local `.apm/`, installed `apm_modules/`, and MCP dependencies from `apm.yml`, then writes Kiro-native files under `.kiro/`. Existing files are skipped unless `--force` is used.
 
-### `kapm power install`
+`kapm install` delegates installation to `apm install`. If `apm` is not available, kapm falls back to `uvx --from apm-cli==0.9.1 apm install`. After installation, it runs the same sync step.
 
-Installs a Kiro Power package into `.kiro/powers/<name>/`.
+Additional kapm flags for `install`:
+
+```bash
+--sync-force            # overwrite .kiro files during the sync step
+--target-dir <path>     # choose the project directory to sync into
+```
+
+`--global` is forwarded to APM and uses your home directory as the sync root. It cannot be combined with `--target-dir`.
+
+## Kiro Power compatibility
 
 ```bash
 kapm power install ./local/power
-kapm power install upstash/context7/plugins/context7-power --ref master
+kapm power install owner/repo
+kapm power install owner/repo/path/to/power --ref main
 kapm power install https://github.com/owner/repo
-kapm power install https://github.com/owner/repo/tree/main/sub/path
+kapm power install https://github.com/owner/repo/tree/main/path/to/power
 ```
 
-Use `POWER.md` and `steering/*.md` as custom agent `resources`. If the Power includes `mcp.json` or `hooks/`, wire those into the agent separately. Use `--force` to overwrite an existing kapm-managed Power dir.
+`power install` copies the raw Power package into `.kiro/powers/<name>/`. It does not synthesize a skill file, merge MCP settings, or activate hooks. Instead, it prints concrete follow-up snippets:
+
+- `file://` resource entries for `POWER.md` and `steering/*.md`
+- `mcpServers` content when the Power includes `mcp.json`
+- hook files to adapt when the Power includes `hooks/`
+- a manual remove command
+
+Use `--force` to overwrite an existing kapm-managed Power directory.
 
 ## Compatibility mapping
 
-These mappings are compatibility helpers for using APM and Power package content from Kiro projects.
-
-| APM source | Kiro output |
+| Source | Kiro output |
 |---|---|
-| instructions | `.kiro/steering/<name>.md` |
-| prompts | `.kiro/prompts/<name>.md` |
-| commands | `.kiro/prompts/<name>.md` |
-| skills | `.kiro/skills/<name>/...` |
+| APM `instructions` | `.kiro/steering/<name>.md` |
+| APM `prompts` | `.kiro/prompts/<name>.md` |
+| APM `commands` | `.kiro/prompts/<name>.md` |
+| APM `skills` | `.kiro/skills/<name>/...` |
+| APM `agents` / `chatmodes` | `.kiro/agents/<name>.json` + `.kiro/agent-prompts/<name>.md` |
+| APM MCP dependencies | `.kiro/settings/mcp.json` |
 | Kiro Power package | `.kiro/powers/<name>/...` |
-| agents / chatmodes | `.kiro/agents/<name>.json` + `.kiro/agent-prompts/<name>.md` |
-| MCP dependencies | `.kiro/settings/mcp.json` (merged) |
 
-## Logging
+## Log format and retention
 
-### Log contents
+Each JSONL record may contain `ts`, `agent`, `session`, `event`, `tool`, `tool_input`, `tool_response`, `assistant_response`, `prompt`, and `cwd`.
 
-Each JSONL line contains `ts`, `agent`, `session`, `event`, and where applicable `tool`, `tool_input`, `tool_response`, `prompt`, `cwd`.
+Logs can contain file paths, source code, prompts, model responses, or credentials captured from tool input and output. `.kapm/` is gitignored, directories are created with `0700`, and log files are created with `0600`.
 
-**Warning**: logs include full tool input/response which may contain file paths, source code, or credentials. `.kapm/logs/` is gitignored and created with `0o700` / files `0o600`.
-
-### Rotation
-
-On `agentSpawn`, idle session files (>24h since last write) are gzip-compressed to `.jsonl.gz`. Active sessions are left as `.jsonl`.
+On `agentSpawn`, idle session logs older than 24 hours are compressed to `.jsonl.gz`. Active sessions remain as `.jsonl`.
 
 ## Development
-
-Always build via the Justfile:
 
 ```bash
 just build
@@ -198,16 +184,16 @@ just test
 just lint
 ```
 
-Manual build (if `just` is unavailable):
+If `just` is unavailable:
 
 ```bash
 go build -o kapm ./cmd/kapm      # macOS / Linux
 go build -o kapm.exe ./cmd/kapm  # Windows
 ```
 
-The repo-root `DESIGN.md` is the canonical WebUI design-system document, following the upstream [`design.md`](https://github.com/google-labs-code/design.md) convention. `internal/serve/DESIGN.md` is only the generated embed copy for `/design-preview`.
+`DESIGN.md` is the canonical WebUI design-system document. `internal/serve/DESIGN.md` is the generated embedded copy used by `/design-preview`.
 
 ## Links
 
-- [APM docs](https://microsoft.github.io/apm/) · [APM quick start](https://microsoft.github.io/apm/getting-started/quick-start/) · [APM manifest schema](https://microsoft.github.io/apm/reference/manifest-schema/) · [APM CLI](https://microsoft.github.io/apm/reference/cli-commands/) · [APM source](https://github.com/microsoft/apm)
+- [APM docs](https://microsoft.github.io/apm/) · [APM CLI](https://microsoft.github.io/apm/reference/cli-commands/) · [APM source](https://github.com/microsoft/apm)
 - [Kiro prompts](https://kiro.dev/docs/cli/chat/manage-prompts/) · [Kiro skills](https://kiro.dev/docs/skills/) · [Kiro steering](https://kiro.dev/docs/steering/) · [Kiro custom agents](https://kiro.dev/docs/chat/subagents/)
