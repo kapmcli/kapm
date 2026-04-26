@@ -541,7 +541,7 @@ func TestRunHookHandlerWritesJSONLAndUsesEnvFallback(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, ".kiro", "logs", "hook-handler-env.jsonl"))
+	data, err := os.ReadFile(filepath.Join(dir, ".kapm", "logs", "hook-handler-env.jsonl"))
 	if err != nil {
 		t.Fatalf("ReadFile(log): %v", err)
 	}
@@ -590,7 +590,7 @@ func TestRunHookHandlerFlagOverridesEnv(t *testing.T) {
 		t.Fatalf("run(hook-handler --agent) error = %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, ".kiro", "logs", "hook-handler-flag.jsonl"))
+	data, err := os.ReadFile(filepath.Join(dir, ".kapm", "logs", "hook-handler-flag.jsonl"))
 	if err != nil {
 		t.Fatalf("ReadFile(log): %v", err)
 	}

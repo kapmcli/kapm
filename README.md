@@ -73,7 +73,7 @@ kapm power install ./local/power
 
 ### `kapm init-hook`
 
-Installs a structured JSONL logger into selected agents. Every hook event (`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, `stop`) is recorded to `.kiro/logs/{session_id}.jsonl`.
+Installs a structured JSONL logger into selected agents. Every hook event (`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, `stop`) is recorded to `.kapm/logs/{session_id}.jsonl`.
 
 ```bash
 kapm init-hook             # interactive agent selection
@@ -88,7 +88,7 @@ Re-running is safe — existing hooks are replaced, not duplicated. Your own hoo
 
 ### `kapm monitor` / `kapm serve`
 
-Inspect recorded Kiro sessions from `.kiro/logs/`: tool calls, failures, durations, spawned agents, skill reads, and per-agent timelines.
+Inspect recorded Kiro sessions from `.kapm/logs/`: tool calls, failures, durations, spawned agents, skill reads, and per-agent timelines.
 
 ```bash
 kapm monitor                                     # TUI
@@ -182,7 +182,7 @@ These mappings are compatibility helpers for using APM and Power package content
 
 Each JSONL line contains `ts`, `agent`, `session`, `event`, and where applicable `tool`, `tool_input`, `tool_response`, `prompt`, `cwd`.
 
-**Warning**: logs include full tool input/response which may contain file paths, source code, or credentials. `.kiro/logs/` is gitignored and created with `0o700` / files `0o600`.
+**Warning**: logs include full tool input/response which may contain file paths, source code, or credentials. `.kapm/logs/` is gitignored and created with `0o700` / files `0o600`.
 
 ### Rotation
 

@@ -33,7 +33,7 @@ media-webui port="9097" logs-dir="testdata/monitor/logs" since="8760h": build
 
 # Launch the WebUI server in the background, or stop it with `just serve stop`.
 # Logs to /tmp/kapm-serve.log, PID to /tmp/kapm-serve.pid.
-serve port="9090" logs-dir=".kiro/logs" since="24h":
+serve port="9090" logs-dir=".kapm/logs" since="24h":
 	#!/usr/bin/env bash
 	set -eu
 	port="{{port}}"

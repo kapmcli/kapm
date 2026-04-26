@@ -86,7 +86,7 @@ func fixture() DetailedMetrics {
 }
 
 func newTestModel() *model {
-	m := NewModel(".kiro/logs", 24*time.Hour)
+	m := NewModel(".kapm/logs", 24*time.Hour)
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40

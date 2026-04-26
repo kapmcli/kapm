@@ -35,7 +35,7 @@ func readLines(t *testing.T, path string) []string {
 }
 
 func logFile(dir, session string) string {
-	return filepath.Join(dir, ".kiro", "logs", session+".jsonl")
+	return filepath.Join(dir, ".kapm", "logs", session+".jsonl")
 }
 
 func TestHandleWritesAgentSpawnRecord(t *testing.T) {
@@ -128,7 +128,7 @@ func TestHandleFallsBackWhenSessionIdEmpty(t *testing.T) {
 		t.Fatalf("want 0, got %d", code)
 	}
 	expected := fmt.Sprintf("unknown-%d.jsonl", nano)
-	entries, _ := os.ReadDir(filepath.Join(dir, ".kiro", "logs"))
+	entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs"))
 	if len(entries) != 1 || entries[0].Name() != expected {
 		t.Errorf("want file %q, got %v", expected, entries)
 	}
@@ -198,7 +198,7 @@ func TestHandleInvalidSessionIDFallsBack(t *testing.T) {
 				t.Fatalf("want 0, got %d", code)
 			}
 			expected := fmt.Sprintf("unknown-%d.jsonl", nano)
-			entries, _ := os.ReadDir(filepath.Join(dir, ".kiro", "logs"))
+			entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs"))
 			if len(entries) != 1 || entries[0].Name() != expected {
 				t.Errorf("id=%q: want file %q, got %v", id, expected, entries)
 			}
@@ -263,11 +263,11 @@ func TestHandleOversizedEvent_Warns(t *testing.T) {
 	}
 }
 
-func TestHandleRejectsSymlinkedKiro(t *testing.T) {
+func TestHandleRejectsSymlinkedKapm(t *testing.T) {
 	dir := t.TempDir()
 	target := t.TempDir()
-	kiroLink := filepath.Join(dir, ".kiro")
-	if err := os.Symlink(target, kiroLink); err != nil {
+	kapmLink := filepath.Join(dir, ".kapm")
+	if err := os.Symlink(target, kapmLink); err != nil {
 		t.Skipf("os.Symlink not available: %v", err)
 	}
 	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s-sym","cwd":"/tmp"}`)
@@ -313,7 +313,7 @@ func TestHandleJSONLRoundTrip(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("want 0, got %d", code)
 	}
-	logsDir := filepath.Join(dir, ".kiro", "logs")
+	logsDir := filepath.Join(dir, ".kapm", "logs")
 	recs, err := monitor.LoadRecords(logsDir, time.Time{})
 	if err != nil {
 		t.Fatalf("LoadRecords: %v", err)

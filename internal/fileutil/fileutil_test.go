@@ -11,42 +11,42 @@ import (
 	"github.com/kapmcli/kapm/internal/testutil"
 )
 
-func TestWarnIfKiroSymlink_Symlink(t *testing.T) {
+func TestWarnIfKapmSymlink_Symlink(t *testing.T) {
 	buf, restore := testutil.CaptureSlog(t)
 	defer restore()
 	dir := t.TempDir()
-	target := filepath.Join(dir, "real-kiro")
-	link := filepath.Join(dir, ".kiro")
+	target := filepath.Join(dir, "real-kapm")
+	link := filepath.Join(dir, ".kapm")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("os.Symlink not available: %v", err)
 	}
-	fileutil.WarnIfKiroSymlink(filepath.Join(link, "logs"))
+	fileutil.WarnIfKapmSymlink(filepath.Join(link, "logs"))
 	if !strings.Contains(buf.String(), "symlink") {
 		t.Errorf("expected slog warn about symlink, got: %s", buf.String())
 	}
 }
 
-func TestWarnIfKiroSymlink_Regular(t *testing.T) {
+func TestWarnIfKapmSymlink_Regular(t *testing.T) {
 	buf, restore := testutil.CaptureSlog(t)
 	defer restore()
 	dir := t.TempDir()
-	kiroDir := filepath.Join(dir, ".kiro")
-	if err := os.MkdirAll(filepath.Join(kiroDir, "logs"), 0o755); err != nil {
+	kapmDir := filepath.Join(dir, ".kapm")
+	if err := os.MkdirAll(filepath.Join(kapmDir, "logs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	fileutil.WarnIfKiroSymlink(filepath.Join(kiroDir, "logs"))
+	fileutil.WarnIfKapmSymlink(filepath.Join(kapmDir, "logs"))
 	if strings.Contains(buf.String(), "symlink") {
 		t.Errorf("expected no warn, got: %s", buf.String())
 	}
 }
 
-func TestWarnIfKiroSymlink_Missing(t *testing.T) {
+func TestWarnIfKapmSymlink_Missing(t *testing.T) {
 	buf, restore := testutil.CaptureSlog(t)
 	defer restore()
-	fileutil.WarnIfKiroSymlink(filepath.Join(t.TempDir(), "nowhere", "logs"))
+	fileutil.WarnIfKapmSymlink(filepath.Join(t.TempDir(), "nowhere", "logs"))
 	if strings.Contains(buf.String(), "symlink") {
 		t.Errorf("expected no warn for missing path, got: %s", buf.String())
 	}

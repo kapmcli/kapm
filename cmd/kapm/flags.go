@@ -36,7 +36,7 @@ func parseLogsCommand(fs *flag.FlagSet, args []string, command string) (bool, er
 // Call resolveLogsFlags after fs.Parse(args) succeeds.
 func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir *string) {
 	since = fs.String("since", "24h", "time window (e.g. 1h, 3d, 1w)")
-	logsDir = fs.String("logs-dir", "", "path to logs directory (default: <target-dir>/.kiro/logs)")
+	logsDir = fs.String("logs-dir", "", "path to logs directory (default: <target-dir>/.kapm/logs)")
 	targetDir = fs.String("target-dir", ".", "target directory (default: current directory)")
 	return
 }
@@ -49,9 +49,9 @@ func resolveLogsFlags(since, logsDir, targetDir string) (logsFlags, error) {
 	}
 	resolved := logsDir
 	if resolved == "" {
-		resolved = filepath.Join(td, paths.KiroDir, paths.LogsSubdir)
+		resolved = filepath.Join(td, paths.KapmDir, paths.LogsSubdir)
 	}
-	fileutil.WarnIfKiroSymlink(resolved)
+	fileutil.WarnIfKapmSymlink(resolved)
 	d, err := monitor.ParseDuration(since)
 	if err != nil {
 		return logsFlags{}, fmt.Errorf("--since: %w", err)

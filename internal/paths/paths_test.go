@@ -9,6 +9,7 @@ import (
 func TestConstants(t *testing.T) {
 	cases := []struct{ name, got, want string }{
 		{"KiroDir", paths.KiroDir, ".kiro"},
+		{"KapmDir", paths.KapmDir, ".kapm"},
 		{"AgentsSubdir", paths.AgentsSubdir, "agents"},
 		{"AgentPromptsDir", paths.AgentPromptsDir, "agent-prompts"},
 		{"HooksSubdir", paths.HooksSubdir, "hooks"},

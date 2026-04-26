@@ -184,16 +184,16 @@ func IsSymlinkMode(m os.FileMode) bool {
 	return m&os.ModeSymlink != 0
 }
 
-// WarnIfKiroSymlink emits a slog.Warn if the parent .kiro directory of
+// WarnIfKapmSymlink emits a slog.Warn if the parent .kapm directory of
 // logsDir is a symlink. It never returns an error (warn-only contract).
 // Silent on missing path or lstat errors so startup is never blocked.
-func WarnIfKiroSymlink(logsDir string) {
-	kiroDir := filepath.Dir(logsDir)
-	isLink, err := IsSymlinkPath(kiroDir)
+func WarnIfKapmSymlink(logsDir string) {
+	kapmDir := filepath.Dir(logsDir)
+	isLink, err := IsSymlinkPath(kapmDir)
 	if err != nil {
 		return
 	}
 	if isLink {
-		slog.Warn(".kiro directory is a symlink; proceed with caution", "path", kiroDir)
+		slog.Warn(".kapm directory is a symlink; proceed with caution", "path", kapmDir)
 	}
 }

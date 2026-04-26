@@ -127,10 +127,10 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	}
 	line = append(line, '\n')
 
-	logDir := filepath.Join(rootDir, paths.KiroDir, paths.LogsSubdir)
-	kiroDir := filepath.Join(rootDir, paths.KiroDir)
-	if isLink, err := fileutil.IsSymlinkPath(kiroDir); err == nil && isLink {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: %q is a symlink, refusing to write logs\n", kiroDir)
+	logDir := filepath.Join(rootDir, paths.KapmDir, paths.LogsSubdir)
+	kapmDir := filepath.Join(rootDir, paths.KapmDir)
+	if isLink, err := fileutil.IsSymlinkPath(kapmDir); err == nil && isLink {
+		_, _ = fmt.Fprintf(stderr, "hook-handler: %q is a symlink, refusing to write logs\n", kapmDir)
 		return 0
 	}
 	if err := os.MkdirAll(logDir, 0o700); err != nil {

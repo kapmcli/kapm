@@ -213,7 +213,7 @@ func TestRotateConcurrentNoDoubleProcess(t *testing.T) {
 // writing the agentSpawn record.
 func TestHandleRotatesOnAgentSpawn(t *testing.T) {
 	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".kiro", "logs")
+	logDir := filepath.Join(dir, ".kapm", "logs")
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestWriteGzipTo_GzCloseFailJoinsOutClose(t *testing.T) {
 // TestHandleNoRotateOnOtherEvents verifies rotate is NOT called for non-agentSpawn events.
 func TestHandleNoRotateOnOtherEvents(t *testing.T) {
 	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".kiro", "logs")
+	logDir := filepath.Join(dir, ".kapm", "logs")
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
