@@ -174,7 +174,7 @@ func writeFakeGitScript(t *testing.T, opts fakeGitOptions) (string, string) {
 		scriptPath := filepath.Join(binDir, "git.bat")
 		script := "@echo off\r\n" +
 			"setlocal EnableDelayedExpansion\r\n" +
-			">> \"" + logPath + "\" echo %GIT_TERMINAL_PROMPT%|%*\r\n" +
+			">> \"" + logPath + "\" echo %GIT_TERMINAL_PROMPT%^|%*\r\n" +
 			"if not \"%FAIL_ON%\"==\"\" if \"%*\"==\"%FAIL_ON%\" exit /b 17\r\n" +
 			"if \"%1\"==\"init\" (\r\n" +
 			"  mkdir .git 2>nul\r\n" +
