@@ -1,7 +1,7 @@
 <h1 align="center">kapm</h1>
 
 <p align="center">
-  Observability for Kiro agent sessions: capture hook events, inspect tool calls, failures, durations, spawned agents, and skill usage from TUI/Web dashboards.
+  Observability for Kiro agent sessions: capture hook events and inspect tool calls, failures, durations, spawned agents, and skill usage from TUI/Web dashboards.
 </p>
 <p align="center">
   Also includes compatibility helpers for syncing <a href="https://microsoft.github.io/apm/">APM</a> packages and Kiro Powers into project-local <code>.kiro/</code> files.
@@ -59,13 +59,13 @@ kapm monitor
 # Open the WebUI dashboard
 kapm serve
 
-# Optional: sync existing APM content into .kiro/
+# Sync existing APM content into .kiro/
 kapm sync
 
-# Optional: install an APM package and sync
+# Install an APM package and sync
 kapm install owner/repo
 
-# Optional: install a Kiro Power package into .kiro/powers
+# Install a Kiro Power package into .kiro/powers
 kapm power install ./local/power
 ```
 
