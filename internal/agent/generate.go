@@ -34,6 +34,14 @@ type GenerateOptions struct {
 	Out   io.Writer
 }
 
+type generateDetails struct {
+	Description  string
+	Model        string
+	Tools        []string
+	AllowedTools []string
+	Resources    []string
+}
+
 // Generate interactively creates a new .kiro agent config and prompt file.
 func Generate(opts GenerateOptions) error {
 	return generate(opts)
@@ -45,11 +53,7 @@ func generate(opts GenerateOptions) error {
 
 	p := cli.NewPrompter(opts.In, opts.Out)
 
-	name, err := p.Ask("name", "")
-	if err != nil {
-		return err
-	}
-	name, err = validateAndNormalizeName(name)
+	name, err := promptGenerateName(p)
 	if err != nil {
 		return err
 	}
@@ -60,67 +64,12 @@ func generate(opts GenerateOptions) error {
 		return err
 	}
 
-	description, err := p.Ask("description", "")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(description) == "" {
-		return fmt.Errorf("description cannot be empty")
-	}
-
-	model, err := p.Select("model", knownModels, 0)
-	if err != nil {
-		return err
-	}
-	if model == knownModels[len(knownModels)-1] {
-		model, err = p.Ask("custom model", "")
-		if err != nil {
-			return err
-		}
-		model = strings.TrimSpace(model)
-		if strings.TrimSpace(model) == "" {
-			return fmt.Errorf("custom model cannot be empty")
-		}
-	}
-
-	presets := []string{"default", "orchestrator"}
-	preset, err := p.Select("preset", presets, 0)
+	details, err := promptGenerateDetails(p)
 	if err != nil {
 		return err
 	}
 
-	var presetTools []string
-	if preset == presets[1] {
-		presetTools = apmconfig.OrchestratorAgentTools
-	} else {
-		presetTools = apmconfig.DefaultAgentTools
-	}
-	tools, err := p.MultiSelectWithDefaults("tools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, presetTools))
-	if err != nil {
-		return err
-	}
-
-	allowedTools, err := p.MultiSelectWithDefaults("allowedTools (defaults to selected tools, press Enter to accept)", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, tools))
-	if err != nil {
-		return err
-	}
-
-	resources := []string{apmconfig.DefaultSkillsResource}
-	extraResources, err := p.MultiInput("additional resources")
-	if err != nil {
-		return err
-	}
-	resources = append(resources, extraResources...)
-
-	config := agentConfig{
-		Name:         name,
-		Description:  description,
-		Prompt:       fmt.Sprintf("file://../agent-prompts/%s.md", name),
-		Model:        model,
-		Tools:        append([]string(nil), tools...),
-		AllowedTools: append([]string(nil), allowedTools...),
-		Resources:    append([]string(nil), resources...),
-	}
+	config := buildGenerateConfig(name, details)
 
 	jsonData, err := apmconfig.MarshalIndentedJSON(config)
 	if err != nil {
@@ -131,6 +80,119 @@ func generate(opts GenerateOptions) error {
 	}
 
 	return nil
+}
+
+func promptGenerateName(p *cli.Prompter) (string, error) {
+	name, err := p.Ask("name", "")
+	if err != nil {
+		return "", err
+	}
+	return validateAndNormalizeName(name)
+}
+
+func promptGenerateDetails(p *cli.Prompter) (generateDetails, error) {
+	description, err := promptGenerateDescription(p)
+	if err != nil {
+		return generateDetails{}, err
+	}
+	model, err := promptGenerateModel(p)
+	if err != nil {
+		return generateDetails{}, err
+	}
+	tools, allowedTools, err := promptGenerateToolSettings(p)
+	if err != nil {
+		return generateDetails{}, err
+	}
+	resources, err := promptGenerateResources(p)
+	if err != nil {
+		return generateDetails{}, err
+	}
+	return generateDetails{
+		Description:  description,
+		Model:        model,
+		Tools:        tools,
+		AllowedTools: allowedTools,
+		Resources:    resources,
+	}, nil
+}
+
+func promptGenerateDescription(p *cli.Prompter) (string, error) {
+	description, err := p.Ask("description", "")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(description) == "" {
+		return "", fmt.Errorf("description cannot be empty")
+	}
+	return description, nil
+}
+
+func promptGenerateModel(p *cli.Prompter) (string, error) {
+	model, err := p.Select("model", knownModels, 0)
+	if err != nil {
+		return "", err
+	}
+	if model != knownModels[len(knownModels)-1] {
+		return model, nil
+	}
+	model, err = p.Ask("custom model", "")
+	if err != nil {
+		return "", err
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return "", fmt.Errorf("custom model cannot be empty")
+	}
+	return model, nil
+}
+
+func promptGenerateToolSettings(p *cli.Prompter) ([]string, []string, error) {
+	presetTools, err := promptGeneratePresetTools(p)
+	if err != nil {
+		return nil, nil, err
+	}
+	tools, err := p.MultiSelectWithDefaults("tools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, presetTools))
+	if err != nil {
+		return nil, nil, err
+	}
+	allowedTools, err := p.MultiSelectWithDefaults("allowedTools (defaults to selected tools, press Enter to accept)", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, tools))
+	if err != nil {
+		return nil, nil, err
+	}
+	return tools, allowedTools, nil
+}
+
+func promptGeneratePresetTools(p *cli.Prompter) ([]string, error) {
+	presets := []string{"default", "orchestrator"}
+	preset, err := p.Select("preset", presets, 0)
+	if err != nil {
+		return nil, err
+	}
+	if preset == presets[1] {
+		return apmconfig.OrchestratorAgentTools, nil
+	}
+	return apmconfig.DefaultAgentTools, nil
+}
+
+func promptGenerateResources(p *cli.Prompter) ([]string, error) {
+	resources := []string{apmconfig.DefaultSkillsResource}
+	extraResources, err := p.MultiInput("additional resources")
+	if err != nil {
+		return nil, err
+	}
+	return append(resources, extraResources...), nil
+}
+
+func buildGenerateConfig(name string, details generateDetails) agentConfig {
+	return agentConfig{
+		Name:         name,
+		Description:  details.Description,
+		Prompt:       fmt.Sprintf("file://../agent-prompts/%s.md", name),
+		Model:        details.Model,
+		Tools:        append([]string(nil), details.Tools...),
+		AllowedTools: append([]string(nil), details.AllowedTools...),
+		Resources:    append([]string(nil), details.Resources...),
+	}
 }
 
 func ensureAgentPaths(root, name, agentPath, promptPath string, force bool) error {
