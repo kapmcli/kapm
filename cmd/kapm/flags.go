@@ -17,6 +17,21 @@ type logsFlags struct {
 	Since   time.Duration
 }
 
+// parseLogsCommand parses a command's flags and rejects positional arguments.
+func parseLogsCommand(fs *flag.FlagSet, args []string, command string) (bool, error) {
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if err := rejectPositionalArgs(fs, command); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 // addLogsFlags registers the common flags on fs and returns pointers to the flag values.
 // Call resolveLogsFlags after fs.Parse(args) succeeds.
 func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir *string) {

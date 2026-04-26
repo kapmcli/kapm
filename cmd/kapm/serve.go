@@ -23,15 +23,12 @@ func runServe(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	ok, err := parseFlagSet(fs, args)
+	ok, err := parseLogsCommand(fs, args, "serve")
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return nil
-	}
-	if err := rejectPositionalArgs(fs, "serve"); err != nil {
-		return err
 	}
 
 	lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)

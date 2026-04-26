@@ -21,16 +21,12 @@ func runMonitor(args []string) error {
 		fs.PrintDefaults()
 	}
 
-	ok, err := parseFlagSet(fs, args)
+	ok, err := parseLogsCommand(fs, args, "monitor")
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return nil
-	}
-
-	if err := rejectPositionalArgs(fs, "monitor"); err != nil {
-		return err
 	}
 
 	if (*session != "" || *agent != "") && !*jsonOut {
