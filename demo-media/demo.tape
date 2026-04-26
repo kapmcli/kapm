@@ -14,10 +14,6 @@ Show
 
 Sleep 1s
 
-Type "./kapm version"
-Enter
-Sleep 2.5s
-
 Type "./kapm monitor --since 8760h --logs-dir testdata/monitor/logs"
 Enter
 Wait+Screen /Overview/
