@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -173,8 +174,8 @@ var templateFuncs = template.FuncMap{
 		}
 		return a / b
 	},
-	"itof":           func(a int) float64 { return float64(a) },
-	"dur":            func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
+	"itof":                func(a int) float64 { return float64(a) },
+	"dur":                 func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
 	"renderMarkdown":      renderMarkdown,
 	"renderDiff":          renderDiff,
 	"hasShellEvent":       monitor.HasShellEvent,
@@ -240,10 +241,10 @@ type metricsCacheEntry struct {
 	dashboardSessions []monitor.SessionMetric
 	storedAt          time.Time
 
-	sseOnce          sync.Once
-	summaryHTMLFrame []byte
+	sseOnce           sync.Once
+	summaryHTMLFrame  []byte
 	overviewJSONFrame []byte
-	sseErr           error
+	sseErr            error
 }
 
 // Server serves the kapm WebUI.
@@ -640,15 +641,20 @@ func (s *Server) withMetrics(w http.ResponseWriter, r *http.Request, fn func(loa
 }
 
 // handleDashboard renders the Overview page from embedded templates.
+// Overview.Sessions is capped to dashboardSessionLimit distinct session IDs
+// (paginateByID page=1 semantics) so the Recent Sessions panel stays bounded.
+// Depends on computeDashboardSessions returning rows in LastActivity-desc order
+// so that page 1 of 50 is the most-recent 50 distinct IDs.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		overviewJSON, err := marshalForTemplate(loaded.dm.Overview)
+		capped, _ := paginateByID(loaded.sessions, 1, dashboardSessionLimit)
+		overview := loaded.dm.Overview
+		overview.Sessions = capped
+		overviewJSON, err := marshalForTemplate(overview)
 		if err != nil {
 			s.handleError(w, r, err, http.StatusInternalServerError)
 			return
 		}
-		overview := loaded.dm.Overview
-		overview.Sessions = loaded.sessions
 		s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
 			"Title":        "Overview",
 			"Active":       "overview",
@@ -659,13 +665,40 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleSessions renders the sessions list page.
+// handleSessions renders the sessions list page with ?page=N pagination.
+// Distinct session IDs are paginated at sessionsPerPage per page.
+// Invalid or out-of-range page values are clamped: <1 → 1, >totalPages → totalPages.
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
+		// Parse ?page= — default 1, clamp <1 to 1.
+		requested := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			if n, err := strconv.Atoi(p); err == nil && n >= 1 {
+				requested = n
+			}
+		}
+
+		all := loaded.dm.Overview.Sessions
+		rows, total := paginateByID(all, requested, sessionsPerPage)
+
+		totalPages := (total + sessionsPerPage - 1) / sessionsPerPage
+		if totalPages < 1 {
+			totalPages = 1
+		}
+		currentPage := requested
+		if currentPage > totalPages {
+			currentPage = totalPages
+			rows, _ = paginateByID(all, currentPage, sessionsPerPage)
+		}
+
 		s.renderPage(w, r, http.StatusOK, sessionsTmpl, map[string]any{
-			"Title":    "Sessions",
-			"Active":   "sessions",
-			"Sessions": loaded.dm.Overview.Sessions,
+			"Title":      "Sessions",
+			"Active":     "sessions",
+			"Sessions":   rows,
+			"Page":       currentPage,
+			"TotalPages": totalPages,
+			"HasPrev":    currentPage > 1,
+			"HasNext":    currentPage < totalPages,
 		})
 	})
 }
@@ -958,3 +991,41 @@ const (
 	httpReadTimeout   = 10 * time.Second
 	httpIdleTimeout   = 60 * time.Second
 )
+
+const (
+	dashboardSessionLimit = 50
+	sessionsPerPage       = 50
+)
+
+// paginateByID slices all by distinct session ID, returning the rows for the
+// requested page and the total number of distinct IDs. Input order is
+// preserved; all rows sharing an ID travel together.
+func paginateByID(all []monitor.SessionMetric, page, perPage int) (rows []monitor.SessionMetric, total int) {
+	seen := map[string]struct{}{}
+	var ids []string
+	for _, s := range all {
+		if _, ok := seen[s.ID]; !ok {
+			seen[s.ID] = struct{}{}
+			ids = append(ids, s.ID)
+		}
+	}
+	total = len(ids)
+	start := (page - 1) * perPage
+	end := start + perPage
+	if start >= total {
+		return nil, total
+	}
+	if end > total {
+		end = total
+	}
+	pageIDs := map[string]struct{}{}
+	for _, id := range ids[start:end] {
+		pageIDs[id] = struct{}{}
+	}
+	for _, s := range all {
+		if _, ok := pageIDs[s.ID]; ok {
+			rows = append(rows, s)
+		}
+	}
+	return rows, total
+}

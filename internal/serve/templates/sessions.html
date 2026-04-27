@@ -22,5 +22,10 @@
     {{- end}}
     </tbody>
   </table>
+  <nav class="pager" style="display:flex;gap:12px;margin-top:12px;align-items:center">
+    {{if .HasPrev}}<a hx-get="/sessions?page={{sub .Page 1}}" hx-target="#content" hx-push-url="true" href="/sessions?page={{sub .Page 1}}">‹ Prev</a>{{else}}<span class="muted">‹ Prev</span>{{end}}
+    <span class="muted">Page {{.Page}} of {{.TotalPages}}</span>
+    {{if .HasNext}}<a hx-get="/sessions?page={{add .Page 1}}" hx-target="#content" hx-push-url="true" href="/sessions?page={{add .Page 1}}">Next ›</a>{{else}}<span class="muted">Next ›</span>{{end}}
+  </nav>
 </section>
 {{end}}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
@@ -1189,4 +1190,209 @@ func TestRunShutdownOnContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return within 5s after context cancel")
 	}
+}
+
+// --- Task 2: Sessions pagination tests --------------------------------------
+
+// newPaginationServer creates a Server whose metrics are stubbed to return
+// exactly n distinct session IDs (each with one row). The cache is injected
+// directly with a very long TTL to avoid any global state mutation, making
+// this safe to use from parallel tests.
+func newPaginationServer(t *testing.T, n int) *Server {
+	t.Helper()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	sessions := make([]monitor.SessionMetric, n)
+	for i := range sessions {
+		sessions[i] = monitor.SessionMetric{
+			ID:           fmt.Sprintf("session-%04d", i),
+			Agent:        "agent",
+			LastActivity: base.Add(time.Duration(i) * time.Minute),
+		}
+	}
+	var dm monitor.DetailedMetrics
+	dm.Overview.Sessions = sessions
+
+	s := New(Options{Port: 0, LogsDir: t.TempDir(), Since: time.Hour, MetricsTTL: 24 * time.Hour})
+	// Inject the cache directly — no global override needed.
+	s.metricsMu.Lock()
+	s.metricsCache = &metricsCacheEntry{
+		dm:                dm,
+		dashboardSessions: sessions,
+		storedAt:          time.Now(),
+	}
+	s.metricsMu.Unlock()
+	return s
+}
+
+func sessionsBody(t *testing.T, srv *Server, query string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/sessions"+query, nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /sessions%s status = %d, want 200", query, rr.Code)
+	}
+	return rr.Body.String()
+}
+
+func TestHandleSessions_Pagination_DefaultPage(t *testing.T) {
+	t.Parallel()
+
+	// 50 distinct IDs → TotalPages=1, next disabled.
+	srv50 := newPaginationServer(t, 50)
+	body50 := sessionsBody(t, srv50, "")
+	if !strings.Contains(body50, "Page 1 of 1") {
+		t.Errorf("50 IDs: want 'Page 1 of 1', body=%s", body50)
+	}
+	if strings.Contains(body50, `href="/sessions?page=2"`) {
+		t.Errorf("50 IDs: next link should be disabled")
+	}
+
+	// 51 distinct IDs → TotalPages=2, next enabled.
+	srv51 := newPaginationServer(t, 51)
+	body51 := sessionsBody(t, srv51, "")
+	if !strings.Contains(body51, "Page 1 of 2") {
+		t.Errorf("51 IDs: want 'Page 1 of 2', body=%s", body51)
+	}
+	if !strings.Contains(body51, `href="/sessions?page=2"`) {
+		t.Errorf("51 IDs: next link should be present")
+	}
+}
+
+func TestHandleSessions_Pagination_Page2Boundary(t *testing.T) {
+	t.Parallel()
+	srv := newPaginationServer(t, 75)
+	body := sessionsBody(t, srv, "?page=2")
+	if !strings.Contains(body, "Page 2 of 2") {
+		t.Errorf("want 'Page 2 of 2', body=%s", body)
+	}
+	// prev link to page 1 must be present.
+	if !strings.Contains(body, `href="/sessions?page=1"`) {
+		t.Errorf("prev link to page 1 missing, body=%s", body)
+	}
+	// next must be disabled (last page).
+	if strings.Contains(body, `href="/sessions?page=3"`) {
+		t.Errorf("next link should be disabled on last page")
+	}
+	// IDs 50-74 (session-0050 … session-0074) should appear.
+	if !strings.Contains(body, "session-0050") {
+		t.Errorf("session-0050 missing from page 2, body=%s", body)
+	}
+	if strings.Contains(body, "session-0000") {
+		t.Errorf("session-0000 should not appear on page 2")
+	}
+}
+
+func TestHandleSessions_Pagination_InvalidPageClampsTo1(t *testing.T) {
+	t.Parallel()
+	srv := newPaginationServer(t, 10)
+	for _, q := range []string{"?page=0", "?page=-1", "?page=abc", "?page="} {
+		body := sessionsBody(t, srv, q)
+		if !strings.Contains(body, "Page 1 of 1") {
+			t.Errorf("query %q: want 'Page 1 of 1', body=%s", q, body)
+		}
+	}
+}
+
+func TestHandleSessions_Pagination_OverflowClampsToLastPage(t *testing.T) {
+	t.Parallel()
+	srv := newPaginationServer(t, 75)
+	body := sessionsBody(t, srv, "?page=99")
+	// Clamped to page 2 of 2.
+	if !strings.Contains(body, "Page 2 of 2") {
+		t.Errorf("want 'Page 2 of 2', body=%s", body)
+	}
+	// Same rows as page 2.
+	if !strings.Contains(body, "session-0050") {
+		t.Errorf("session-0050 missing from clamped page, body=%s", body)
+	}
+	// next disabled.
+	if strings.Contains(body, `href="/sessions?page=3"`) {
+		t.Errorf("next link should be disabled on clamped last page")
+	}
+}
+
+func TestHandleSessions_Pagination_EmptyMetrics(t *testing.T) {
+	t.Parallel()
+	srv := newPaginationServer(t, 0)
+	body := sessionsBody(t, srv, "")
+	if !strings.Contains(body, "Page 1 of 1") {
+		t.Errorf("empty: want 'Page 1 of 1', body=%s", body)
+	}
+	// Both prev and next disabled.
+	if strings.Contains(body, `href="/sessions?page=`) {
+		t.Errorf("empty: no pagination links expected, body=%s", body)
+	}
+}
+
+func TestHandleDashboard_SessionsCappedTo50(t *testing.T) {
+	t.Parallel()
+	srv := newPaginationServer(t, 100)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	// session-0049 should appear (50th ID), session-0050 should not.
+	if !strings.Contains(body, "session-0049") {
+		t.Errorf("session-0049 (50th ID) missing from dashboard, body=%s", body)
+	}
+	if strings.Contains(body, "session-0050") {
+		t.Errorf("session-0050 (51st ID) should not appear on dashboard (cap=50)")
+	}
+}
+
+func TestPaginateByID(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	make3 := func(ids ...string) []monitor.SessionMetric {
+		out := make([]monitor.SessionMetric, len(ids))
+		for i, id := range ids {
+			out[i] = monitor.SessionMetric{ID: id, LastActivity: base.Add(time.Duration(i) * time.Minute)}
+		}
+		return out
+	}
+
+	t.Run("empty", func(t *testing.T) {
+		rows, total := paginateByID(nil, 1, 50)
+		if total != 0 || rows != nil {
+			t.Errorf("empty: got rows=%v total=%d", rows, total)
+		}
+	})
+
+	t.Run("single page", func(t *testing.T) {
+		all := make3("a", "b", "c")
+		rows, total := paginateByID(all, 1, 50)
+		if total != 3 || len(rows) != 3 {
+			t.Errorf("single page: total=%d rows=%d", total, len(rows))
+		}
+	})
+
+	t.Run("page beyond total", func(t *testing.T) {
+		all := make3("a", "b")
+		rows, total := paginateByID(all, 5, 1)
+		if total != 2 || rows != nil {
+			t.Errorf("beyond: total=%d rows=%v", total, rows)
+		}
+	})
+
+	t.Run("multi-row per ID preserved", func(t *testing.T) {
+		all := []monitor.SessionMetric{
+			{ID: "x", Agent: "merged"},
+			{ID: "x", Agent: "a"},
+			{ID: "y", Agent: "merged"},
+		}
+		rows, total := paginateByID(all, 1, 1)
+		if total != 2 {
+			t.Errorf("total=%d want 2", total)
+		}
+		if len(rows) != 2 {
+			t.Errorf("rows=%d want 2 (both rows for ID x)", len(rows))
+		}
+		if rows[0].ID != "x" || rows[1].ID != "x" {
+			t.Errorf("rows IDs: %v %v, want x x", rows[0].ID, rows[1].ID)
+		}
+	})
 }
