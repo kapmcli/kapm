@@ -952,27 +952,52 @@ func TestTUIRenderSessionChanges_SinglePath(t *testing.T) {
 	}
 }
 
-func TestTUIRenderSessionChanges_MultiPath_AlphabeticalSort(t *testing.T) {
+func TestTUIRenderSessionChanges_MultiPath_SortLastTsDesc(t *testing.T) {
 	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	// a.go lastTs=10:00, b.go lastTs=12:00, c.go lastTs=11:00 → order: b, c, a
 	base.Sessions[0].Changes = []FileChange{
-		{Path: "/tmp/z.go", Ts: ts, Command: "create", Purpose: "z"},
-		{Path: "/tmp/a.go", Ts: ts.Add(time.Second), Command: "create", Purpose: "a"},
-		{Path: "/tmp/m.go", Ts: ts.Add(2 * time.Second), Command: "create", Purpose: "m"},
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "a"},
+		{Path: "/tmp/b.go", Ts: ts.Add(2 * time.Second), Command: "create", Purpose: "b"},
+		{Path: "/tmp/c.go", Ts: ts.Add(time.Second), Command: "create", Purpose: "c"},
 	}
 	base.Sessions[0].FilesChanged = 3
 	m.metrics = base
 	out := m.renderSessionChanges(&m.metrics.Sessions[0])
 	idxA := strings.Index(out, "a.go")
-	idxM := strings.Index(out, "m.go")
-	idxZ := strings.Index(out, "z.go")
-	if idxA < 0 || idxM < 0 || idxZ < 0 {
-		t.Fatalf("expected a.go, m.go, z.go in output, got: %s", out)
+	idxB := strings.Index(out, "b.go")
+	idxC := strings.Index(out, "c.go")
+	if idxA < 0 || idxB < 0 || idxC < 0 {
+		t.Fatalf("expected a.go, b.go, c.go in output, got: %s", out)
 	}
-	if idxA >= idxM || idxM >= idxZ {
-		t.Errorf("expected alphabetical order a.go < m.go < z.go, got indices %d %d %d", idxA, idxM, idxZ)
+	// lastTs desc: b.go (ts+2s) > c.go (ts+1s) > a.go (ts)
+	if idxB >= idxC || idxC >= idxA {
+		t.Errorf("expected lastTs desc order b.go < c.go < a.go (by position), got indices %d %d %d", idxB, idxC, idxA)
+	}
+}
+
+func TestTUIRenderSessionChanges_SortTiebreakAlphabetical(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	// zeta.go and alpha.go both have same lastTs → alphabetical tiebreak
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/zeta.go", Ts: ts, Command: "create", Purpose: "z"},
+		{Path: "/tmp/alpha.go", Ts: ts, Command: "create", Purpose: "a"},
+	}
+	base.Sessions[0].FilesChanged = 2
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	idxAlpha := strings.Index(out, "alpha.go")
+	idxZeta := strings.Index(out, "zeta.go")
+	if idxAlpha < 0 || idxZeta < 0 {
+		t.Fatalf("expected alpha.go and zeta.go in output, got: %s", out)
+	}
+	if idxAlpha >= idxZeta {
+		t.Errorf("expected alphabetical tiebreak: alpha.go before zeta.go, got indices %d %d", idxAlpha, idxZeta)
 	}
 }
 
@@ -1026,8 +1051,12 @@ func TestTUIRenderSessionChanges_Oversized(t *testing.T) {
 	base.Sessions[0].FilesChanged = 1
 	m.metrics = base
 	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
-	if !strings.Contains(out, "[oversized]") {
-		t.Errorf("expected '[oversized]' in output, got: %s", out)
+	if !strings.Contains(out, "(oversized — diff unavailable)") {
+		t.Errorf("expected '(oversized — diff unavailable)' in output, got: %s", out)
+	}
+	// No +/- badge for fully-oversized file.
+	if strings.Contains(out, "+0/-0") || strings.Contains(out, "+0/") {
+		t.Errorf("expected no +/- badge for oversized edit, got: %s", out)
 	}
 }
 
@@ -1131,5 +1160,164 @@ func TestTUIRenderSessionDetail_SectionOrder(t *testing.T) {
 	}
 	if idxResult >= idxChanges || idxChanges >= idxPrompts {
 		t.Errorf("expected Session Result < ▸ Changes < ▸ Prompts, got indices %d %d %d", idxResult, idxChanges, idxPrompts)
+	}
+}
+
+// --- Task 5 QA scenario tests ---
+
+func TestTUIRenderSessionChanges_CountsPerEditAndFile(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	// create: 3 lines added; strReplace: 2 deleted / 1 added → file total +4/-2
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init",
+			Content: "line1\nline2\nline3\n"},
+		{Path: "/tmp/a.go", Ts: ts.Add(time.Second), Command: "strReplace", Purpose: "fix",
+			OldStr: "line1\nline2\n", NewStr: "replaced\n"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	// Per-edit counts.
+	if !strings.Contains(out, "+3/-0") {
+		t.Errorf("expected '+3/-0' for create edit, got:\n%s", out)
+	}
+	if !strings.Contains(out, "+1/-2") {
+		t.Errorf("expected '+1/-2' for strReplace edit, got:\n%s", out)
+	}
+	// File aggregate: +4/-2.
+	if !strings.Contains(out, "+4/-2") {
+		t.Errorf("expected '+4/-2' aggregate for file, got:\n%s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_PreviewTruncation(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.changesExpanded = true
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	// 100-line create.
+	var sb strings.Builder
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&sb, "line%d\n", i)
+	}
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "big", Content: sb.String()},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	// Count preview lines (lines starting with 9 spaces + "+").
+	previewLines := 0
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, previewIndent+"+") {
+			previewLines++
+		}
+	}
+	if previewLines > 32 {
+		t.Errorf("expected at most 32 preview lines, got %d", previewLines)
+	}
+	if !strings.Contains(out, "more lines") {
+		t.Errorf("expected '…N more lines' truncation marker, got:\n%s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_OversizedFallback(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "big", Oversized: true},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	// Must show the oversized message.
+	if !strings.Contains(out, "(oversized — diff unavailable)") {
+		t.Errorf("expected '(oversized — diff unavailable)', got:\n%s", out)
+	}
+	// Must NOT show +/- badge on edit line.
+	lines := strings.Split(out, "\n")
+	for _, l := range lines {
+		if strings.Contains(l, "• [create]") && (strings.Contains(l, "+0") || strings.Contains(l, "-0")) {
+			t.Errorf("oversized edit line should not have +/- badge: %q", l)
+		}
+	}
+	// File line must show — (muted dash) not a numeric count.
+	if strings.Contains(out, "+0/-0") {
+		t.Errorf("fully-oversized file should not show +0/-0, got:\n%s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_PartialOversized(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "ok", Content: "line1\nline2\n"},
+		{Path: "/tmp/a.go", Ts: ts.Add(time.Second), Command: "strReplace", Purpose: "big", Oversized: true},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	// File aggregate should sum only OK edits (+2/-0).
+	if !strings.Contains(out, "+2/-0") {
+		t.Errorf("expected '+2/-0' for partial-oversized file, got:\n%s", out)
+	}
+	// Should show (1 oversized) annotation.
+	if !strings.Contains(out, "(1 oversized)") {
+		t.Errorf("expected '(1 oversized)' annotation, got:\n%s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_ColorCodes(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.changesExpanded = true
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "strReplace", Purpose: "fix",
+			OldStr: "old\n", NewStr: "new\n"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	// With lipgloss default rendering, ANSI codes may or may not be present
+	// depending on the terminal profile. We verify the raw output contains
+	// the styled content by checking that stripping ANSI gives expected text.
+	plain := stripANSI(out)
+	if !strings.Contains(plain, "+new") {
+		t.Errorf("expected '+new' in diff preview, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "-old") {
+		t.Errorf("expected '-old' in diff preview, got:\n%s", plain)
+	}
+}
+
+func TestTUIRenderSessionChanges_DiffHiddenByDefault(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	// changesExpanded defaults to false.
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "strReplace", Purpose: "fix",
+			OldStr: "old\n", NewStr: "new\n"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	// +N/-M counts must still appear, but raw diff preview lines must not.
+	if !strings.Contains(out, "+1") || !strings.Contains(out, "-1") {
+		t.Errorf("expected +1/-1 counts, got:\n%s", out)
+	}
+	if strings.Contains(out, previewIndent+"+new") || strings.Contains(out, previewIndent+"-old") {
+		t.Errorf("diff preview should be hidden by default, got:\n%s", out)
 	}
 }

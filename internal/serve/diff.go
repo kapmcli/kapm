@@ -1,8 +1,11 @@
 package serve
 
 import (
+	"fmt"
 	"html"
 	"html/template"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -12,6 +15,8 @@ import (
 )
 
 const diffByteCap = 64 << 10
+
+var hunkHeaderRE = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 
 func renderDiff(fc monitor.FileChange) template.HTML {
 	if fc.Oversized {
@@ -38,33 +43,51 @@ func renderDiff(fc monitor.FileChange) template.HTML {
 
 	var b strings.Builder
 	b.WriteString(`<pre class="diff">`)
+	var oldLn, newLn int
 	for _, line := range strings.Split(diffStr, "\n") {
-		cls := classifyDiffLine(line)
-		b.WriteString(`<span class="`)
-		b.WriteString(cls)
-		b.WriteString(`">`)
-		b.WriteString(html.EscapeString(line))
-		b.WriteString("\n</span>")
+		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, `\ `) {
+			continue
+		}
+		if m := hunkHeaderRE.FindStringSubmatch(line); m != nil {
+			oldLn, _ = strconv.Atoi(m[1])
+			newLn, _ = strconv.Atoi(m[2])
+			b.WriteString(`<div class="diff-hunk">`)
+			b.WriteString(html.EscapeString(line))
+			b.WriteString(`</div>`)
+			continue
+		}
+		if len(line) == 0 {
+			continue
+		}
+		var cls, sign, oldCol, newCol string
+		switch line[0] {
+		case '+':
+			cls = "diff-add"
+			sign = "+"
+			newCol = strconv.Itoa(newLn)
+			newLn++
+		case '-':
+			cls = "diff-del"
+			sign = "-"
+			oldCol = strconv.Itoa(oldLn)
+			oldLn++
+		default:
+			cls = "diff-ctx"
+			sign = " "
+			oldCol = strconv.Itoa(oldLn)
+			newCol = strconv.Itoa(newLn)
+			oldLn++
+			newLn++
+		}
+		code := ""
+		if len(line) > 1 {
+			code = line[1:]
+		}
+		fmt.Fprintf(&b, `<div class="diff-row %s"><span class="ln ln-old">%s</span><span class="ln ln-new">%s</span><span class="sign">%s</span><span class="code">%s</span></div>`,
+			cls, oldCol, newCol, html.EscapeString(sign), html.EscapeString(code))
 	}
 	b.WriteString(`</pre>`)
 	return template.HTML(b.String()) //nolint:gosec // all content escaped via html.EscapeString above
-}
-
-func classifyDiffLine(line string) string {
-	if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
-		return "diff-hunk"
-	}
-	if len(line) == 0 {
-		return "diff-ctx"
-	}
-	switch line[0] {
-	case '+':
-		return "diff-add"
-	case '-':
-		return "diff-del"
-	default:
-		return "diff-ctx"
-	}
 }
 
 func validUTF8Fields(fc monitor.FileChange) bool {
@@ -78,4 +101,31 @@ func groupChangesByPath(changes []monitor.FileChange) map[string][]monitor.FileC
 		m[c.Path] = append(m[c.Path], c)
 	}
 	return m
+}
+
+// DiffStatsResult is the aggregated +/- summary for a group of FileChanges.
+// HasCounts is false when all edits are oversized/unknown and no counts could
+// be computed; in that case the UI should render a muted em-dash.
+type DiffStatsResult struct {
+	Adds, Dels     int
+	HasCounts      bool
+	OversizedCount int
+}
+
+// diffStats aggregates DiffLineCounts across changes. Edits whose counts
+// cannot be computed (Oversized or unknown command) contribute to
+// OversizedCount only.
+func diffStats(changes []monitor.FileChange) DiffStatsResult {
+	var r DiffStatsResult
+	for _, c := range changes {
+		adds, dels, ok := monitor.DiffLineCounts(c)
+		if !ok {
+			r.OversizedCount++
+			continue
+		}
+		r.Adds += adds
+		r.Dels += dels
+		r.HasCounts = true
+	}
+	return r
 }

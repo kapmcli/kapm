@@ -308,3 +308,63 @@ func TestCountUniqueFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestDiffLineCounts(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		fc       FileChange
+		wantAdds int
+		wantDels int
+		wantOk   bool
+	}{
+		{
+			name:     "create 3-line content",
+			fc:       FileChange{Command: "create", Content: "a\nb\nc\n"},
+			wantAdds: 3, wantDels: 0, wantOk: true,
+		},
+		{
+			name:     "strReplace with modification",
+			fc:       FileChange{Command: "strReplace", OldStr: "foo\nbar\n", NewStr: "foo\nbaz\nqux\n"},
+			wantAdds: 2, wantDels: 1, wantOk: true,
+		},
+		{
+			name:   "oversized returns ok=false",
+			fc:     FileChange{Command: "create", Oversized: true},
+			wantOk: false,
+		},
+		{
+			name:   "unknown command returns ok=false",
+			fc:     FileChange{Command: "rename"},
+			wantOk: false,
+		},
+		{
+			name:     "empty content create",
+			fc:       FileChange{Command: "create", Content: ""},
+			wantAdds: 0, wantDels: 0, wantOk: true,
+		},
+		{
+			name:   "non-UTF8 content returns ok=false",
+			fc:     FileChange{Command: "create", Content: "\xff\xfe\xfd"},
+			wantOk: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			adds, dels, ok := DiffLineCounts(c.fc)
+			if ok != c.wantOk {
+				t.Fatalf("ok = %v; want %v", ok, c.wantOk)
+			}
+			if !ok {
+				return
+			}
+			if adds != c.wantAdds {
+				t.Errorf("adds = %d; want %d", adds, c.wantAdds)
+			}
+			if dels != c.wantDels {
+				t.Errorf("dels = %d; want %d", dels, c.wantDels)
+			}
+		})
+	}
+}

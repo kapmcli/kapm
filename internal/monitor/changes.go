@@ -5,6 +5,9 @@ import (
 	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	udiff "github.com/aymanbagabas/go-udiff"
 )
 
 const maxWriteFieldBytes = 256 << 10 // per-field cap to bound memory
@@ -94,4 +97,45 @@ func countUniqueFiles(changes []FileChange) int {
 		seen[fc.Path] = struct{}{}
 	}
 	return len(seen)
+}
+
+// DiffLineCounts returns the number of added and deleted lines for a FileChange.
+// ok=false when counts cannot be computed (Oversized, non-UTF8, unknown command).
+func DiffLineCounts(fc FileChange) (adds, dels int, ok bool) {
+	if fc.Oversized {
+		return 0, 0, false
+	}
+	if !utf8.ValidString(fc.Content) || !utf8.ValidString(fc.OldStr) || !utf8.ValidString(fc.NewStr) {
+		return 0, 0, false
+	}
+	switch fc.Command {
+	case "create", "insert":
+		if fc.Content == "" {
+			return 0, 0, true
+		}
+		n := strings.Count(fc.Content, "\n")
+		if !strings.HasSuffix(fc.Content, "\n") {
+			n++
+		}
+		return n, 0, true
+	case "strReplace":
+		diffStr := udiff.Unified("", "", fc.OldStr, fc.NewStr)
+		for _, line := range strings.Split(diffStr, "\n") {
+			if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
+				continue
+			}
+			if len(line) == 0 {
+				continue
+			}
+			switch line[0] {
+			case '+':
+				adds++
+			case '-':
+				dels++
+			}
+		}
+		return adds, dels, true
+	default:
+		return 0, 0, false
+	}
 }

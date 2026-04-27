@@ -58,6 +58,7 @@ type model struct {
 	cachedDetailBody string // cached rendered detail view
 	updatedAt        time.Time
 	promptExpanded   bool // toggle for prompt full display
+	changesExpanded  bool // toggle for diff previews in Changes section
 }
 
 // NewModel creates a new TUI model.
@@ -147,6 +148,9 @@ func (m *model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 		m.recomputeDetailCache()
 	case "p":
 		m.promptExpanded = !m.promptExpanded
+		m.recomputeDetailCache()
+	case "d":
+		m.changesExpanded = !m.changesExpanded
 		m.recomputeDetailCache()
 	}
 	return m, nil
@@ -291,6 +295,10 @@ var (
 			Bold(true)
 
 	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B6B6B")).Italic(true)
+
+	addStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // green
+	delStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // red
+	hunkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan for @@ headers
 )
 
 func (m *model) renderView() string {
@@ -453,7 +461,7 @@ func (m *model) recomputeDetailCache() {
 
 func (m *model) helpLine() string {
 	if m.detail {
-		return "←→/hl: prev/next · ↑↓/jk: scroll · pgup/pgdn: page · p: prompts · esc: back · q: quit"
+		return "←→/hl: prev/next · ↑↓/jk: scroll · pgup/pgdn: page · p: prompts · d: diffs · esc: back · q: quit"
 	}
 	base := "tab/←→: switch · 1-5: jump · q: quit · r: refresh"
 	if m.tab == tabOverview {

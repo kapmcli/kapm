@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	udiff "github.com/aymanbagabas/go-udiff"
 	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
@@ -548,7 +549,6 @@ func (m *model) renderSessionAssistantResponse(s *SessionDetail) string {
 	return b.String()
 }
 
-
 func (m *model) renderSessionChanges(s *SessionDetail) string {
 	if len(s.Changes) == 0 {
 		return ""
@@ -563,7 +563,18 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		}
 		seen[fc.Path] = append(seen[fc.Path], fc)
 	}
-	slices.Sort(paths)
+
+	// Sort by lastTs desc, ties by path asc.
+	lastTs := map[string]time.Time{}
+	for p, edits := range seen {
+		lastTs[p] = edits[len(edits)-1].Ts
+	}
+	slices.SortFunc(paths, func(a, b string) int {
+		if c := lastTs[b].Compare(lastTs[a]); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
 
 	nFiles := s.FilesChanged
 	nEdits := len(s.Changes)
@@ -591,14 +602,37 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		if editCount == 1 {
 			editCountStr = "1 edit"
 		}
-		lastTs := edits[len(edits)-1].Ts.Local().Format("15:04:05")
-		metaStr := editCountStr + "  last " + lastTs
+		fileLastTs := lastTs[p].Local().Format("15:04:05")
+
+		// Aggregate +/- counts across non-oversized edits.
+		var totalAdds, totalDels, oversizedCount int
+		for _, fc := range edits {
+			if a, d, ok := DiffLineCounts(fc); ok {
+				totalAdds += a
+				totalDels += d
+			} else if fc.Oversized {
+				oversizedCount++
+			}
+		}
+
+		// Build file line: path  +N/-M  K edits  last HH:MM:SS
+		var fileCounts string
+		if oversizedCount == len(edits) {
+			// All oversized — no +/- badge.
+			fileCounts = mutedStyle.Render("—")
+		} else {
+			fileCounts = addStyle.Render(fmt.Sprintf("+%d", totalAdds)) + "/" + delStyle.Render(fmt.Sprintf("-%d", totalDels))
+		}
+		metaStr := editCountStr + "  last " + fileLastTs
+		if oversizedCount > 0 && oversizedCount < len(edits) {
+			metaStr += "  " + mutedStyle.Render(fmt.Sprintf("(%d oversized)", oversizedCount))
+		}
 
 		lineWidth := 2 + len(shortPath) + 2 + len(editCountStr) + 2 + len("last 00:00:00")
 		if lineWidth > m.interiorWidth() {
-			fmt.Fprintf(&b, "  %s\n    %s\n", shortPath, metaStr)
+			fmt.Fprintf(&b, "  %s  %s\n    %s\n", shortPath, fileCounts, metaStr)
 		} else {
-			fmt.Fprintf(&b, "  %s  %s\n", shortPath, metaStr)
+			fmt.Fprintf(&b, "  %s  %s  %s\n", shortPath, fileCounts, metaStr)
 		}
 
 		for _, fc := range edits {
@@ -608,15 +642,97 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 			} else {
 				purpose = mutedStyle.Render("(no purpose)")
 			}
-			var oversized string
 			if fc.Oversized {
-				oversized = " " + mutedStyle.Render("[oversized]")
+				fmt.Fprintf(&b, "    • [%s] %s %s\n",
+					mutedStyle.Render(fc.Command), purpose,
+					mutedStyle.Render("(oversized — diff unavailable)"))
+				continue
 			}
-			fmt.Fprintf(&b, "    • [%s] %s%s\n", mutedStyle.Render(fc.Command), purpose, oversized)
+			// Per-edit +/- counts.
+			var editCounts string
+			if a, d, ok := DiffLineCounts(fc); ok {
+				editCounts = " " + addStyle.Render(fmt.Sprintf("+%d", a)) + "/" + delStyle.Render(fmt.Sprintf("-%d", d))
+			}
+			fmt.Fprintf(&b, "    • [%s] %s%s\n", mutedStyle.Render(fc.Command), purpose, editCounts)
+			// Diff preview (gated behind changesExpanded toggle).
+			if m.changesExpanded {
+				if preview := renderEditPreview(fc, 32); preview != "" {
+					b.WriteString(preview)
+				}
+			}
 		}
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+const previewIndent = "         " // 9 spaces
+
+// renderEditPreview returns a styled diff preview for fc, capped at maxLines output lines.
+// Returns empty string for oversized edits or when there is no diff.
+func renderEditPreview(fc FileChange, maxLines int) string {
+	if fc.Oversized {
+		return ""
+	}
+	var old, new string
+	switch fc.Command {
+	case "create", "insert":
+		old, new = "", fc.Content
+	case "strReplace":
+		old, new = fc.OldStr, fc.NewStr
+	default:
+		return ""
+	}
+	if old == "" && new == "" {
+		return ""
+	}
+
+	raw := udiff.Unified("", "", old, new)
+	if raw == "" {
+		return ""
+	}
+
+	var out strings.Builder
+	count := 0
+	lines := strings.Split(raw, "\n")
+	// Remove trailing empty line from Split.
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	// Filter out --- and +++ file header lines; keep @@ and content lines.
+	var filtered []string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ") || strings.HasPrefix(l, `\ `) {
+			continue
+		}
+		filtered = append(filtered, l)
+	}
+
+	total := len(filtered)
+	for i, l := range filtered {
+		if count >= maxLines {
+			remaining := total - i
+			out.WriteString(previewIndent)
+			out.WriteString(mutedStyle.Render(fmt.Sprintf("…%d more lines", remaining)))
+			out.WriteString("\n")
+			break
+		}
+		var styled string
+		if strings.HasPrefix(l, "+") {
+			styled = addStyle.Render(l)
+		} else if strings.HasPrefix(l, "-") {
+			styled = delStyle.Render(l)
+		} else if strings.HasPrefix(l, "@@") {
+			styled = hunkStyle.Render(l)
+		} else {
+			styled = mutedStyle.Render(l)
+		}
+		out.WriteString(previewIndent)
+		out.WriteString(styled)
+		out.WriteString("\n")
+		count++
+	}
+	return out.String()
 }
 
 func (m *model) renderSessionPrompts(s *SessionDetail) string {

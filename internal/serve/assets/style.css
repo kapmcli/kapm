@@ -71,7 +71,10 @@ main {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
 }
+
+main > * { min-width: 0; }
 
 /* Summary cards row */
 .cards {
@@ -165,6 +168,8 @@ th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid rgb
 th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
 
 /* Definition-list style table on session detail (Agent/CWD/Started/...) */
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.5rem; }
+.detail-grid table { width: auto; }
 .card > table > tbody > tr > th:first-child {
   width: 10rem;
   white-space: nowrap;
@@ -180,8 +185,16 @@ tbody tr:hover { background: rgba(125, 86, 244, 0.08); }
 .truncate { max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Diff viewer */
-.diff { font-family: ui-monospace, monospace; white-space: pre; overflow-x: auto; background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px; font-size: 12px; }
-.diff-add  { background: rgba(4,181,117,0.15); color: var(--success); display: block; }
-.diff-del  { background: rgba(224,108,117,0.15); color: var(--error); display: block; }
-.diff-ctx  { color: var(--muted); display: block; }
-.diff-hunk { color: var(--accent); display: block; }
+.diff { font-family: ui-monospace, monospace; overflow-x: auto; background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px; font-size: 12px; }
+.diff-row { display: grid; grid-template-columns: 40px 40px 16px max-content; min-width: 100%; }
+.diff-row .ln { color: var(--muted); text-align: right; padding: 0 6px; user-select: none; }
+.diff-row .sign { text-align: center; user-select: none; }
+.diff-row .code { white-space: pre; }
+.diff-row.diff-add { background: rgba(4,181,117,0.15); }
+.diff-row.diff-del { background: rgba(224,108,117,0.15); }
+.diff-row.diff-add .sign, .diff-row.diff-add .code { color: var(--success); }
+.diff-row.diff-del .sign, .diff-row.diff-del .code { color: var(--error); }
+.diff-row.diff-ctx .code { color: var(--text); }
+.diff-hunk { display: block; background: rgba(97,175,239,0.10); color: var(--accent); padding: 2px 8px; margin: 4px 0; }
+.badge-add { background: rgba(4,181,117,0.20); color: var(--success); padding: 0 6px; border-radius: 3px; margin-left: 6px; font-size: 0.85em; }
+.badge-del { background: rgba(224,108,117,0.20); color: var(--error); padding: 0 6px; border-radius: 3px; margin-left: 4px; font-size: 0.85em; }

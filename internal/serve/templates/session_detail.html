@@ -8,19 +8,21 @@
     {{- range .AgentLinks}} <a href="{{.URL}}">{{.Agent}}</a>{{- end}}
   </nav>
   {{- end}}
-  <table>
-    <tbody>
+  <div class="detail-grid">
+    <table><tbody>
       <tr><th>Agent</th><td>{{$s.Agent}}</td></tr>
       <tr><th>CWD</th><td>{{$s.Cwd}}</td></tr>
       <tr><th>Started</th><td>{{localtime $s.StartTime "datetime"}}</td></tr>
       <tr><th>Ended</th><td>{{localtime $s.EndTime "datetime"}}</td></tr>
+    </tbody></table>
+    <table><tbody>
       <tr><th>Duration</th><td>{{$s.Duration | dur}}</td></tr>
       <tr><th>Status</th><td>{{template "status-badge" $s}}</td></tr>
       <tr><th>Tool calls</th><td>{{$s.ToolCalls}}</td></tr>
       <tr><th>Prompts</th><td>{{$s.Prompts}}</td></tr>
       <tr><th>Files changed</th><td>{{$s.FilesChanged}}</td></tr>
-    </tbody>
-  </table>
+    </tbody></table>
+  </div>
 </section>
 
 {{- if $s.ToolSummary}}
@@ -62,6 +64,14 @@
     <summary style="cursor:pointer;padding:6px 0">
       <code>{{$path}}</code>
       <span class="muted">· {{len $changes}} edit{{if gt (len $changes) 1}}s{{end}} · last {{localtime $last.Ts "datetime"}}</span>
+      {{- $ds := diffStats $changes }}
+      {{- if $ds.HasCounts }}
+        <span class="badge badge-add">+{{$ds.Adds}}</span>
+        <span class="badge badge-del">-{{$ds.Dels}}</span>
+        {{- if gt $ds.OversizedCount 0}}<span class="muted"> ({{$ds.OversizedCount}} oversized)</span>{{end}}
+      {{- else }}
+        <span class="muted">—</span>
+      {{- end }}
     </summary>
     {{- range $changes}}
     <div style="padding:8px 0;border-top:1px solid rgba(255,255,255,0.05)">

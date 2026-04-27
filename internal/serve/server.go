@@ -174,12 +174,13 @@ var templateFuncs = template.FuncMap{
 		}
 		return a / b
 	},
-	"itof":                func(a int) float64 { return float64(a) },
-	"dur":                 func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
-	"renderMarkdown":      renderMarkdown,
-	"renderDiff":          renderDiff,
-	"hasShellEvent":       monitor.HasShellEvent,
-	"groupChangesByPath":  groupChangesByPath,
+	"itof":               func(a int) float64 { return float64(a) },
+	"dur":                func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
+	"renderMarkdown":     renderMarkdown,
+	"renderDiff":         renderDiff,
+	"hasShellEvent":      monitor.HasShellEvent,
+	"groupChangesByPath": groupChangesByPath,
+	"diffStats":          diffStats,
 	"shortID": func(id string, n int) string {
 		if len(id) <= n {
 			return id
