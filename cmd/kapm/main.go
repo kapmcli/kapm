@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -182,7 +181,7 @@ func runInstall(args []string) error {
 	hasGlobal := slices.Contains(installArgs, "--global") || slices.Contains(installArgs, "-g")
 	targetDirSet := targetDirRaw != "." && targetDirRaw != ""
 	if hasGlobal && targetDirSet {
-		return fmt.Errorf("--global and --target-dir cannot be used together")
+		return errors.New("--global and --target-dir cannot be used together")
 	}
 
 	targetDir, err := expandTarget(targetDirRaw)
@@ -428,7 +427,7 @@ func listPowerHookFiles(root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	return files, nil
 }
 
@@ -512,7 +511,7 @@ func runAgentUpdate(args []string) error {
 		return nil
 	}
 	if len(fs.Args()) != 1 {
-		return fmt.Errorf("agent update requires exactly one argument: <name>")
+		return errors.New("agent update requires exactly one argument: <name>")
 	}
 
 	targetDir, err := expandTarget(*targetDirFlag)

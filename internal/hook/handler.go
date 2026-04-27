@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -67,7 +68,7 @@ type record struct {
 func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDir, agent string) (exitCode int) {
 	defer func() {
 		if r := recover(); r != nil {
-			_, _ = fmt.Fprintf(stderr, "hook-handler: recovered panic: %v\n", r)
+			slog.Error("hook-handler recovered panic", "panic", r, "stack", string(debug.Stack()))
 			exitCode = 0
 		}
 	}()

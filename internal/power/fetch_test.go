@@ -253,3 +253,33 @@ func readGitLog(t *testing.T, path string) []string {
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
+
+// TestGitFetcher_SubpathNotFoundIncludesURL verifies that the subpath-not-found error
+// includes both the subpath and the repository URL.
+func TestGitFetcher_SubpathNotFoundIncludesURL(t *testing.T) {
+	// Use a fake git that does NOT create the subpath directory.
+	binDir, _ := writeFakeGitScript(t, fakeGitOptions{
+		commit:  "abc123",
+		subpath: "", // no subpath created by fake git
+	})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	src := PowerSource{
+		Kind:       SourceGitRoot,
+		URL:        "https://github.com/example/repo",
+		PathInRepo: "missing/subdir",
+	}
+
+	_, _, _, err := f.Fetch(context.Background(), src)
+	if err == nil {
+		t.Fatal("expected error for missing subpath, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "missing/subdir") {
+		t.Errorf("error should contain subpath, got: %q", msg)
+	}
+	if !strings.Contains(msg, "https://github.com/example/repo") {
+		t.Errorf("error should contain repo URL, got: %q", msg)
+	}
+}

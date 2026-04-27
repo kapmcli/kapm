@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kapmcli/kapm/internal/apmconfig"
 	"github.com/kapmcli/kapm/internal/cli"
 	"github.com/kapmcli/kapm/internal/paths"
 )
@@ -122,43 +121,20 @@ func promptUpdateDetails(p *cli.Prompter, out io.Writer, known agentKnownFields)
 		return updateDetails{}, err
 	}
 	if strings.TrimSpace(model) == "" {
-		return updateDetails{}, fmt.Errorf("model cannot be empty")
+		return updateDetails{}, errors.New("model cannot be empty")
 	}
 
-	// Update offers the full set of available tools. Existing tool values are re-surfaced
-	// in the prompt with their current selection state.
-	tools, err := p.MultiSelectWithDefaults("tools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, known.Tools))
+	fields, err := promptAgentCoreFields(p, out, agentFieldDefaults{
+		Model:                 model,
+		Tools:                 known.Tools,
+		AllowedTools:          known.AllowedTools,
+		Resources:             known.Resources,
+		ShowExistingResources: true,
+	})
 	if err != nil {
 		return updateDetails{}, err
 	}
-
-	allowedTools, err := p.MultiSelectWithDefaults("allowedTools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, known.AllowedTools))
-	if err != nil {
-		return updateDetails{}, err
-	}
-
-	if _, err := fmt.Fprintf(out, "Current resources: %v\n", known.Resources); err != nil {
-		return updateDetails{}, err
-	}
-	if _, err := fmt.Fprintln(out, "Enter new resources (blank line to keep current):"); err != nil {
-		return updateDetails{}, err
-	}
-	resources, err := p.MultiInput("resources")
-	if err != nil {
-		return updateDetails{}, err
-	}
-	if len(resources) == 0 {
-		resources = slices.Clone(known.Resources)
-	} else {
-		resources = append([]string(nil), resources...)
-	}
-
-	return updateDetails{
-		Model:        model,
-		Tools:        tools,
-		AllowedTools: allowedTools,
-		Resources:    resources,
-	}, nil
+	return updateDetails(fields), nil
 }
 
 // ensureNonNil returns a copy of values, converting nil to an empty slice

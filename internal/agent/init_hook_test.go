@@ -354,9 +354,9 @@ func TestIsKapmEntryMatchesBuiltInCommandFormat(t *testing.T) {
 		{`{"command":"kapm not-hook-handler"}`, false},
 	}
 	for _, c := range cases {
-		got, corrupt := isKapmEntry(json.RawMessage(c.raw))
-		if corrupt {
-			t.Errorf("isKapmEntry(%s): unexpected corrupt=true", c.raw)
+		got, err := isKapmEntry(json.RawMessage(c.raw))
+		if err != nil {
+			t.Errorf("isKapmEntry(%s): unexpected error: %v", c.raw, err)
 		}
 		if got != c.want {
 			t.Errorf("isKapmEntry(%s) = %v, want %v", c.raw, got, c.want)
@@ -366,9 +366,9 @@ func TestIsKapmEntryMatchesBuiltInCommandFormat(t *testing.T) {
 
 func TestIsKapmEntry_MalformedJSONReportsCorrupt(t *testing.T) {
 	raw := json.RawMessage("not-a-json")
-	match, corrupt := isKapmEntry(raw)
-	if match || !corrupt {
-		t.Errorf("isKapmEntry(malformed) = (%v, %v), want (false, true)", match, corrupt)
+	match, err := isKapmEntry(raw)
+	if match || err == nil {
+		t.Errorf("isKapmEntry(malformed) = (%v, %v), want (false, non-nil error)", match, err)
 	}
 }
 

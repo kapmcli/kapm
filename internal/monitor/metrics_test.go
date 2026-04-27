@@ -774,6 +774,26 @@ func BenchmarkPendingKey(b *testing.B) {
 	}
 }
 
+func BenchmarkAggregate(b *testing.B) {
+	dir := filepath.Join("..", "..", "testdata", "monitor")
+	recs, err := LoadRecords(dir, time.Time{})
+	if err != nil {
+		b.Fatalf("LoadRecords: %v", err)
+	}
+	if len(recs) == 0 {
+		b.Fatal("no records loaded from testdata")
+	}
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, err := AggregateDetail(context.Background(), recs, now)
+		if err != nil {
+			b.Fatalf("AggregateDetail: %v", err)
+		}
+	}
+}
+
 func TestToolInput_IgnoresUnknown(t *testing.T) {
 	t.Parallel()
 	// Unknown fields in tool_input are silently ignored; known fields decode.
@@ -1569,12 +1589,13 @@ func TestAggregateToolInputPatterns(t *testing.T) {
 	}
 }
 
-// --- Task 6: aggregateAgentToolStats helper ----------------------------------
+// --- Task 12: foldSessionIntoAgents per-agent tool aggregation --------------
 
 func TestAggregateAgentToolStats(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
-	// 2 agents × 3 tools: both agentA and agentB use bash+grep+read
+	// 2 agents × 3 tools: both agentA and agentB use bash+grep+read.
+	// agentA has one unmatched bash (error) to exercise ToolErrorCnt > 0.
 	records := []Record{
 		// agentA: bash x2 (1 error), grep x1, read x1
 		rec("s1", "agentA", apmconfig.EventPreToolUse, "bash", 0),
@@ -1593,71 +1614,55 @@ func TestAggregateAgentToolStats(t *testing.T) {
 		rec("s2", "agentB", apmconfig.EventPostToolUse, "read", 5*time.Minute),
 	}
 	d := mustAggregate(t, records, now)
-	// Build aggState manually to call aggregateAgentToolStats directly.
-	st := newAggState(len(records), now)
-	for _, r := range records {
-		processRecord(st, r)
-	}
-	markUnmatchedToolCalls(st)
-	// Populate st.agents so aggregateAgentToolStats can increment ToolErrorCnt.
-	for _, s := range st.sessions {
-		if _, ok := st.agents[s.agent]; !ok {
-			st.agents[s.agent] = &AgentDetail{AgentMetric: AgentMetric{Name: s.agent}}
-		}
-	}
 
-	agentTools := aggregateAgentToolStats(st)
-
-	// Verify map shape: 2 agents present.
-	if len(agentTools) != 2 {
-		t.Fatalf("want 2 agents in map, got %d", len(agentTools))
-	}
-
-	// agentA: bash(2), grep(1), read(1)
-	tmA := agentTools["agentA"]
-	if tmA == nil {
-		t.Fatal("agentA missing from agentTools")
-	}
-	if len(tmA) != 3 {
-		t.Errorf("agentA: want 3 tools, got %d: %v", len(tmA), tmA)
-	}
-	if tmA["bash"] == nil || tmA["bash"].callCount != 2 {
-		t.Errorf("agentA bash callCount: want 2, got %v", tmA["bash"])
-	}
-	if tmA["bash"].errorCount != 1 {
-		t.Errorf("agentA bash errorCount: want 1, got %d", tmA["bash"].errorCount)
-	}
-	if tmA["grep"] == nil || tmA["grep"].callCount != 1 {
-		t.Errorf("agentA grep callCount: want 1, got %v", tmA["grep"])
-	}
-	if tmA["read"] == nil || tmA["read"].callCount != 1 {
-		t.Errorf("agentA read callCount: want 1, got %v", tmA["read"])
-	}
-
-	// agentB: bash(1), grep(1), read(1)
-	tmB := agentTools["agentB"]
-	if tmB == nil {
-		t.Fatal("agentB missing from agentTools")
-	}
-	if len(tmB) != 3 {
-		t.Errorf("agentB: want 3 tools, got %d: %v", len(tmB), tmB)
-	}
-	for _, tool := range []string{"bash", "grep", "read"} {
-		if tmB[tool] == nil || tmB[tool].callCount != 1 {
-			t.Errorf("agentB %s callCount: want 1, got %v", tool, tmB[tool])
-		}
-	}
-
-	// Cross-check: full AggregateDetail must still produce correct ToolSummary.
 	byAgent := map[string]AgentDetail{}
 	for _, a := range d.Agents {
 		byAgent[a.Name] = a
 	}
-	if byAgent["agentA"].ToolErrorCnt != 1 {
-		t.Errorf("agentA ToolErrorCnt: want 1, got %d", byAgent["agentA"].ToolErrorCnt)
+	if len(byAgent) != 2 {
+		t.Fatalf("want 2 agents, got %d", len(byAgent))
 	}
-	if byAgent["agentB"].ToolErrorCnt != 0 {
-		t.Errorf("agentB ToolErrorCnt: want 0, got %d", byAgent["agentB"].ToolErrorCnt)
+
+	toolMap := func(ts []SessionToolSummary) map[string]SessionToolSummary {
+		m := make(map[string]SessionToolSummary, len(ts))
+		for _, s := range ts {
+			m[s.Tool] = s
+		}
+		return m
+	}
+
+	// agentA: bash(2 calls, 1 error), grep(1), read(1); ToolErrorCnt=1.
+	aA := byAgent["agentA"]
+	if aA.ToolErrorCnt != 1 {
+		t.Errorf("agentA ToolErrorCnt: want 1, got %d", aA.ToolErrorCnt)
+	}
+	tmA := toolMap(aA.ToolSummary)
+	if len(tmA) != 3 {
+		t.Errorf("agentA: want 3 tools, got %d: %v", len(tmA), aA.ToolSummary)
+	}
+	if tmA["bash"].CallCount != 2 || tmA["bash"].ErrorCount != 1 {
+		t.Errorf("agentA bash: want 2/1, got %d/%d", tmA["bash"].CallCount, tmA["bash"].ErrorCount)
+	}
+	if tmA["grep"].CallCount != 1 || tmA["grep"].ErrorCount != 0 {
+		t.Errorf("agentA grep: want 1/0, got %d/%d", tmA["grep"].CallCount, tmA["grep"].ErrorCount)
+	}
+	if tmA["read"].CallCount != 1 || tmA["read"].ErrorCount != 0 {
+		t.Errorf("agentA read: want 1/0, got %d/%d", tmA["read"].CallCount, tmA["read"].ErrorCount)
+	}
+
+	// agentB: bash(1), grep(1), read(1); ToolErrorCnt=0.
+	aB := byAgent["agentB"]
+	if aB.ToolErrorCnt != 0 {
+		t.Errorf("agentB ToolErrorCnt: want 0, got %d", aB.ToolErrorCnt)
+	}
+	tmB := toolMap(aB.ToolSummary)
+	if len(tmB) != 3 {
+		t.Errorf("agentB: want 3 tools, got %d: %v", len(tmB), aB.ToolSummary)
+	}
+	for _, tool := range []string{"bash", "grep", "read"} {
+		if tmB[tool].CallCount != 1 || tmB[tool].ErrorCount != 0 {
+			t.Errorf("agentB %s: want 1/0, got %d/%d", tool, tmB[tool].CallCount, tmB[tool].ErrorCount)
+		}
 	}
 }
 

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -120,6 +120,6 @@ func listFiles(t testing.TB, root string) []string {
 	if err != nil {
 		t.Fatalf("WalkDir(%q): %v", root, err)
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	return files
 }

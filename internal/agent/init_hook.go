@@ -244,17 +244,15 @@ func storeHooksMap(rawMap map[string]json.RawMessage, hooksMap map[string][]json
 }
 
 // isKapmEntry reports whether raw is a kapm-managed hook entry.
-// If raw is malformed JSON, corrupt is true and match is false; callers must
-// not overwrite the entry.
-func isKapmEntry(raw json.RawMessage) (match, corrupt bool) {
+// A non-nil error signals corruption; callers must not overwrite the entry.
+func isKapmEntry(raw json.RawMessage) (bool, error) {
 	var entry struct {
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(raw, &entry); err != nil {
-		return false, true
+		return false, err
 	}
-	match = isKapmCommand(entry.Command)
-	return match, false
+	return isKapmCommand(entry.Command), nil
 }
 
 func hookCommand(executablePath, name string) string {
@@ -328,8 +326,8 @@ func consumeCommandToken(command string) (token, rest string, ok bool) {
 func removeKapmEntries(hooksMap map[string][]json.RawMessage) {
 	for event, entries := range hooksMap {
 		hooksMap[event] = filterHooks(entries, func(e json.RawMessage) bool {
-			match, corrupt := isKapmEntry(e)
-			if corrupt {
+			match, err := isKapmEntry(e)
+			if err != nil {
 				slog.Warn("corrupt hook entry preserved", "event", event)
 				return true
 			}
@@ -342,7 +340,7 @@ func addKapmEntries(hooksMap map[string][]json.RawMessage, command string) error
 	// Fail-fast: refuse to overwrite if any existing entry is corrupt.
 	for event, entries := range hooksMap {
 		for _, e := range entries {
-			if _, corrupt := isKapmEntry(e); corrupt {
+			if _, err := isKapmEntry(e); err != nil {
 				slog.Warn("corrupt hook entry; aborting update", "event", event)
 				return fmt.Errorf("corrupt hook entry in event %q", event)
 			}

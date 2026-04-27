@@ -8,11 +8,70 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
+	"github.com/kapmcli/kapm/internal/cli"
 	"github.com/kapmcli/kapm/internal/fileutil"
 )
+
+type agentFieldDefaults struct {
+	Model                 string
+	Tools                 []string
+	AllowedTools          []string
+	Resources             []string
+	ShowExistingResources bool
+}
+
+type agentFieldValues struct {
+	Model        string
+	Tools        []string
+	AllowedTools []string
+	Resources    []string
+}
+
+func promptAgentCoreFields(p *cli.Prompter, out io.Writer, d agentFieldDefaults) (agentFieldValues, error) {
+	tools, err := p.MultiSelectWithDefaults("tools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, d.Tools))
+	if err != nil {
+		return agentFieldValues{}, err
+	}
+
+	allowedTools, err := p.MultiSelectWithDefaults("allowedTools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, d.AllowedTools))
+	if err != nil {
+		return agentFieldValues{}, err
+	}
+
+	var resources []string
+	if d.ShowExistingResources {
+		if _, err := fmt.Fprintf(out, "Current resources: %v\n", d.Resources); err != nil {
+			return agentFieldValues{}, err
+		}
+		if _, err := fmt.Fprintln(out, "Enter new resources (blank line to keep current):"); err != nil {
+			return agentFieldValues{}, err
+		}
+		resources, err = p.MultiInput("resources")
+		if err != nil {
+			return agentFieldValues{}, err
+		}
+		if len(resources) == 0 {
+			resources = slices.Clone(d.Resources)
+		}
+	} else {
+		extra, err := p.MultiInput("additional resources")
+		if err != nil {
+			return agentFieldValues{}, err
+		}
+		resources = append(slices.Clone(d.Resources), extra...)
+	}
+
+	return agentFieldValues{
+		Model:        d.Model,
+		Tools:        tools,
+		AllowedTools: allowedTools,
+		Resources:    resources,
+	}, nil
+}
 
 func readAgentRawJSON(path string) (map[string]json.RawMessage, []byte, error) {
 	data, err := os.ReadFile(path)

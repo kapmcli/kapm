@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -563,7 +563,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		}
 		seen[fc.Path] = append(seen[fc.Path], fc)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 
 	nFiles := s.FilesChanged
 	nEdits := len(s.Changes)

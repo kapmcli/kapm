@@ -3,6 +3,7 @@ package apmconfig
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -56,7 +57,7 @@ func MarshalIndentedJSON(value any) ([]byte, error) {
 func ValidateIdentifier(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "", fmt.Errorf("identifier cannot be empty")
+		return "", errors.New("identifier cannot be empty")
 	}
 	if !filepath.IsLocal(trimmed) || trimmed == "." || trimmed == ".." {
 		return "", fmt.Errorf("invalid identifier %q", value)

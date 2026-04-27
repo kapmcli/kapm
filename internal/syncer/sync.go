@@ -59,7 +59,7 @@ func (d *apmDependency) UnmarshalYAML(node *yaml.Node) error {
 		*d = apmDependency(raw)
 		return nil
 	default:
-		return fmt.Errorf("unsupported dependency format")
+		return errors.New("unsupported dependency format")
 	}
 }
 
@@ -230,7 +230,7 @@ func discoverPackageRoots(modulesRoot string) (map[string]string, error) {
 			if pickSourceDir(packageRoot) == "" {
 				continue
 			}
-			key := filepath.ToSlash(filepath.Join(org.Name(), repo.Name()))
+			key := toSlashJoin(org.Name(), repo.Name())
 			out[key] = packageRoot
 		}
 	}
@@ -298,6 +298,8 @@ func matchDependencyPackage(candidates []string, orderedKeys []string, used map[
 	return "", false
 }
 
+func toSlashJoin(parts ...string) string { return filepath.ToSlash(filepath.Join(parts...)) }
+
 func (d apmDependency) moduleCandidates() []string {
 	if ref := strings.TrimSpace(d.Reference); ref != "" {
 		if candidate, ok := normalizeDependencyReference(ref); ok {
@@ -311,30 +313,30 @@ func (d apmDependency) moduleCandidates() []string {
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			return nil
 		}
-		return []string{filepath.ToSlash(filepath.Join("_local", base))}
+		return []string{toSlashJoin("_local", base)}
 	}
 
-	if gitRef := strings.TrimSpace(d.Git); gitRef != "" {
-		repoPath, ok := normalizeDependencyReference(gitRef)
-		if !ok {
-			return nil
-		}
-
-		candidates := make([]string, 0, 4)
-		if alias := strings.TrimSpace(d.Alias); alias != "" {
-			candidates = append(candidates,
-				filepath.ToSlash(alias),
-				filepath.ToSlash(filepath.Join(filepath.Dir(repoPath), alias)),
-			)
-		}
-		if virtualPath := strings.Trim(strings.TrimSpace(d.Path), "/"); virtualPath != "" {
-			candidates = append(candidates, filepath.ToSlash(filepath.Join(repoPath, filepath.FromSlash(virtualPath))))
-		}
-		candidates = append(candidates, repoPath)
-		return dedupeStrings(candidates)
+	gitRef := strings.TrimSpace(d.Git)
+	if gitRef == "" {
+		return nil
+	}
+	repoPath, ok := normalizeDependencyReference(gitRef)
+	if !ok {
+		return nil
 	}
 
-	return nil
+	candidates := make([]string, 0, 4)
+	if alias := strings.TrimSpace(d.Alias); alias != "" {
+		candidates = append(candidates,
+			filepath.ToSlash(alias),
+			toSlashJoin(filepath.Dir(repoPath), alias),
+		)
+	}
+	if virtualPath := strings.Trim(strings.TrimSpace(d.Path), "/"); virtualPath != "" {
+		candidates = append(candidates, toSlashJoin(repoPath, filepath.FromSlash(virtualPath)))
+	}
+	candidates = append(candidates, repoPath)
+	return dedupeStrings(candidates)
 }
 
 func normalizeDependencyReference(ref string) (string, bool) {

@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
@@ -167,7 +167,7 @@ func readPower(dir string) (*PowerManifest, error) {
 	nameValue, _ := stringMetaField(doc.Meta, "name")
 	name, err := apmconfig.ValidateIdentifier(nameValue)
 	if err != nil {
-		return nil, fmt.Errorf("POWER.md frontmatter must have a valid name")
+		return nil, errors.New("POWER.md frontmatter must have a valid name")
 	}
 
 	description, _ := stringMetaField(doc.Meta, "description")
@@ -175,7 +175,7 @@ func readPower(dir string) (*PowerManifest, error) {
 		description, _ = stringMetaField(doc.Meta, "displayName")
 	}
 	if strings.TrimSpace(description) == "" {
-		return nil, fmt.Errorf("POWER.md frontmatter must have description or displayName")
+		return nil, errors.New("POWER.md frontmatter must have description or displayName")
 	}
 
 	return &PowerManifest{
@@ -272,8 +272,8 @@ func loadPowerSteering(srcDir string) ([]PowerSteeringDoc, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	sort.Slice(docs, func(i, j int) bool {
-		return docs[i].Name < docs[j].Name
+	slices.SortFunc(docs, func(a, b PowerSteeringDoc) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 	return docs, warnings, nil
 }
@@ -353,7 +353,7 @@ func listInstalledResourcePaths(powerDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(steeringPaths)
+	slices.Sort(steeringPaths)
 	return append(resourcePaths, steeringPaths...), nil
 }
 

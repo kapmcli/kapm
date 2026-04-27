@@ -5,49 +5,31 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/kapmcli/kapm/internal/serve"
 )
 
-func runServe(args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	port := fs.Int("port", 9090, "HTTP port")
-	open := fs.Bool("open", false, "open browser automatically")
-	since, logsDir, targetDir := addLogsFlags(fs)
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm serve [flags]\n\n")
-		_, _ = fmt.Fprintln(fs.Output(), "Serve the kapm WebUI dashboard over HTTP.")
-		fs.PrintDefaults()
-	}
+var runServe = runLogsCommand(
+	"serve",
+	"Serve the kapm WebUI dashboard over HTTP.",
+	func(fs *flag.FlagSet) {
+		fs.Int("port", 9090, "HTTP port")
+		fs.Bool("open", false, "open browser automatically")
+	},
+	func(ctx context.Context, fs *flag.FlagSet, lf logsFlags) error {
+		port := fs.Lookup("port").Value.(interface{ Get() interface{} }).Get().(int)
+		open := fs.Lookup("open").Value.(interface{ Get() interface{} }).Get().(bool)
 
-	ok, err := parseLogsCommand(fs, args, "serve")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
+		srv := serve.New(serve.Options{Port: port, LogsDir: lf.LogsDir, Since: lf.Since})
 
-	lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)
-	if err != nil {
-		return err
-	}
-
-	srv := serve.New(serve.Options{Port: *port, LogsDir: lf.LogsDir, Since: lf.Since})
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	url := fmt.Sprintf("http://%s/", srv.Addr())
-	_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)
-	if *open {
-		if err := serve.OpenBrowser(url); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+		url := fmt.Sprintf("http://%s/", srv.Addr())
+		_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)
+		if open {
+			if err := serve.OpenBrowser(url); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
 		}
-	}
 
-	return srv.Run(ctx)
-}
+		return srv.Run(ctx)
+	},
+)

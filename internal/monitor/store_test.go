@@ -426,3 +426,20 @@ func TestRecordCacheLoad_CancelledCtx(t *testing.T) {
 		t.Errorf("got %v, want context.Canceled", err)
 	}
 }
+
+func TestLoadRecordsContext_CancelledCtx(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeJSONL(t, filepath.Join(dir, "s.jsonl"), []string{
+		`{"ts":"2026-04-20T09:00:00Z","session":"s","event":"stop"}`,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recs, err := LoadRecordsContext(ctx, dir, time.Time{})
+	if err != context.Canceled {
+		t.Errorf("got err=%v, want context.Canceled", err)
+	}
+	if len(recs) != 0 {
+		t.Errorf("got %d records, want 0", len(recs))
+	}
+}

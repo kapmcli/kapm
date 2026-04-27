@@ -1,6 +1,7 @@
 package power
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -13,15 +14,15 @@ import (
 func ParsePowerSource(input string) (PowerSource, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
-		return PowerSource{}, fmt.Errorf("power source cannot be empty")
+		return PowerSource{}, errors.New("power source cannot be empty")
 	}
 
 	if strings.Contains(raw, "/-/tree/") {
-		return PowerSource{}, fmt.Errorf("GitLab subdir URL not supported in MVP; use root URL")
+		return PowerSource{}, errors.New("GitLab subdir URL not supported in MVP; use root URL")
 	}
 
 	if strings.Contains(raw, "/src/branch/") {
-		return PowerSource{}, fmt.Errorf("Gitea/Codeberg subdir URL not supported in MVP; use root URL")
+		return PowerSource{}, errors.New("Gitea/Codeberg subdir URL not supported in MVP; use root URL")
 	}
 
 	if source, ok := parseGitHubSubdirSource(raw); ok {

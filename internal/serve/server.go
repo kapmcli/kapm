@@ -101,21 +101,38 @@ func (r *linkRelRenderer) renderAutoLink(w util.BufWriter, source []byte, n ast.
 	return ast.WalkSkipChildren, nil
 }
 
+// schemeOf returns the lower-cased scheme and whether dest is a relative URL.
+// A URL is considered relative when it has no ":" before the first "/" or "?".
+func schemeOf(dest string) (scheme string, isRelative bool) {
+	s := strings.TrimSpace(dest)
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case ':':
+			return strings.ToLower(s[:i]), false
+		case '/', '?', '#':
+			return "", true
+		}
+	}
+	return "", true
+}
+
 func (r *linkRelRenderer) renderLink(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		_, _ = w.WriteString("</a>")
 		return ast.WalkContinue, nil
 	}
 	link := n.(*ast.Link)
-	dest := link.Destination
-	// Block javascript: scheme (goldmark's built-in sanitization is bypassed by custom renderer).
-	lower := strings.ToLower(strings.TrimSpace(string(dest)))
-	if strings.HasPrefix(lower, "javascript:") {
+	dest := string(link.Destination)
+	scheme, isRel := schemeOf(dest)
+	switch {
+	case isRel, scheme == "http", scheme == "https", scheme == "mailto":
+		// allowed
+	default:
 		_, _ = w.WriteString(`<a rel="noopener nofollow" href="#">`)
 		return ast.WalkContinue, nil
 	}
 	_, _ = w.WriteString(`<a rel="noopener nofollow" href="`)
-	_, _ = w.Write(util.EscapeHTML(util.URLEscape(dest, true)))
+	_, _ = w.Write(util.EscapeHTML(util.URLEscape(link.Destination, true)))
 	_, _ = w.WriteString(`">`)
 	return ast.WalkContinue, nil
 }
@@ -216,10 +233,17 @@ type Options struct {
 }
 
 // metricsCacheEntry holds a cached DetailedMetrics result with its generation time.
+// summaryHTMLFrame and overviewJSONFrame are lazily computed on first SSE send
+// and reused by subsequent clients on the same tick.
 type metricsCacheEntry struct {
 	dm                monitor.DetailedMetrics
 	dashboardSessions []monitor.SessionMetric
 	storedAt          time.Time
+
+	sseOnce          sync.Once
+	summaryHTMLFrame []byte
+	overviewJSONFrame []byte
+	sseErr           error
 }
 
 // Server serves the kapm WebUI.
@@ -271,9 +295,9 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	srv := &http.Server{
 		Handler:      s.handler,
-		ReadTimeout:  10 * time.Second,
+		ReadTimeout:  httpReadTimeout,
 		WriteTimeout: 0, // SSE streams: no write deadline
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout:  httpIdleTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -287,7 +311,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		// best-effort graceful shutdown; connection cleanup still happens on timeout
 		_ = srv.Shutdown(shutdownCtx)
@@ -331,12 +355,18 @@ func (s *Server) buildHandler() http.Handler {
 	return securityHeaders(mux)
 }
 
+const cspHeader = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'"
+
 // securityHeaders sets common security response headers on every request.
+// CSP is applied to all paths except /sse (SSE streams must not be interrupted).
 func securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
+		if r.URL.Path != "/sse" {
+			w.Header().Set("Content-Security-Policy", cspHeader)
+		}
 		h.ServeHTTP(w, r)
 	})
 }
@@ -434,7 +464,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(sseStreamInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -448,35 +478,57 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// sseFrames lazily computes and caches the SSE payload bytes for this entry.
+// Safe to call concurrently; sync.Once ensures compute-once semantics.
+func (e *metricsCacheEntry) sseFrames() (summaryHTML, overviewJSON []byte, err error) {
+	e.sseOnce.Do(func() {
+		var htmlBuf bytes.Buffer
+		if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", e.dm.Overview); err != nil {
+			e.sseErr = fmt.Errorf("serve sse render summary: %w", err)
+			return
+		}
+		e.summaryHTMLFrame = bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
+		b, err := json.Marshal(e.dm.Overview)
+		if err != nil {
+			e.sseErr = fmt.Errorf("serve sse marshal overview: %w", err)
+			return
+		}
+		e.overviewJSONFrame = b
+	})
+	return e.summaryHTMLFrame, e.overviewJSONFrame, e.sseErr
+}
+
 // sendOverview writes SSE frames with the current overview snapshot:
 //   - `event: summary` with rendered summary-cards HTML (for htmx sse-swap)
 //   - `event: overview` with Overview JSON (for ECharts update in client JS)
 func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request) bool {
-	loaded, err := s.loadMetrics(r.Context())
-	if err != nil {
+	// loadMetrics ensures the cache is fresh (handles TTL and singleflight).
+	if _, err := s.loadMetrics(r.Context()); err != nil {
 		slog.Warn("serve sse load metrics", "err", err)
 		return false
 	}
 
-	// HTML for the summary cards (no newlines inside SSE data).
-	var htmlBuf bytes.Buffer
-	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", loaded.dm.Overview); err != nil {
-		slog.Warn("serve sse render summary", "err", err)
-		return false
-	}
-	html := bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
-	if _, err := fmt.Fprintf(w, "event: summary\ndata: %s\n\n", html); err != nil {
-		s.logWriteFailure(r, "sse summary", err)
+	s.metricsMu.Lock()
+	entry := s.metricsCache
+	s.metricsMu.Unlock()
+
+	if entry == nil {
+		slog.Warn("serve sse load metrics", "err", errors.New("cache empty after load"))
 		return false
 	}
 
-	payload, err := json.Marshal(loaded.dm.Overview)
+	htmlFrame, jsonFrame, err := entry.sseFrames()
 	if err != nil {
-		slog.Warn("serve sse marshal", "err", err)
+		slog.Warn("serve sse build frames", "err", err)
 		return false
 	}
-	if _, err := fmt.Fprintf(w, "event: overview\ndata: %s\n\n", payload); err != nil {
-		s.logWriteFailure(r, "sse overview", err)
+
+	if _, err := fmt.Fprintf(w, "event: summary\ndata: %s\n\n", htmlFrame); err != nil {
+		s.logWriteFailure(r, "sse summary", fmt.Errorf("send sse summary frame: %w", err))
+		return false
+	}
+	if _, err := fmt.Fprintf(w, "event: overview\ndata: %s\n\n", jsonFrame); err != nil {
+		s.logWriteFailure(r, "sse overview", fmt.Errorf("send sse overview frame: %w", err))
 		return false
 	}
 	flusher.Flush()
@@ -504,13 +556,13 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	isHX := r != nil && r.Header.Get("HX-Request") == "true"
 	if isHX {
 		if err := tmpl.ExecuteTemplate(&buf, "content", data); err != nil {
-			s.handleError(w, r, err, http.StatusInternalServerError)
+			s.handleError(w, r, fmt.Errorf("render page content template %q: %w", tmpl.Name(), err), http.StatusInternalServerError)
 			return
 		}
 		// Out-of-band swap updates the nav's active link alongside #content.
 		buf.WriteString(`<nav id="main-nav" hx-swap-oob="true">`)
 		if err := tmpl.ExecuteTemplate(&buf, "nav", data); err != nil {
-			s.handleError(w, r, err, http.StatusInternalServerError)
+			s.handleError(w, r, fmt.Errorf("render page nav template: %w", err), http.StatusInternalServerError)
 			return
 		}
 		buf.WriteString(`</nav>`)
@@ -900,3 +952,9 @@ func toolDetailByName(tools []monitor.ToolDetail, name string) (monitor.ToolDeta
 
 // defaultMaxSSE is the default cap for concurrent SSE connections.
 const defaultMaxSSE int32 = 64
+
+const (
+	sseStreamInterval = 5 * time.Second
+	httpReadTimeout   = 10 * time.Second
+	httpIdleTimeout   = 60 * time.Second
+)

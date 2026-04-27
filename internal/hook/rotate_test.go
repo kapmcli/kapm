@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/testutil"
 )
 
 // failReader is a fake io.Reader that always returns err.
@@ -144,6 +146,9 @@ func TestRotateFailureRecovery(t *testing.T) {
 		t.Skip("Windows permits replacing a directory with os.Rename in this setup")
 	}
 
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
 	dir := t.TempDir()
 	content := `{"event":"x"}` + "\n"
 	src := filepath.Join(dir, "old.jsonl")
@@ -169,8 +174,8 @@ func TestRotateFailureRecovery(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "old.jsonl.gz")); !os.IsNotExist(err) {
 		t.Error("old.jsonl.gz should not exist after failure")
 	}
-	if stderr.Len() == 0 {
-		t.Error("expected error on stderr")
+	if !strings.Contains(buf.String(), "rotate compress") {
+		t.Error("expected rotate compress error in slog output")
 	}
 }
 
@@ -400,5 +405,67 @@ func TestHandleNoRotateOnOtherEvents(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(logDir, "old.jsonl")); err != nil {
 		t.Error("old.jsonl should NOT be rotated for non-agentSpawn events")
+	}
+}
+
+// TestRotateReadDirErrorLogsWarning verifies that an unexpected ReadDir error
+// (not ErrNotExist) triggers slog.Warn with "read logs dir failed".
+func TestRotateReadDirErrorLogsWarning(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX directory write bits for this test")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	parent := t.TempDir()
+	logDir := filepath.Join(parent, "logs")
+	if err := os.Mkdir(logDir, 0o000); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(logDir, 0o700) })
+
+	var stderr bytes.Buffer
+	rotate(logDir, "current", &stderr, 0)
+
+	if !strings.Contains(buf.String(), "read logs dir failed") {
+		t.Errorf("expected 'read logs dir failed' in slog output, got: %q", buf.String())
+	}
+}
+
+// TestRotateCompressErrorWrapped verifies that a compression failure is logged via
+// slog.Warn with the "rotate compress" prefix in the error message.
+func TestRotateCompressErrorWrapped(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX directory write bits for this test")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "old.jsonl")
+	writeJSONL(t, src, `{"event":"x"}`+"\n")
+
+	// Make the tmp path unwritable via a directory with the same name.
+	tmp := filepath.Join(dir, "old.jsonl.gz.tmp")
+	if err := os.Mkdir(tmp, 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "keep"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("setup nested file: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	rotate(dir, "current", &stderr, 0)
+
+	if !strings.Contains(buf.String(), "rotate compress") {
+		t.Errorf("expected 'rotate compress' in slog output, got: %q", buf.String())
 	}
 }

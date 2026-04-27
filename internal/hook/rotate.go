@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,10 @@ var testHookAfterClaim func()
 func rotate(logDir, currentSessionID string, stderr io.Writer, minAge time.Duration) {
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
-		// dir may not exist yet — not an error
+		if errors.Is(err, fs.ErrNotExist) {
+			return
+		}
+		slog.Warn("hook rotate: read logs dir failed", "dir", logDir, "err", err)
 		return
 	}
 	now := time.Now()
@@ -46,7 +50,7 @@ func rotate(logDir, currentSessionID string, stderr io.Writer, minAge time.Durat
 			continue
 		}
 		if err := compressWithRetry(src, gz); err != nil {
-			_, _ = fmt.Fprintf(stderr, "hook-handler: rotate %q: %v\n", src, err)
+			slog.Warn("hook-handler: rotate compress failed", "src", src, "err", fmt.Errorf("rotate compress %q: %w", src, err))
 		}
 	}
 }

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -216,15 +217,33 @@ func (p *Prompter) Confirm(label string, defaultValue bool) (bool, error) {
 }
 
 func (p *Prompter) readLine() (string, error) {
-	line, err := p.r.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	if errors.Is(err, io.EOF) && line == "" {
-		return "", io.EOF
-	}
+	return p.readLineCtx(context.Background())
+}
 
-	return strings.TrimRight(line, "\r\n"), nil
+func (p *Prompter) readLineCtx(ctx context.Context) (string, error) {
+	type result struct {
+		line string
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		line, err := p.r.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			ch <- result{err: err}
+			return
+		}
+		if errors.Is(err, io.EOF) && line == "" {
+			ch <- result{err: io.EOF}
+			return
+		}
+		ch <- result{line: strings.TrimRight(line, "\r\n")}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case r := <-ch:
+		return r.line, r.err
+	}
 }
 
 func parseSelectionNumbers(value string, optionCount int) ([]int, error) {

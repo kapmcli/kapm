@@ -1,0 +1,240 @@
+package monitor
+
+import (
+	"regexp"
+	"time"
+)
+
+var skillPathRe = regexp.MustCompile(`([a-zA-Z0-9_-]+)/SKILL\.md`)
+
+const (
+	maxRecentCalls             = 100
+	maxErrors                  = 50
+	activeSessionTimeout       = 5 * time.Minute
+	maxSummaryLength           = 120
+	maxErrorDetailLength       = 256
+	maxAssistantResponseLength = 2048
+)
+
+// FileChange captures a single file modification via the write tool.
+// Diff is NOT stored — rendered on demand by template helper to avoid
+// re-computing on every AggregateDetail call.
+type FileChange struct {
+	Path      string // normalized (filepath.Clean + cwd if relative) at extraction time
+	Ts        time.Time
+	Command   string // "create" | "strReplace" | "insert"
+	Purpose   string // optional, from tool_input.__tool_use_purpose
+	Content   string // for create/insert (empty if Oversized)
+	OldStr    string // for strReplace (empty if Oversized)
+	NewStr    string // for strReplace (empty if Oversized)
+	Oversized bool   // true when any content field was truncated due to size cap
+}
+
+// SessionMetric is an overview-level session summary retained for backwards compatibility.
+type SessionMetric struct {
+	ID           string
+	AgentKey     string // composite key sid + "|" + agent; unique per (session, agent)
+	Agent        string
+	Title        string // first userPromptSubmit prompt, cleaned; may be empty
+	Cwd          string
+	StartTime    time.Time
+	EndTime      time.Time
+	LastActivity time.Time
+	Duration     JSONDuration
+	Active       bool // no stop event AND last event within 5min of now
+	ToolCalls    int
+	Prompts      int
+	FilesChanged int
+}
+
+// ToolMetric is an overview-level tool usage summary retained for backwards compatibility.
+type ToolMetric struct {
+	Name       string
+	CallCount  int
+	ErrorCount int // preToolUse without matching postToolUse, or non-zero exit_status
+	ErrorRate  float64
+}
+
+// AgentMetric is an overview-level agent activity summary retained for backwards compatibility.
+type AgentMetric struct {
+	Name         string
+	SessionCount int
+	ToolCalls    int
+	Prompts      int
+	FilesChanged int
+}
+
+// HourlyMetric is an hourly event count for activity chart display.
+type HourlyMetric struct {
+	Hour       time.Time // truncated to hour
+	EventCount int
+}
+
+// Metrics is the aggregated overview metrics retained for backwards compatibility.
+type Metrics struct {
+	Sessions       []SessionMetric
+	Tools          []ToolMetric
+	Agents         []AgentMetric
+	HourlyActivity []HourlyMetric
+}
+
+// EventEntry is one log event for timeline display.
+type EventEntry struct {
+	Ts           time.Time
+	Event        string // agentSpawn | userPromptSubmit | preToolUse | postToolUse | stop
+	Tool         string
+	IsError      bool         // preToolUse without matching postToolUse
+	ErrorDetail  string       // exit code + stderr excerpt (max 256 chars), empty if no error
+	InputSummary string       // short human-readable summary of tool_input (preToolUse only)
+	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (preToolUse only, 0 for errors)
+}
+
+// ToolCall is one completed tool invocation (preToolUse matched with postToolUse)
+// or an unmatched preToolUse marked as error.
+type ToolCall struct {
+	Ts           time.Time // preToolUse timestamp
+	Session      string
+	Agent        string
+	Tool         string
+	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (0 for errors)
+	IsError      bool         // no matching postToolUse
+	InputSummary string       // short human-readable summary of tool_input
+}
+
+// SessionToolSummary is a per-tool breakdown within a single session.
+type SessionToolSummary struct {
+	Tool        string
+	CallCount   int
+	ErrorCount  int
+	SuccessRate float64 // (CallCount - ErrorCount) / CallCount
+	AvgDuration JSONDuration
+}
+
+// SessionDetail is the per-session drill-down payload.
+type SessionDetail struct {
+	SessionMetric
+	PromptHistory     []string             // raw prompts, newest first
+	Timeline          []EventEntry         // full ordered event list for this session
+	ToolSummary       []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
+	AssistantResponse string               // LLM final response from stop event (max 2KB)
+	Changes           []FileChange         // chronological order (sorted by Ts ascending)
+}
+
+// AgentDetail is the per-agent drill-down payload.
+type AgentDetail struct {
+	AgentMetric
+	Sessions     []SessionMetric      // sessions owned by this agent, newest first
+	ToolSummary  []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
+	ToolErrorCnt int                  // total error tool calls across all its sessions
+}
+
+// ToolDetail is the per-tool drill-down payload.
+type ToolDetail struct {
+	ToolMetric
+	AvgDuration JSONDuration // average pre→post across matched calls
+	RecentCalls []ToolCall   // newest first, matched calls with duration
+	Errors      []ToolCall   // unmatched preToolUse samples
+}
+
+// SkillUsage counts how many times a skill's SKILL.md was read.
+type SkillUsage struct {
+	Name      string
+	ReadCount int
+}
+
+// DetailedMetrics is the full aggregation result.
+type DetailedMetrics struct {
+	Overview Metrics
+	Sessions []SessionDetail
+	Agents   []AgentDetail
+	Tools    []ToolDetail
+	Skills   []SkillUsage
+}
+
+// pending is a queued preToolUse awaiting its postToolUse match.
+type pending struct {
+	tool    string // original tool name (bucket key may be tool + input hash)
+	ts      time.Time
+	index   int // index in timeline (so we can mark error later)
+	summary string
+}
+
+type sessionState struct {
+	id                 string
+	agent              string
+	cwd                string
+	start              time.Time
+	end                time.Time
+	isStopped          bool
+	toolCalls          int
+	prompts            []string
+	timeline           []EventEntry
+	pending            map[string][]pending // bucket key -> queue of unmatched preToolUse
+	sumTitle           string               // latest summary-tool taskDescription (if any)
+	assistantResponse  string               // from stop event
+	changes            []FileChange         // write preToolUse events, chronological
+	filesChangedCached int                  // countUniqueFiles(changes), populated in finalizeSessionStats
+}
+
+// aggState holds the mutable accumulators shared by the three
+// AggregateDetail phases: processRecord, finalizeSessionStats, assembleDetails.
+type aggState struct {
+	now            time.Time
+	sessions       map[string]*sessionState
+	tools          map[string]*ToolDetail
+	agents         map[string]*AgentDetail
+	hours          map[time.Time]int
+	skills         map[string]int
+	sessionDetails []SessionDetail
+}
+
+// toolAgg accumulates call counts and durations for one tool within an agent.
+type toolAgg struct {
+	callCount  int
+	errorCount int
+	durSum     time.Duration
+	durCount   int
+}
+
+// toolInput is a lenient typed view of tool_input payloads. Fields absent in
+// the payload remain zero-valued; unknown fields are ignored (tool producers
+// may send extra fields).
+type toolInput struct {
+	Operations []operation `json:"operations,omitempty"`
+	Path       string      `json:"path,omitempty"`
+	Paths      []string    `json:"paths,omitempty"`
+	Command    string      `json:"command,omitempty"`
+	Purpose    string      `json:"__tool_use_purpose,omitempty"`
+	FilePath   string      `json:"file_path,omitempty"`
+	Pattern    string      `json:"pattern,omitempty"`
+	Prompt     string      `json:"prompt,omitempty"`
+	Content    string      `json:"content,omitempty"`
+	SymbolName string      `json:"symbol_name,omitempty"`
+	NewName    string      `json:"new_name,omitempty"`
+	Query      string      `json:"query,omitempty"`
+}
+
+// operation describes a single entry in tool_input.operations (used by read).
+type operation struct {
+	Mode       string   `json:"mode,omitempty"`
+	Path       string   `json:"path,omitempty"`
+	FilePath   string   `json:"file_path,omitempty"`
+	ImagePaths []string `json:"image_paths,omitempty"`
+	Offset     int      `json:"offset,omitempty"`
+	Limit      int      `json:"limit,omitempty"`
+}
+
+// TimeseriesPoint is one time-bucket of aggregated tool calls.
+type TimeseriesPoint struct {
+	Bucket      time.Time    `json:"bucket"`
+	Count       int          `json:"count"`
+	AvgDuration JSONDuration `json:"avgDuration"`
+	ErrorCount  int          `json:"errorCount"`
+}
+
+// PatternCount is one InputSummary pattern with its call count.
+type PatternCount struct {
+	Summary string    `json:"summary"`
+	Count   int       `json:"count"`
+	LastTs  time.Time `json:"lastTs"`
+}

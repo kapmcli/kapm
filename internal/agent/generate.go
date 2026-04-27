@@ -64,7 +64,7 @@ func generate(opts GenerateOptions) error {
 		return err
 	}
 
-	details, err := promptGenerateDetails(p)
+	details, err := promptGenerateDetails(p, opts.Out)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func promptGenerateName(p *cli.Prompter) (string, error) {
 	return validateAndNormalizeName(name)
 }
 
-func promptGenerateDetails(p *cli.Prompter) (generateDetails, error) {
+func promptGenerateDetails(p *cli.Prompter, out io.Writer) (generateDetails, error) {
 	description, err := promptGenerateDescription(p)
 	if err != nil {
 		return generateDetails{}, err
@@ -99,20 +99,25 @@ func promptGenerateDetails(p *cli.Prompter) (generateDetails, error) {
 	if err != nil {
 		return generateDetails{}, err
 	}
-	tools, allowedTools, err := promptGenerateToolSettings(p)
+	presetTools, err := promptGeneratePresetTools(p)
 	if err != nil {
 		return generateDetails{}, err
 	}
-	resources, err := promptGenerateResources(p)
+	fields, err := promptAgentCoreFields(p, out, agentFieldDefaults{
+		Model:        model,
+		Tools:        presetTools,
+		AllowedTools: presetTools,
+		Resources:    []string{apmconfig.DefaultSkillsResource},
+	})
 	if err != nil {
 		return generateDetails{}, err
 	}
 	return generateDetails{
 		Description:  description,
-		Model:        model,
-		Tools:        tools,
-		AllowedTools: allowedTools,
-		Resources:    resources,
+		Model:        fields.Model,
+		Tools:        fields.Tools,
+		AllowedTools: fields.AllowedTools,
+		Resources:    fields.Resources,
 	}, nil
 }
 
@@ -122,7 +127,7 @@ func promptGenerateDescription(p *cli.Prompter) (string, error) {
 		return "", err
 	}
 	if strings.TrimSpace(description) == "" {
-		return "", fmt.Errorf("description cannot be empty")
+		return "", errors.New("description cannot be empty")
 	}
 	return description, nil
 }
@@ -141,25 +146,9 @@ func promptGenerateModel(p *cli.Prompter) (string, error) {
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return "", fmt.Errorf("custom model cannot be empty")
+		return "", errors.New("custom model cannot be empty")
 	}
 	return model, nil
-}
-
-func promptGenerateToolSettings(p *cli.Prompter) ([]string, []string, error) {
-	presetTools, err := promptGeneratePresetTools(p)
-	if err != nil {
-		return nil, nil, err
-	}
-	tools, err := p.MultiSelectWithDefaults("tools", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, presetTools))
-	if err != nil {
-		return nil, nil, err
-	}
-	allowedTools, err := p.MultiSelectWithDefaults("allowedTools (defaults to selected tools, press Enter to accept)", apmconfig.AvailableAgentTools, defaultToolIndices(apmconfig.AvailableAgentTools, tools))
-	if err != nil {
-		return nil, nil, err
-	}
-	return tools, allowedTools, nil
 }
 
 func promptGeneratePresetTools(p *cli.Prompter) ([]string, error) {
@@ -172,15 +161,6 @@ func promptGeneratePresetTools(p *cli.Prompter) ([]string, error) {
 		return apmconfig.OrchestratorAgentTools, nil
 	}
 	return apmconfig.DefaultAgentTools, nil
-}
-
-func promptGenerateResources(p *cli.Prompter) ([]string, error) {
-	resources := []string{apmconfig.DefaultSkillsResource}
-	extraResources, err := p.MultiInput("additional resources")
-	if err != nil {
-		return nil, err
-	}
-	return append(resources, extraResources...), nil
 }
 
 func buildGenerateConfig(name string, details generateDetails) agentConfig {

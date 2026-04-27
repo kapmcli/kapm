@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -87,6 +88,23 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 	if got := rr.Header().Get("X-Frame-Options"); got != "DENY" {
 		t.Errorf("X-Frame-Options = %q, want DENY", got)
+	}
+	csp := rr.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'self'") {
+		t.Errorf("Content-Security-Policy = %q, want contains \"default-src 'self'\"", csp)
+	}
+}
+
+func TestSecurityHeadersCSPAbsentOnSSE(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/sse", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if got := rr.Header().Get("Content-Security-Policy"); got != "" {
+		t.Errorf("/sse Content-Security-Policy = %q, want empty", got)
 	}
 }
 
@@ -306,6 +324,109 @@ func TestSendOverviewLogsWriteFailure(t *testing.T) {
 	}
 	if !strings.Contains(logged, "path=/sse") || !strings.Contains(logged, "stream write failed") {
 		t.Fatalf("missing request/error detail in log: %q", logged)
+	}
+}
+
+func TestSendOverviewSummaryFrameWrapped(t *testing.T) {
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
+	w := &failingSSEWriter{err: errors.New("summary write err")}
+
+	s.sendOverview(w, w, req)
+
+	if !strings.Contains(buf.String(), "send sse summary frame") {
+		t.Errorf("expected wrapped error prefix in log, got: %q", buf.String())
+	}
+}
+
+func TestSendOverviewOverviewFrameWrapped(t *testing.T) {
+	// Allow the summary frame to succeed, fail on the overview frame.
+	var writeCount int
+	w := &countingSSEWriter{failAfter: 1, err: errors.New("overview write err")}
+
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	_ = writeCount
+
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
+	s.sendOverview(w, w, req)
+
+	if !strings.Contains(buf.String(), "send sse overview frame") {
+		t.Errorf("expected wrapped error prefix in log, got: %q", buf.String())
+	}
+}
+
+// countingSSEWriter succeeds for the first failAfter writes, then returns err.
+type countingSSEWriter struct {
+	count     int
+	failAfter int
+	err       error
+}
+
+func (w *countingSSEWriter) Write(p []byte) (int, error) {
+	w.count++
+	if w.count > w.failAfter {
+		return 0, w.err
+	}
+	return len(p), nil
+}
+func (w *countingSSEWriter) Flush() {}
+
+func TestRenderPageContentTemplateWrapped(t *testing.T) {
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	s := newTestServer(t)
+	// Use a template that has no "content" block to trigger an error on htmx path.
+	badTmpl := template.Must(template.New("badpage").Parse(`{{define "layout"}}ok{{end}}`))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+
+	s.renderPage(rr, req, http.StatusOK, badTmpl, map[string]any{})
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	if !strings.Contains(buf.String(), "render page content template") {
+		t.Errorf("expected wrapped error prefix in log, got: %q", buf.String())
+	}
+}
+
+func TestRenderPageNavTemplateWrapped(t *testing.T) {
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	old := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	s := newTestServer(t)
+	// Template has "content" but no "nav" block — nav execution will fail.
+	badTmpl := template.Must(template.New("navpage").Parse(`{{define "content"}}ok{{end}}`))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+
+	s.renderPage(rr, req, http.StatusOK, badTmpl, map[string]any{})
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	if !strings.Contains(buf.String(), "render page nav template") {
+		t.Errorf("expected wrapped error prefix in log, got: %q", buf.String())
 	}
 }
 
@@ -956,5 +1077,116 @@ func TestLocaltime_EscapesFormat(t *testing.T) {
 	}
 	if !strings.Contains(out, "&lt;script&gt;") {
 		t.Errorf("escaped form missing: %s", out)
+	}
+}
+
+func TestSchemeOf(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		dest       string
+		wantScheme string
+		wantRel    bool
+	}{
+		{"https://example.com", "https", false},
+		{"http://example.com", "http", false},
+		{"mailto:user@example.com", "mailto", false},
+		{"javascript:alert(1)", "javascript", false},
+		{"data:text/html,x", "data", false},
+		{"vbscript:msgbox", "vbscript", false},
+		{"blob:xxx", "blob", false},
+		{"/relative/path", "", true},
+		{"relative/path", "", true},
+		{"?query=1", "", true},
+		{"#anchor", "", true},
+		{"  https://example.com", "https", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.dest, func(t *testing.T) {
+			t.Parallel()
+			gotScheme, gotRel := schemeOf(tc.dest)
+			if gotScheme != tc.wantScheme || gotRel != tc.wantRel {
+				t.Errorf("schemeOf(%q) = (%q, %v), want (%q, %v)",
+					tc.dest, gotScheme, gotRel, tc.wantScheme, tc.wantRel)
+			}
+		})
+	}
+}
+
+func TestRenderMarkdownLinkAllowlist(t *testing.T) {
+	t.Parallel()
+	blocked := []struct {
+		name  string
+		input string
+	}{
+		{"javascript", "[x](javascript:alert(1))"},
+		{"data", "[x](data:text/html,x)"},
+		{"vbscript", "[x](vbscript:msgbox)"},
+		{"blob", "[x](blob:xxx)"},
+	}
+	for _, tc := range blocked {
+		t.Run("blocked/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := string(renderMarkdown(tc.input))
+			if !strings.Contains(got, `href="#"`) {
+				t.Errorf("renderMarkdown(%q) = %q, want href=\"#\"", tc.input, got)
+			}
+		})
+	}
+
+	allowed := []struct {
+		name  string
+		input string
+		href  string
+	}{
+		{"https", "[a](https://example.com)", "https://example.com"},
+		{"http", "[a](http://example.com)", "http://example.com"},
+		{"mailto", "[a](mailto:user@example.com)", "mailto:user@example.com"},
+		{"relative", "[a](/some/path)", "/some/path"},
+	}
+	for _, tc := range allowed {
+		t.Run("allowed/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := string(renderMarkdown(tc.input))
+			if strings.Contains(got, `href="#"`) {
+				t.Errorf("renderMarkdown(%q) = %q, should not be href=\"#\"", tc.input, got)
+			}
+			if !strings.Contains(got, tc.href) {
+				t.Errorf("renderMarkdown(%q) = %q, want contains %q", tc.input, got, tc.href)
+			}
+		})
+	}
+}
+
+func TestRunShutdownOnContextCancel(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: 365 * 24 * time.Hour})
+
+	// Pick a free port by listening briefly.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
+	s.opts.Port = port
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	// Give the server a moment to start.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("Run returned unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within 5s after context cancel")
 	}
 }

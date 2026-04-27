@@ -72,7 +72,7 @@ func (gitFetcher) Fetch(ctx context.Context, src PowerSource) (string, string, f
 	if _, err := os.Stat(localDir); err != nil {
 		cleanup()
 		if errorsIsNotExist(err) && src.PathInRepo != "" {
-			return "", "", func() {}, fmt.Errorf("subpath %q not found in repository", src.PathInRepo)
+			return "", "", func() {}, fmt.Errorf("subpath %q not found in repository %q", src.PathInRepo, src.URL)
 		}
 		return "", "", func() {}, fmt.Errorf("stat fetched path %q: %w", localDir, err)
 	}

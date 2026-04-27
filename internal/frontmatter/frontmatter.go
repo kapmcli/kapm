@@ -1,6 +1,7 @@
 package frontmatter
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -30,7 +31,7 @@ func Parse(content string) (Document, error) {
 	var found bool
 	metaText, body, found = cutClosingDelimiter(remaining)
 	if !found {
-		return Document{}, fmt.Errorf("front matter parse: missing closing delimiter")
+		return Document{}, errors.New("front matter parse: missing closing delimiter")
 	}
 
 	if metaText == "" {

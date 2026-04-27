@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/fileutil"
@@ -57,4 +61,44 @@ func resolveLogsFlags(since, logsDir, targetDir string) (logsFlags, error) {
 		return logsFlags{}, fmt.Errorf("--since: %w", err)
 	}
 	return logsFlags{LogsDir: resolved, Since: d}, nil
+}
+
+// runLogsCommand returns a command handler that sets up flags, parses args,
+// resolves logs flags, builds a signal context, and calls run.
+func runLogsCommand(
+	name, shortDesc string,
+	registerExtras func(fs *flag.FlagSet),
+	run func(ctx context.Context, fs *flag.FlagSet, lf logsFlags) error,
+) func(args []string) error {
+	return func(args []string) error {
+		fs := flag.NewFlagSet(name, flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		since, logsDir, targetDir := addLogsFlags(fs)
+		if registerExtras != nil {
+			registerExtras(fs)
+		}
+		fs.Usage = func() {
+			_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm %s [flags]\n\n", name)
+			_, _ = fmt.Fprintln(fs.Output(), shortDesc)
+			fs.PrintDefaults()
+		}
+
+		ok, err := parseLogsCommand(fs, args, name)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+
+		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)
+		if err != nil {
+			return err
+		}
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		return run(ctx, fs, lf)
+	}
 }

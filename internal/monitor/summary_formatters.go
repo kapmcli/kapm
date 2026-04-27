@@ -1,6 +1,10 @@
 package monitor
 
-import "github.com/kapmcli/kapm/internal/apmconfig"
+import (
+	"strconv"
+
+	"github.com/kapmcli/kapm/internal/apmconfig"
+)
 
 // toolFormatter returns a formatted summary for a tool input.
 // ok=false means no tool-specific handling applied; caller should use genericSummary.
@@ -30,16 +34,16 @@ func formatReadSummary(in toolInput, _ string) (string, bool) {
 		return "", false
 	}
 	if first.Offset > 0 && first.Limit > 0 {
-		return path + ":" + itoa(first.Offset) + "-" + itoa(first.Offset+first.Limit), true
+		return path + ":" + strconv.Itoa(first.Offset) + "-" + strconv.Itoa(first.Offset+first.Limit), true
 	}
 	if first.Limit > 0 {
-		return path + ":1-" + itoa(first.Limit+1), true
+		return path + ":1-" + strconv.Itoa(first.Limit+1), true
 	}
 	if first.Offset > 0 {
-		return path + ":" + itoa(first.Offset) + "+", true
+		return path + ":" + strconv.Itoa(first.Offset) + "+", true
 	}
 	if len(in.Operations) > 1 {
-		return path + " (+" + itoa(len(in.Operations)-1) + " more)", true
+		return path + " (+" + strconv.Itoa(len(in.Operations)-1) + " more)", true
 	}
 	return path, true
 }

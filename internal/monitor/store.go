@@ -46,11 +46,17 @@ type fileEntry struct {
 	recs  []Record
 }
 
-// LoadRecords reads all .jsonl and .jsonl.gz files in logsDir and returns records
-// with Ts >= since. Returns an empty slice (not an error) if the directory is missing.
-func LoadRecords(logsDir string, since time.Time) ([]Record, error) {
-	recs, _, err := loadRecordsWithCache(context.Background(), logsDir, since, nil)
+// LoadRecordsContext reads all .jsonl and .jsonl.gz files in logsDir and returns
+// records with Ts >= since. Honors ctx cancellation during the file scan.
+func LoadRecordsContext(ctx context.Context, logsDir string, since time.Time) ([]Record, error) {
+	recs, _, err := loadRecordsWithCache(ctx, logsDir, since, nil)
 	return recs, err
+}
+
+// LoadRecords is a context.Background() wrapper preserved for backward compatibility.
+// New callers should use LoadRecordsContext.
+func LoadRecords(logsDir string, since time.Time) ([]Record, error) {
+	return LoadRecordsContext(context.Background(), logsDir, since)
 }
 
 // RecordCache caches parsed log file contents keyed by path, invalidated by

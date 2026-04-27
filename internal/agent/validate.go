@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,7 @@ func validateAndNormalizeName(name string) (string, error) {
 	trimmed, err := apmconfig.ValidateIdentifier(name)
 	if err != nil {
 		if strings.TrimSpace(name) == "" {
-			return "", fmt.Errorf("name cannot be empty")
+			return "", errors.New("name cannot be empty")
 		}
 		return "", fmt.Errorf("invalid name %q", name)
 	}

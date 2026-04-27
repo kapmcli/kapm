@@ -10,7 +10,7 @@ import (
 
 // RunJSON loads records, aggregates, optionally filters, and writes JSON to w.
 func RunJSON(ctx context.Context, logsDir string, since time.Duration, session, agent string, w io.Writer) error {
-	records, err := LoadRecords(logsDir, time.Now().Add(-since))
+	records, err := LoadRecordsContext(ctx, logsDir, time.Now().Add(-since))
 	if err != nil {
 		return err
 	}
