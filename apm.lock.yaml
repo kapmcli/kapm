@@ -101,3 +101,39 @@ dependencies:
   deployed_files:
   - .github/skills/golang-documentation
   content_hash: sha256:939a28d541e511cbe7deb3c714f463ab86a5b2425e60c28e6cad78d48e6b2f63
+- repo_url: trkbt10/indexion-skills
+  host: github.com
+  resolved_commit: faa17ebda87c18c08d9a96642b44366f812ed2bf
+  virtual_path: skills/indexion-documentation
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/indexion-documentation
+  content_hash: sha256:5db0127be33897e46804d44bda6b54891d950737a7d5679e5613de9e08427faa
+- repo_url: trkbt10/indexion-skills
+  host: github.com
+  resolved_commit: faa17ebda87c18c08d9a96642b44366f812ed2bf
+  virtual_path: skills/indexion-readme
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/indexion-readme
+  content_hash: sha256:a7f46c595d1dc5e18c97b6979720cd7556ac65998422d8e5e08b813b2972c706
+- repo_url: trkbt10/indexion-skills
+  host: github.com
+  resolved_commit: faa17ebda87c18c08d9a96642b44366f812ed2bf
+  virtual_path: skills/indexion-refactor
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/indexion-refactor
+  content_hash: sha256:cbd3674b0836c9ae1e7e84fc5489dccc6f261c5d3bf5841900e0cbec6078f747
+- repo_url: trkbt10/indexion-skills
+  host: github.com
+  resolved_commit: faa17ebda87c18c08d9a96642b44366f812ed2bf
+  virtual_path: skills/indexion-segment
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .github/skills/indexion-segment
+  content_hash: sha256:5220b55f01e496f3af8dd7ad228e173e38ec3bde1a429ec439d96d967f45b92b

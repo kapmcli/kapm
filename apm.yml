@@ -15,5 +15,10 @@ dependencies:
   - samber/cc-skills-golang/skills/golang-continuous-integration
   - samber/cc-skills-golang/skills/golang-modernize
   - samber/cc-skills-golang/skills/golang-documentation
+  - trkbt10/indexion-skills/skills/indexion-documentation
+  - trkbt10/indexion-skills/skills/indexion-readme
+  - trkbt10/indexion-skills/skills/indexion-refactor
+  - trkbt10/indexion-skills/skills/indexion-search
+  - trkbt10/indexion-skills/skills/indexion-segment
   mcp: []
 scripts: {}
