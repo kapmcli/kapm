@@ -1192,6 +1192,88 @@ func TestRunShutdownOnContextCancel(t *testing.T) {
 	}
 }
 
+// --- Task 3: OOB title swap tests -------------------------------------------
+
+func TestRenderPageOOBTitlePresentInHXRequest(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `<title hx-swap-oob="true">Sessions — kapm</title>`) {
+		t.Errorf("HX request body missing OOB title: %s", body)
+	}
+}
+
+func TestRenderPageOOBTitleAbsentInNonHXRequest(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	// No HX-Request header
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<title hx-swap-oob="true">`) {
+		t.Errorf("non-HX request body should not contain OOB title: %s", body)
+	}
+}
+
+func TestRenderPageTitleEscaping(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+
+	// Manually call renderPage with a malicious title to test escaping.
+	srv.renderPage(rr, req, http.StatusOK, sessionsTmpl, map[string]any{
+		"Title":  "<script>alert(1)</script>",
+		"Active": "sessions",
+	})
+
+	body := rr.Body.String()
+	if strings.Contains(body, "<script>") {
+		t.Errorf("unescaped <script> in OOB title: %s", body)
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("escaped form missing in OOB title: %s", body)
+	}
+	if !strings.Contains(body, `<title hx-swap-oob="true">`) {
+		t.Errorf("OOB title tag missing: %s", body)
+	}
+}
+
+func TestRenderPageDynamicSessionTitle(t *testing.T) {
+	t.Parallel()
+	srv, sid := newMultiAgentServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid, nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	// Session detail title should include the session ID
+	if !strings.Contains(body, `<title hx-swap-oob="true">Session `) {
+		t.Errorf("HX request body missing dynamic session title: %s", body)
+	}
+	if !strings.Contains(body, `— kapm</title>`) {
+		t.Errorf("OOB title missing kapm suffix: %s", body)
+	}
+}
+
 // --- Task 2: Sessions pagination tests --------------------------------------
 
 // newPaginationServer creates a Server whose metrics are stubbed to return

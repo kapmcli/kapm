@@ -570,6 +570,10 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 		// OOB swap for the header's updated-at stamp so htmx navigation
 		// refreshes the timestamp without a full reload.
 		fmt.Fprintf(&buf, `<span id="updated-at" class="updated-at" hx-swap-oob="true">updated: %s</span>`, html.EscapeString(fmt.Sprint(data["UpdatedAt"])))
+		// OOB swap for the browser tab title on htmx navigation.
+		if titleStr, _ := data["Title"].(string); titleStr != "" {
+			fmt.Fprintf(&buf, `<title hx-swap-oob="true">%s — kapm</title>`, html.EscapeString(titleStr))
+		}
 	} else {
 		if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
 			s.handleError(w, r, err, http.StatusInternalServerError)
