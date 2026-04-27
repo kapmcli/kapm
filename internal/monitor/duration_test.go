@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseDuration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		input   string
 		want    time.Duration
@@ -23,6 +24,7 @@ func TestParseDuration(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
 			got, err := ParseDuration(tc.input)
 			if tc.wantErr {
 				if err == nil {

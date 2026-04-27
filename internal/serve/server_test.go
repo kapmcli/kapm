@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"log/slog"
 	"math"
@@ -56,6 +57,7 @@ func newTestServer(t *testing.T) *Server {
 }
 
 func TestAPIMetricsJSON(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
 	rr := httptest.NewRecorder()
@@ -74,6 +76,7 @@ func TestAPIMetricsJSON(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
@@ -88,6 +91,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestSecurityHeadersIncludeReferrerPolicy(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	routes := []string{"/", "/sessions", "/agents", "/tools", "/skills", "/api/metrics", "/assets/style.css"}
 	for _, route := range routes {
@@ -112,6 +116,7 @@ func TestSecurityHeadersIncludeReferrerPolicy(t *testing.T) {
 }
 
 func TestNotFound(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/does-not-exist", nil)
 	rr := httptest.NewRecorder()
@@ -122,6 +127,7 @@ func TestNotFound(t *testing.T) {
 }
 
 func TestSSEStream(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -175,6 +181,7 @@ func TestSSEStream(t *testing.T) {
 }
 
 func TestPlaceholderPagesCompile(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	for _, path := range []string{"/", "/sessions", "/agents", "/tools", "/skills"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -190,6 +197,7 @@ func TestPlaceholderPagesCompile(t *testing.T) {
 }
 
 func TestAssetServed(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/assets/style.css", nil)
 	rr := httptest.NewRecorder()
@@ -200,6 +208,7 @@ func TestAssetServed(t *testing.T) {
 }
 
 func TestHandleErrorDoesNotLeakPath(t *testing.T) {
+	t.Parallel()
 	logsPath := filepath.Join(t.TempDir(), "logs.jsonl")
 	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	req := httptest.NewRequest("GET", "/sessions", nil)
@@ -301,17 +310,18 @@ func TestSendOverviewLogsWriteFailure(t *testing.T) {
 }
 
 func TestLoadMetricsTTLHit(t *testing.T) {
+	t.Parallel()
 	base := time.Now()
 	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	s.now = func() time.Time { return base }
 
-	loaded1, err := s.loadMetrics()
+	loaded1, err := s.loadMetrics(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	s.now = func() time.Time { return base.Add(500 * time.Millisecond) }
-	loaded2, err := s.loadMetrics()
+	loaded2, err := s.loadMetrics(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,14 +336,15 @@ func TestLoadMetricsTTLHit(t *testing.T) {
 }
 
 func TestLoadMetricsTTLExpiry(t *testing.T) {
+	t.Parallel()
 	base := time.Now()
 	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	s.now = func() time.Time { return base }
 
-	_, _ = s.loadMetrics()
+	_, _ = s.loadMetrics(context.Background())
 
 	s.now = func() time.Time { return base.Add(2 * time.Second) }
-	_, err := s.loadMetrics()
+	_, err := s.loadMetrics(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,11 +355,12 @@ func TestLoadMetricsTTLExpiry(t *testing.T) {
 }
 
 func TestLoadMetricsConcurrent(t *testing.T) {
+	t.Parallel()
 	s := New(Options{Port: 0, LogsDir: testdataLogsDir, Since: time.Hour})
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, _ = s.loadMetrics() }()
+		go func() { defer wg.Done(); _, _ = s.loadMetrics(context.Background()) }()
 	}
 	wg.Wait()
 }
@@ -359,15 +371,15 @@ func TestLoadMetricsSingleflight(t *testing.T) {
 	s.now = func() time.Time { return base }
 
 	// Warm the cache.
-	if _, err := s.loadMetrics(); err != nil {
+	if _, err := s.loadMetrics(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	// Count AggregateDetail invocations.
 	var count atomic.Int32
-	restore := AggregateDetailFnForTest(func(recs []monitor.Record, now time.Time) monitor.DetailedMetrics {
+	restore := AggregateDetailFnForTest(func(ctx context.Context, recs []monitor.Record, now time.Time) (monitor.DetailedMetrics, error) {
 		count.Add(1)
-		return monitor.AggregateDetail(recs, now)
+		return monitor.AggregateDetail(ctx, recs, now)
 	})
 	t.Cleanup(restore)
 
@@ -377,7 +389,7 @@ func TestLoadMetricsSingleflight(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, _ = s.loadMetrics() }()
+		go func() { defer wg.Done(); _, _ = s.loadMetrics(context.Background()) }()
 	}
 	wg.Wait()
 
@@ -416,10 +428,15 @@ func buildFilterTestMetrics(t *testing.T) monitor.DetailedMetrics {
 		rec("s2", "B", "preToolUse", "bash", 12*time.Minute),
 		// no post for the second bash → error
 	}
-	return monitor.AggregateDetail(recs, base.Add(1*time.Hour))
+	dm, err := monitor.AggregateDetail(context.Background(), recs, base.Add(1*time.Hour))
+	if err != nil {
+		t.Fatalf("AggregateDetail: %v", err)
+	}
+	return dm
 }
 
 func TestFilterByAgentIncludesTools(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterByAgent(dm, "A")
 
@@ -451,6 +468,7 @@ func TestFilterByAgentIncludesTools(t *testing.T) {
 }
 
 func TestFilterBySessionIncludesTools(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterBySession(dm, "s2")
 
@@ -482,6 +500,7 @@ func TestFilterBySessionIncludesTools(t *testing.T) {
 }
 
 func TestFilterBySessionSkillsEmpty(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterBySession(dm, "s1")
 	if len(out.Skills) != 0 {
@@ -490,6 +509,7 @@ func TestFilterBySessionSkillsEmpty(t *testing.T) {
 }
 
 func TestFilterByAgentSkillsEmpty(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterByAgent(dm, "A")
 	if len(out.Skills) != 0 {
@@ -498,6 +518,7 @@ func TestFilterByAgentSkillsEmpty(t *testing.T) {
 }
 
 func TestFilterBySessionNotFound(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterBySession(dm, "nonexistent")
 	if len(out.Sessions) != 0 || len(out.Tools) != 0 || len(out.Overview.Sessions) != 0 {
@@ -507,6 +528,7 @@ func TestFilterBySessionNotFound(t *testing.T) {
 }
 
 func TestFilterByAgentNotFound(t *testing.T) {
+	t.Parallel()
 	dm := buildFilterTestMetrics(t)
 	out := filterByAgent(dm, "nonexistent")
 	if len(out.Agents) != 0 || len(out.Sessions) != 0 || len(out.Tools) != 0 {
@@ -545,6 +567,7 @@ func newMultiAgentServer(t *testing.T) (*Server, string) {
 }
 
 func TestHandleSessionDetailMerged(t *testing.T) {
+	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid, nil)
 	rr := httptest.NewRecorder()
@@ -564,6 +587,7 @@ func TestHandleSessionDetailMerged(t *testing.T) {
 }
 
 func TestHandleSessionAgentDetailHappyPath(t *testing.T) {
+	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid+"/lead", nil)
 	rr := httptest.NewRecorder()
@@ -582,6 +606,7 @@ func TestHandleSessionAgentDetailHappyPath(t *testing.T) {
 }
 
 func TestHandleSessionAgentDetailUnknownRoundTrip(t *testing.T) {
+	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
 	escaped := url.PathEscape("(unknown)")
 	if escaped != "%28unknown%29" {
@@ -601,6 +626,7 @@ func TestHandleSessionAgentDetailUnknownRoundTrip(t *testing.T) {
 }
 
 func TestHandleSessionAgentDetailNotFound(t *testing.T) {
+	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid+"/nonexistent", nil)
 	rr := httptest.NewRecorder()
@@ -611,6 +637,7 @@ func TestHandleSessionAgentDetailNotFound(t *testing.T) {
 }
 
 func TestHandleSessionDetailNotFound(t *testing.T) {
+	t.Parallel()
 	srv, _ := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/sessions/does-not-exist", nil)
 	rr := httptest.NewRecorder()
@@ -621,6 +648,7 @@ func TestHandleSessionDetailNotFound(t *testing.T) {
 }
 
 func TestHandleAgentDetailHappyPath(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/agents/kiro", nil)
 	rr := httptest.NewRecorder()
@@ -635,6 +663,7 @@ func TestHandleAgentDetailHappyPath(t *testing.T) {
 }
 
 func TestHandleAgentDetailNotFound(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/agents/does-not-exist", nil)
 	rr := httptest.NewRecorder()
@@ -646,6 +675,7 @@ func TestHandleAgentDetailNotFound(t *testing.T) {
 }
 
 func TestHandleToolDetailHappyPath(t *testing.T) {
+	t.Parallel()
 	srv, _ := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/tools/bash", nil)
 	rr := httptest.NewRecorder()
@@ -660,6 +690,7 @@ func TestHandleToolDetailHappyPath(t *testing.T) {
 }
 
 func TestHandleToolDetailNotFound(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/tools/does-not-exist", nil)
 	rr := httptest.NewRecorder()
@@ -743,6 +774,7 @@ func TestHandleSSE_CapExceededReturns429(t *testing.T) {
 }
 
 func TestAPIMetricsSessionFilterMerged(t *testing.T) {
+	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/metrics?session="+sid, nil)
 	rr := httptest.NewRecorder()
@@ -778,6 +810,7 @@ func TestAPIMetricsSessionFilterMerged(t *testing.T) {
 // --- dashboardSessions cache tests (task-2 / P12) --------------------------
 
 func TestComputeDashboardSessions_Grouping(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
 	t1 := base
 	t2 := base.Add(2 * time.Minute) // A's latest
@@ -818,6 +851,7 @@ func TestComputeDashboardSessions_Grouping(t *testing.T) {
 }
 
 func TestHandleDashboard_CacheReusesSortedSessions(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	req1 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -840,6 +874,7 @@ func TestHandleDashboard_CacheReusesSortedSessions(t *testing.T) {
 }
 
 func TestNew_ClampsMaxSSE(t *testing.T) {
+	t.Parallel()
 	// Oversized input must be clamped to math.MaxInt32.
 	s := New(Options{MaxSSE: math.MaxInt64})
 	if got := s.SSEMaxForTest(); got != math.MaxInt32 {
@@ -854,6 +889,7 @@ func TestNew_ClampsMaxSSE(t *testing.T) {
 }
 
 func TestRenderMarkdown(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		input    string
@@ -899,6 +935,7 @@ func TestRenderMarkdown(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := string(renderMarkdown(tc.input))
 			if tc.contains != "" && !strings.Contains(got, tc.contains) {
 				t.Errorf("renderMarkdown(%q) = %q, want contains %q", tc.input, got, tc.contains)
@@ -907,5 +944,17 @@ func TestRenderMarkdown(t *testing.T) {
 				t.Errorf("renderMarkdown(%q) = %q, want NOT contains %q", tc.input, got, tc.excludes)
 			}
 		})
+	}
+}
+
+func TestLocaltime_EscapesFormat(t *testing.T) {
+	t.Parallel()
+	fn := templateFuncs["localtime"].(func(time.Time, string) template.HTML)
+	out := string(fn(time.Unix(0, 0), `"><script>`))
+	if strings.Contains(out, "<script>") {
+		t.Errorf("unescaped <script> in output: %s", out)
+	}
+	if !strings.Contains(out, "&lt;script&gt;") {
+		t.Errorf("escaped form missing: %s", out)
 	}
 }

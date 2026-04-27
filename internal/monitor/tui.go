@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -42,6 +43,7 @@ type model struct {
 	homeDir string
 	since   time.Duration
 
+	ctx   context.Context
 	cache *RecordCache
 
 	width  int
@@ -59,10 +61,13 @@ type model struct {
 }
 
 // NewModel creates a new TUI model.
-func NewModel(logsDir string, since time.Duration) *model {
+func NewModel(ctx context.Context, logsDir string, since time.Duration) *model {
 	// best-effort; empty string fallback is acceptable for path abbreviation
 	home, _ := os.UserHomeDir()
-	return &model{logsDir: logsDir, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewRecordCache()}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &model{ctx: ctx, logsDir: logsDir, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewRecordCache()}
 }
 
 func (m *model) Init() tea.Cmd {
@@ -461,13 +466,18 @@ func (m *model) refreshCmd() tea.Cmd {
 	cache := m.cache
 	logsDir := m.logsDir
 	sinceDur := m.since
+	ctx := m.ctx
 	return func() tea.Msg {
 		since := time.Now().Add(-sinceDur)
-		records, err := cache.Load(logsDir, since)
+		records, err := cache.Load(ctx, logsDir, since)
 		if err != nil {
 			return metricsMsg{err: err}
 		}
-		return metricsMsg{metrics: AggregateDetail(records, time.Now())}
+		dm, err := AggregateDetail(ctx, records, time.Now())
+		if err != nil {
+			return metricsMsg{err: err}
+		}
+		return metricsMsg{metrics: dm}
 	}
 }
 
@@ -533,8 +543,8 @@ func statusBadge(active bool) string {
 }
 
 // RunTUI creates and runs the bubbletea program.
-func RunTUI(logsDir string, since time.Duration) error {
-	p := tea.NewProgram(NewModel(logsDir, since))
+func RunTUI(ctx context.Context, logsDir string, since time.Duration) error {
+	p := tea.NewProgram(NewModel(ctx, logsDir, since))
 	_, err := p.Run()
 	return err
 }

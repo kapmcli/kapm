@@ -8,6 +8,7 @@ import (
 )
 
 func TestRenderDiff_EscapesHTML(t *testing.T) {
+	t.Parallel()
 	fc := monitor.FileChange{
 		Path:    "evil.html",
 		Command: "create",
@@ -23,7 +24,9 @@ func TestRenderDiff_EscapesHTML(t *testing.T) {
 }
 
 func TestRenderDiff_Placeholders(t *testing.T) {
+	t.Parallel()
 	t.Run("oversized", func(t *testing.T) {
+		t.Parallel()
 		fc := monitor.FileChange{Path: "f", Command: "create", Oversized: true}
 		out := string(renderDiff(fc))
 		if !strings.Contains(out, "content truncated at extraction") {
@@ -32,6 +35,7 @@ func TestRenderDiff_Placeholders(t *testing.T) {
 	})
 
 	t.Run("size_cap", func(t *testing.T) {
+		t.Parallel()
 		fc := monitor.FileChange{
 			Path:    "f",
 			Command: "create",
@@ -44,6 +48,7 @@ func TestRenderDiff_Placeholders(t *testing.T) {
 	})
 
 	t.Run("non_utf8", func(t *testing.T) {
+		t.Parallel()
 		fc := monitor.FileChange{
 			Path:    "f",
 			Command: "create",
@@ -56,6 +61,7 @@ func TestRenderDiff_Placeholders(t *testing.T) {
 	})
 
 	t.Run("empty_diff", func(t *testing.T) {
+		t.Parallel()
 		fc := monitor.FileChange{Path: "f", Command: "strReplace", OldStr: "x", NewStr: "x"}
 		out := string(renderDiff(fc))
 		if !strings.Contains(out, "no textual change") {
@@ -65,6 +71,7 @@ func TestRenderDiff_Placeholders(t *testing.T) {
 }
 
 func TestRenderDiff_HappyPath(t *testing.T) {
+	t.Parallel()
 	fc := monitor.FileChange{
 		Path:    "main.go",
 		Command: "strReplace",
@@ -81,6 +88,7 @@ func TestRenderDiff_HappyPath(t *testing.T) {
 }
 
 func TestHasShellEvent(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		timeline []monitor.EventEntry
@@ -93,6 +101,7 @@ func TestHasShellEvent(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := monitor.SessionDetail{Timeline: c.timeline}
 			if got := hasShellEvent(s); got != c.want {
 				t.Errorf("hasShellEvent = %v, want %v", got, c.want)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestParseErrorDetail(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		raw  []byte
@@ -58,6 +59,7 @@ func TestParseErrorDetail(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseErrorDetail(json.RawMessage(c.raw))
 			if got != c.want {
 				t.Errorf("parseErrorDetail(%q) = %q; want %q", c.raw, got, c.want)
@@ -67,6 +69,7 @@ func TestParseErrorDetail(t *testing.T) {
 }
 
 func TestParseAssistantResponse(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		raw  []byte
@@ -100,6 +103,7 @@ func TestParseAssistantResponse(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseAssistantResponse(json.RawMessage(c.raw))
 			if got != c.want {
 				t.Errorf("parseAssistantResponse(%q) = %q; want %q", c.raw, got, c.want)
@@ -109,6 +113,7 @@ func TestParseAssistantResponse(t *testing.T) {
 }
 
 func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	exitStatus1WithStderr := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 1","stderr":"permission denied","stdout":""}}]}`)
 	exitStatus0 := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)
@@ -123,7 +128,7 @@ func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
 		{Ts: baseTime.Add(3 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "bash",
 			ToolInput: []byte(`{"command":"ok"}`), ToolResponse: exitStatus0},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	tl := d.Sessions[0].Timeline
 	// timeline[0] = preToolUse for "fail" — should have ErrorDetail set
 	if tl[0].ErrorDetail != "exit 1: permission denied" {

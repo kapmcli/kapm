@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/kapmcli/kapm/internal/monitor"
 )
@@ -38,9 +41,12 @@ func runMonitor(args []string) error {
 		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	if *jsonOut {
-		return monitor.RunJSON(lf.LogsDir, lf.Since, *session, *agent, os.Stdout)
+		return monitor.RunJSON(ctx, lf.LogsDir, lf.Since, *session, *agent, os.Stdout)
 	}
 
-	return monitor.RunTUI(lf.LogsDir, lf.Since)
+	return monitor.RunTUI(ctx, lf.LogsDir, lf.Since)
 }

@@ -9,6 +9,7 @@ import (
 )
 
 func TestClassifyShell(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		input string
@@ -30,6 +31,7 @@ func TestClassifyShell(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := classifyShell(json.RawMessage(c.input), c.cwd)
 			if got != c.want {
 				t.Errorf("classifyShell(%q) = %q; want %q", c.input, got, c.want)
@@ -42,6 +44,7 @@ func TestClassifyShell(t *testing.T) {
 // invocations with different commands are counted under distinct keys so an
 // "ls 100% success" and a "git push 50% failure" don't get averaged together.
 func TestAggregateShellSplitsIntoDerivedBuckets(t *testing.T) {
+	t.Parallel()
 	baseTime := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
 	records := []Record{
 		// ls: success
@@ -66,7 +69,7 @@ func TestAggregateShellSplitsIntoDerivedBuckets(t *testing.T) {
 			ToolResponse: json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)},
 	}
 
-	d := AggregateDetail(records, baseTime.Add(time.Hour))
+	d := mustAggregate(t, records, baseTime.Add(time.Hour))
 
 	byName := map[string]*ToolDetail{}
 	for i := range d.Tools {

@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,10 +25,22 @@ func rec(session, agent, event, tool string, offset time.Duration) Record {
 }
 
 func aggregateOverview(records []Record, now time.Time) Metrics {
-	return AggregateDetail(records, now).Overview
+	dm, _ := AggregateDetail(context.Background(), records, now)
+	return dm.Overview
+}
+
+// mustAggregate fails the test if AggregateDetail returns an error.
+func mustAggregate(t *testing.T, records []Record, now time.Time) DetailedMetrics {
+	t.Helper()
+	dm, err := AggregateDetail(context.Background(), records, now)
+	if err != nil {
+		t.Fatalf("AggregateDetail: %v", err)
+	}
+	return dm
 }
 
 func TestAggregateEmpty(t *testing.T) {
+	t.Parallel()
 	m := aggregateOverview(nil, baseTime)
 	if m.Sessions != nil || m.Tools != nil || m.Agents != nil || m.HourlyActivity != nil {
 		t.Errorf("expected zero-value Metrics, got %+v", m)
@@ -39,6 +52,7 @@ func TestAggregateEmpty(t *testing.T) {
 }
 
 func TestAggregateSession(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
 	records := []Record{
 		rec("s1", "agent1", apmconfig.EventAgentSpawn, "", 0),
@@ -83,6 +97,7 @@ func TestAggregateSession(t *testing.T) {
 }
 
 func TestAggregateSession_InactiveOld(t *testing.T) {
+	t.Parallel()
 	// session with no stop but last event > 5min ago
 	now := baseTime.Add(20 * time.Minute)
 	records := []Record{
@@ -99,6 +114,7 @@ func TestAggregateSession_InactiveOld(t *testing.T) {
 }
 
 func TestAggregateTool(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		// bash: 2 calls, 1 error (second preToolUse has no postToolUse)
@@ -142,6 +158,7 @@ func TestAggregateTool(t *testing.T) {
 }
 
 func TestAggregateAgent(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		// agent1: 2 sessions
@@ -186,6 +203,7 @@ func TestAggregateAgent(t *testing.T) {
 }
 
 func TestAggregateHourly(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(3 * time.Hour)
 	// baseTime = 10:00 UTC
 	// 3 events at 10:xx, 2 events at 11:xx
@@ -216,6 +234,7 @@ func TestAggregateHourly(t *testing.T) {
 }
 
 func TestAggregateDetail(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	records := []Record{
 		{Ts: baseTime, Session: "s1", Agent: "coder", Event: apmconfig.EventAgentSpawn, Cwd: "/tmp"},
@@ -226,7 +245,7 @@ func TestAggregateDetail(t *testing.T) {
 		{Ts: baseTime.Add(4 * time.Minute), Session: "s1", Agent: "coder", Event: apmconfig.EventPreToolUse, Tool: "grep"}, // unmatched => error
 	}
 
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session detail, got %d", len(d.Sessions))
@@ -284,6 +303,7 @@ func TestAggregateDetail(t *testing.T) {
 }
 
 func TestAggregateDetailSameTimestampKeepsPreBeforePost(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	toolInput := json.RawMessage(`{"command":"echo hi"}`)
 	records := []Record{
@@ -291,7 +311,7 @@ func TestAggregateDetailSameTimestampKeepsPreBeforePost(t *testing.T) {
 		{Ts: baseTime, Session: "s1", Agent: "coder", Event: apmconfig.EventPostToolUse, Tool: "bash", ToolInput: toolInput},
 	}
 
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session detail, got %d", len(d.Sessions))
 	}
@@ -329,6 +349,7 @@ func TestAggregateDetailSameTimestampKeepsPreBeforePost(t *testing.T) {
 // --- New-feature tests ------------------------------------------------------
 
 func TestAggregateLastActivitySort(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(2 * time.Hour)
 	records := []Record{
 		// s1: starts earliest, last activity at +10min (not active)
@@ -341,7 +362,7 @@ func TestAggregateLastActivitySort(t *testing.T) {
 		rec("s3", "a", apmconfig.EventAgentSpawn, "", 20*time.Minute),
 		rec("s3", "a", apmconfig.EventStop, "", 90*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 3 {
 		t.Fatalf("want 3 sessions, got %d", len(d.Sessions))
 	}
@@ -366,6 +387,7 @@ func sessionIDs(ss []SessionDetail) []string {
 }
 
 func TestInputSummaryExtraction(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		raw  string
@@ -385,6 +407,7 @@ func TestInputSummaryExtraction(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := inputSummary([]byte(c.raw), "", "")
 			if got != c.want {
 				t.Errorf("inputSummary(%q) = %q; want %q", c.raw, got, c.want)
@@ -394,6 +417,7 @@ func TestInputSummaryExtraction(t *testing.T) {
 }
 
 func TestInputSummaryToolSpecific(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		tool string
@@ -423,6 +447,7 @@ func TestInputSummaryToolSpecific(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := inputSummary([]byte(c.raw), c.tool, c.cwd)
 			if got != c.want {
 				t.Errorf("inputSummary(%q, %q, %q) = %q; want %q", c.raw, c.tool, c.cwd, got, c.want)
@@ -432,6 +457,7 @@ func TestInputSummaryToolSpecific(t *testing.T) {
 }
 
 func TestUnknownToolFallthrough(t *testing.T) {
+	t.Parallel()
 	// An unregistered tool name must fall through to genericSummary and return a non-empty result.
 	got := inputSummary([]byte(`{"path":"/some/file.go"}`), "no-such-tool", "")
 	if got == "" {
@@ -443,6 +469,7 @@ func TestUnknownToolFallthrough(t *testing.T) {
 }
 
 func TestAggregateInputSummaryPropagates(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []Record{
 		{
@@ -458,7 +485,7 @@ func TestAggregateInputSummaryPropagates(t *testing.T) {
 			ToolInput: []byte(`{"operations":[{"path":"/x/y/SKILL.md"}]}`),
 		},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	var td ToolDetail
 	for _, t2 := range d.Tools {
 		if t2.Name == "read" {
@@ -482,6 +509,7 @@ func summariesOf(cs []ToolCall) []string {
 }
 
 func TestAggregateSkillsCounting(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	// two reads of task-verification/SKILL.md, one of git-master/SKILL.md, one unrelated
 	records := []Record{
@@ -503,7 +531,7 @@ func TestAggregateSkillsCounting(t *testing.T) {
 			ToolInput: []byte(`{"command":"cat code-search/SKILL.md"}`)},
 		{Ts: baseTime.Add(9 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "shell"},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Skills) != 2 {
 		t.Fatalf("want 2 skills, got %d (%v)", len(d.Skills), d.Skills)
 	}
@@ -516,6 +544,7 @@ func TestAggregateSkillsCounting(t *testing.T) {
 }
 
 func TestAggregateEventEntryInputSummary(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []Record{
 		{
@@ -529,7 +558,7 @@ func TestAggregateEventEntryInputSummary(t *testing.T) {
 			Ts: baseTime.Add(2 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventUserPromptSubmit,
 		},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -561,19 +590,21 @@ func TestAggregateEventEntryInputSummary(t *testing.T) {
 }
 
 func TestAggregateSkillsNoMatches(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []Record{
 		{Ts: baseTime, Session: "s", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "read",
 			ToolInput: []byte(`{"operations":[{"path":"/tmp/foo.go"}]}`)},
 		{Ts: baseTime.Add(1 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "read"},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Skills) != 0 {
 		t.Errorf("want 0 skills, got %+v", d.Skills)
 	}
 }
 
 func TestAggregateDetailCap(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(24 * time.Hour)
 	var records []Record
 	// 150 matched calls for "bash" (pre+post pairs), timestamps spread 1s apart
@@ -590,7 +621,7 @@ func TestAggregateDetailCap(t *testing.T) {
 		records = append(records, rec("s1", "a", apmconfig.EventPreToolUse, "grep", offset))
 	}
 
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 
 	var bash, grep ToolDetail
 	for _, td := range d.Tools {
@@ -625,6 +656,7 @@ func TestAggregateDetailCap(t *testing.T) {
 // LSP operations), a slow op's pending must not be popped by a faster op's
 // postToolUse. All three calls here complete, so ErrorCount must be 0.
 func TestAggregateCodeOperationsDoNotCrossMatch(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []Record{
 		// Slow get_diagnostics starts first but finishes last.
@@ -639,7 +671,7 @@ func TestAggregateCodeOperationsDoNotCrossMatch(t *testing.T) {
 		{Ts: baseTime.Add(10 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "code",
 			ToolInput: []byte(`{"operation":"get_diagnostics"}`)},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	var code ToolDetail
 	for _, t2 := range d.Tools {
 		if t2.Name == "code" {
@@ -662,6 +694,7 @@ func TestAggregateCodeOperationsDoNotCrossMatch(t *testing.T) {
 // (shell2 end - shell1 start), shuffling times between calls. Matching by
 // tool_input keeps each call paired with its own post.
 func TestAggregateShellConcurrentOutOfOrderDurations(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []Record{
 		{Ts: baseTime, Session: "s", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "shell",
@@ -673,7 +706,7 @@ func TestAggregateShellConcurrentOutOfOrderDurations(t *testing.T) {
 		{Ts: baseTime.Add(10 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "shell",
 			ToolInput: []byte(`{"command":"sleep 10"}`)},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	byName := map[string]ToolDetail{}
 	for _, td := range d.Tools {
 		byName[td.Name] = td
@@ -696,6 +729,7 @@ func TestAggregateShellConcurrentOutOfOrderDurations(t *testing.T) {
 }
 
 func TestFirst(t *testing.T) {
+	t.Parallel()
 	// Empty slice
 	var empty []int
 	val, ok := first(empty)
@@ -741,6 +775,7 @@ func BenchmarkPendingKey(b *testing.B) {
 }
 
 func TestToolInput_IgnoresUnknown(t *testing.T) {
+	t.Parallel()
 	// Unknown fields in tool_input are silently ignored; known fields decode.
 	raw := []byte(`{"path":"a","unknown_field":42,"another":{"nested":true}}`)
 	var in toolInput
@@ -756,6 +791,7 @@ func TestToolInput_IgnoresUnknown(t *testing.T) {
 // two agents under the same session ID produce two distinct SessionDetails with
 // correct AgentKey and Title fields.
 func TestMixedAgentFixture(t *testing.T) {
+	t.Parallel()
 	logsDir := filepath.Join("..", "..", "testdata", "monitor", "logs")
 	recs, err := LoadRecords(logsDir, time.Time{})
 	if err != nil {
@@ -773,7 +809,7 @@ func TestMixedAgentFixture(t *testing.T) {
 	}
 
 	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
-	d := AggregateDetail(mixed, now)
+	d := mustAggregate(t, mixed, now)
 
 	if len(d.Sessions) != 2 {
 		t.Fatalf("want 2 SessionDetails for ma-session-001, got %d", len(d.Sessions))
@@ -821,6 +857,7 @@ func TestMixedAgentFixture(t *testing.T) {
 // and compares the full AggregateDetail output to a golden snapshot. Set
 // UPDATE_GOLDEN=1 to rewrite the golden file.
 func TestAggregateDetailGolden(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join("..", "..", "testdata", "monitor")
 	recs, err := LoadRecords(dir, time.Time{})
 	if err != nil {
@@ -828,7 +865,8 @@ func TestAggregateDetailGolden(t *testing.T) {
 	}
 	// Fixed "now" so Active computation is deterministic.
 	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
-	got, err := json.MarshalIndent(AggregateDetail(recs, now), "", "  ")
+	dm := mustAggregate(t, recs, now)
+	got, err := json.MarshalIndent(dm, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -850,6 +888,7 @@ func TestAggregateDetailGolden(t *testing.T) {
 }
 
 func TestNormalizeGoldenBytes(t *testing.T) {
+	t.Parallel()
 	got := string(normalizeGoldenBytes([]byte("{\r\n  \"ok\": true\r\n}\r\n")))
 	if got != "{\n  \"ok\": true\n}" {
 		t.Fatalf("normalizeGoldenBytes() = %q", got)
@@ -863,6 +902,7 @@ func normalizeGoldenBytes(b []byte) []byte {
 // --- AggregateToolsFromTimeline ---------------------------------------------
 
 func TestAggregateToolsFromTimeline(t *testing.T) {
+	t.Parallel()
 	// Build two sessions across two agents with a mix of matched and
 	// unmatched (error) preToolUse events. We feed the fully-aggregated
 	// SessionDetails back into AggregateToolsFromTimeline and verify the
@@ -879,7 +919,7 @@ func TestAggregateToolsFromTimeline(t *testing.T) {
 		rec("s2", "agentB", apmconfig.EventPreToolUse, "read", 10*time.Minute),
 		rec("s2", "agentB", apmconfig.EventPostToolUse, "read", 11*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 
 	details, metrics := AggregateToolsFromTimeline(d.Sessions)
 
@@ -947,6 +987,7 @@ func TestAggregateToolsFromTimeline(t *testing.T) {
 }
 
 func TestAggregateToolsFromTimelineEmpty(t *testing.T) {
+	t.Parallel()
 	details, metrics := AggregateToolsFromTimeline(nil)
 	if len(details) != 0 || len(metrics) != 0 {
 		t.Errorf("want empty slices, got %d details / %d metrics", len(details), len(metrics))
@@ -956,6 +997,7 @@ func TestAggregateToolsFromTimelineEmpty(t *testing.T) {
 // --- (sid, agent) aggregation (task-3) --------------------------------------
 
 func TestCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	if got, want := compositeKey("sidX", "agentY"), "sidX|agentY"; got != want {
 		t.Errorf("compositeKey: got %q, want %q", got, want)
 	}
@@ -965,6 +1007,7 @@ func TestCompositeKeyFormat(t *testing.T) {
 }
 
 func TestAggregateMultiAgentSameSid(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		// Same sid "s1" under two agents — must yield two SessionDetails.
@@ -975,7 +1018,7 @@ func TestAggregateMultiAgentSameSid(t *testing.T) {
 		{Ts: baseTime.Add(4 * time.Minute), Session: "s1", Agent: "lead", Event: apmconfig.EventPreToolUse, Tool: "grep"},
 		{Ts: baseTime.Add(5 * time.Minute), Session: "s1", Agent: "lead", Event: apmconfig.EventPostToolUse, Tool: "grep"},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 2 {
 		t.Fatalf("want 2 SessionDetails, got %d", len(d.Sessions))
 	}
@@ -1015,6 +1058,7 @@ func TestAggregateMultiAgentSameSid(t *testing.T) {
 }
 
 func TestAggregateSummaryToolTitlePreferred(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		{Ts: baseTime, Session: "s1", Agent: "coder", Event: apmconfig.EventUserPromptSubmit, Prompt: "first prompt"},
@@ -1022,7 +1066,7 @@ func TestAggregateSummaryToolTitlePreferred(t *testing.T) {
 			ToolInput: []byte(`{"taskDescription":"implement feature X"}`)},
 		{Ts: baseTime.Add(2 * time.Minute), Session: "s1", Agent: "coder", Event: apmconfig.EventPostToolUse, Tool: "summary"},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 SessionDetail, got %d", len(d.Sessions))
 	}
@@ -1032,13 +1076,14 @@ func TestAggregateSummaryToolTitlePreferred(t *testing.T) {
 }
 
 func TestAggregateEmptyAgentNormalized(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		{Ts: baseTime, Session: "s1", Agent: "", Event: apmconfig.EventUserPromptSubmit, Prompt: "hi"},
 		{Ts: baseTime.Add(1 * time.Minute), Session: "s1", Agent: "", Event: apmconfig.EventPreToolUse, Tool: "bash"},
 		{Ts: baseTime.Add(2 * time.Minute), Session: "s1", Agent: "", Event: apmconfig.EventPostToolUse, Tool: "bash"},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 SessionDetail, got %d", len(d.Sessions))
 	}
@@ -1055,11 +1100,12 @@ func TestAggregateEmptyAgentNormalized(t *testing.T) {
 }
 
 func TestAggregateSessionMetricAgentKeyFormat(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
 	records := []Record{
 		rec("sX", "aY", apmconfig.EventAgentSpawn, "", 0),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1072,6 +1118,7 @@ func TestAggregateSessionMetricAgentKeyFormat(t *testing.T) {
 // --- Task 1: tool_response exit_status error detection ----------------------
 
 func TestParseToolResponseError(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		raw  string
@@ -1083,6 +1130,7 @@ func TestParseToolResponseError(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseToolResponseError(json.RawMessage(c.raw))
 			if got != c.want {
 				t.Errorf("parseToolResponseError(%q) = %v; want %v", c.raw, got, c.want)
@@ -1092,6 +1140,7 @@ func TestParseToolResponseError(t *testing.T) {
 }
 
 func TestParseToolResponseError_EdgeCases(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		raw  []byte
@@ -1111,6 +1160,7 @@ func TestParseToolResponseError_EdgeCases(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseToolResponseError(json.RawMessage(c.raw))
 			if got != c.want {
 				t.Errorf("parseToolResponseError(%q) = %v; want %v", c.raw, got, c.want)
@@ -1120,6 +1170,7 @@ func TestParseToolResponseError_EdgeCases(t *testing.T) {
 }
 
 func TestAggregateDetailExitStatusError(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	exitStatus1 := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 1"}}]}`)
 	exitStatus0 := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)
@@ -1135,7 +1186,7 @@ func TestAggregateDetailExitStatusError(t *testing.T) {
 		{Ts: baseTime.Add(3 * time.Second), Session: "s1", Agent: "coder", Event: apmconfig.EventPostToolUse, Tool: "bash",
 			ToolInput: []byte(`{"command":"true"}`), ToolResponse: exitStatus0},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 
 	var bash ToolDetail
 	for _, td := range d.Tools {
@@ -1182,6 +1233,7 @@ func TestAggregateDetailExitStatusError(t *testing.T) {
 }
 
 func TestAggregateDetail_ErrorInvariant(t *testing.T) {
+	t.Parallel()
 	// Mix: 1 success match, 1 exit_status error match, 1 unmatched pre (crash)
 	now := baseTime.Add(30 * time.Minute)
 	exitStatus2 := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 2"}}]}`)
@@ -1200,7 +1252,7 @@ func TestAggregateDetail_ErrorInvariant(t *testing.T) {
 		{Ts: baseTime.Add(4 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "bash",
 			ToolInput: []byte(`{"command":"crash"}`)},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 
 	var bash ToolDetail
 	for _, td := range d.Tools {
@@ -1247,7 +1299,9 @@ func TestAggregateDetail_ErrorInvariant(t *testing.T) {
 }
 
 func TestFinalizeToolDetails(t *testing.T) {
+	t.Parallel()
 	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
 		td := &ToolDetail{}
 		finalizeToolDetails(td)
 		if td.ErrorRate != 0 || td.AvgDuration != 0 || td.RecentCalls != nil || td.Errors != nil {
@@ -1256,6 +1310,7 @@ func TestFinalizeToolDetails(t *testing.T) {
 	})
 
 	t.Run("normal", func(t *testing.T) {
+		t.Parallel()
 		td := &ToolDetail{
 			ToolMetric: ToolMetric{CallCount: 10, ErrorCount: 3},
 		}
@@ -1300,6 +1355,7 @@ func TestFinalizeToolDetails(t *testing.T) {
 	})
 
 	t.Run("zero-count", func(t *testing.T) {
+		t.Parallel()
 		td := &ToolDetail{ToolMetric: ToolMetric{CallCount: 0, ErrorCount: 0}}
 		finalizeToolDetails(td)
 		if td.ErrorRate != 0 {
@@ -1309,6 +1365,7 @@ func TestFinalizeToolDetails(t *testing.T) {
 }
 
 func TestParseToolResponseError_JsonWireFormat(t *testing.T) {
+	t.Parallel()
 	// Guard the on-wire "Json" key: renaming the Go field must not break
 	// deserialization of the existing wire format.
 	raw := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 1"}}]}`)
@@ -1330,6 +1387,7 @@ func TestParseToolResponseError_JsonWireFormat(t *testing.T) {
 }
 
 func TestAggregateToolTimeseries(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	min := time.Minute
 
@@ -1423,6 +1481,7 @@ func TestAggregateToolTimeseries(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			pts := AggregateToolTimeseries(tc.calls, t0.Add(time.Hour))
 			if tc.wantNil {
 				if pts != nil {
@@ -1441,6 +1500,7 @@ func TestAggregateToolTimeseries(t *testing.T) {
 }
 
 func TestAggregateToolInputPatterns(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -1494,6 +1554,7 @@ func TestAggregateToolInputPatterns(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := AggregateToolInputPatterns(tc.calls, tc.topN)
 			if len(got) != len(tc.want) {
 				t.Fatalf("want %d patterns, got %d: %v", len(tc.want), len(got), got)
@@ -1508,9 +1569,102 @@ func TestAggregateToolInputPatterns(t *testing.T) {
 	}
 }
 
+// --- Task 6: aggregateAgentToolStats helper ----------------------------------
+
+func TestAggregateAgentToolStats(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	// 2 agents × 3 tools: both agentA and agentB use bash+grep+read
+	records := []Record{
+		// agentA: bash x2 (1 error), grep x1, read x1
+		rec("s1", "agentA", apmconfig.EventPreToolUse, "bash", 0),
+		rec("s1", "agentA", apmconfig.EventPostToolUse, "bash", 1*time.Minute),
+		rec("s1", "agentA", apmconfig.EventPreToolUse, "bash", 2*time.Minute), // unmatched → error
+		rec("s1", "agentA", apmconfig.EventPreToolUse, "grep", 3*time.Minute),
+		rec("s1", "agentA", apmconfig.EventPostToolUse, "grep", 4*time.Minute),
+		rec("s1", "agentA", apmconfig.EventPreToolUse, "read", 5*time.Minute),
+		rec("s1", "agentA", apmconfig.EventPostToolUse, "read", 6*time.Minute),
+		// agentB: bash x1, grep x1, read x1
+		rec("s2", "agentB", apmconfig.EventPreToolUse, "bash", 0),
+		rec("s2", "agentB", apmconfig.EventPostToolUse, "bash", 1*time.Minute),
+		rec("s2", "agentB", apmconfig.EventPreToolUse, "grep", 2*time.Minute),
+		rec("s2", "agentB", apmconfig.EventPostToolUse, "grep", 3*time.Minute),
+		rec("s2", "agentB", apmconfig.EventPreToolUse, "read", 4*time.Minute),
+		rec("s2", "agentB", apmconfig.EventPostToolUse, "read", 5*time.Minute),
+	}
+	d := mustAggregate(t, records, now)
+	// Build aggState manually to call aggregateAgentToolStats directly.
+	st := newAggState(len(records), now)
+	for _, r := range records {
+		processRecord(st, r)
+	}
+	markUnmatchedToolCalls(st)
+	// Populate st.agents so aggregateAgentToolStats can increment ToolErrorCnt.
+	for _, s := range st.sessions {
+		if _, ok := st.agents[s.agent]; !ok {
+			st.agents[s.agent] = &AgentDetail{AgentMetric: AgentMetric{Name: s.agent}}
+		}
+	}
+
+	agentTools := aggregateAgentToolStats(st)
+
+	// Verify map shape: 2 agents present.
+	if len(agentTools) != 2 {
+		t.Fatalf("want 2 agents in map, got %d", len(agentTools))
+	}
+
+	// agentA: bash(2), grep(1), read(1)
+	tmA := agentTools["agentA"]
+	if tmA == nil {
+		t.Fatal("agentA missing from agentTools")
+	}
+	if len(tmA) != 3 {
+		t.Errorf("agentA: want 3 tools, got %d: %v", len(tmA), tmA)
+	}
+	if tmA["bash"] == nil || tmA["bash"].callCount != 2 {
+		t.Errorf("agentA bash callCount: want 2, got %v", tmA["bash"])
+	}
+	if tmA["bash"].errorCount != 1 {
+		t.Errorf("agentA bash errorCount: want 1, got %d", tmA["bash"].errorCount)
+	}
+	if tmA["grep"] == nil || tmA["grep"].callCount != 1 {
+		t.Errorf("agentA grep callCount: want 1, got %v", tmA["grep"])
+	}
+	if tmA["read"] == nil || tmA["read"].callCount != 1 {
+		t.Errorf("agentA read callCount: want 1, got %v", tmA["read"])
+	}
+
+	// agentB: bash(1), grep(1), read(1)
+	tmB := agentTools["agentB"]
+	if tmB == nil {
+		t.Fatal("agentB missing from agentTools")
+	}
+	if len(tmB) != 3 {
+		t.Errorf("agentB: want 3 tools, got %d: %v", len(tmB), tmB)
+	}
+	for _, tool := range []string{"bash", "grep", "read"} {
+		if tmB[tool] == nil || tmB[tool].callCount != 1 {
+			t.Errorf("agentB %s callCount: want 1, got %v", tool, tmB[tool])
+		}
+	}
+
+	// Cross-check: full AggregateDetail must still produce correct ToolSummary.
+	byAgent := map[string]AgentDetail{}
+	for _, a := range d.Agents {
+		byAgent[a.Name] = a
+	}
+	if byAgent["agentA"].ToolErrorCnt != 1 {
+		t.Errorf("agentA ToolErrorCnt: want 1, got %d", byAgent["agentA"].ToolErrorCnt)
+	}
+	if byAgent["agentB"].ToolErrorCnt != 0 {
+		t.Errorf("agentB ToolErrorCnt: want 0, got %d", byAgent["agentB"].ToolErrorCnt)
+	}
+}
+
 // --- Task 2: SessionDetail new fields ----------------------------------------
 
 func TestSessionToolSummary(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		// bash: 3 calls, 1 error (unmatched pre)
@@ -1539,7 +1693,7 @@ func TestSessionToolSummary(t *testing.T) {
 		{Ts: baseTime.Add(20 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "read",
 			ToolInput: []byte(`{"path":"/b"}`)},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1576,12 +1730,13 @@ func TestSessionToolSummary(t *testing.T) {
 }
 
 func TestSessionToolSummaryEmpty(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
 	records := []Record{
 		rec("s1", "a", apmconfig.EventAgentSpawn, "", 0),
 		rec("s1", "a", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1591,6 +1746,7 @@ func TestSessionToolSummaryEmpty(t *testing.T) {
 }
 
 func TestSessionAssistantResponse(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
 	records := []Record{
 		rec("s1", "a", apmconfig.EventAgentSpawn, "", 0),
@@ -1600,7 +1756,7 @@ func TestSessionAssistantResponse(t *testing.T) {
 			AssistantResponse: json.RawMessage(`"The task is complete."`),
 		},
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1625,13 +1781,14 @@ func writeRec(session, agent, path, command string, offset time.Duration) Record
 }
 
 func TestFilesChangedSessionMetric(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		writeRec("s1", "a", "/tmp/foo.go", "create", 0),
 		writeRec("s1", "a", "/tmp/bar.go", "strReplace", 1*time.Minute),
 		writeRec("s1", "a", "/tmp/foo.go", "strReplace", 2*time.Minute), // duplicate path
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1644,12 +1801,13 @@ func TestFilesChangedSessionMetric(t *testing.T) {
 }
 
 func TestFilesChangedNoWrite(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		rec("s1", "a", apmconfig.EventAgentSpawn, "", 0),
 		rec("s1", "a", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1662,13 +1820,14 @@ func TestFilesChangedNoWrite(t *testing.T) {
 }
 
 func TestFilesChangedAgentTwoSessions(t *testing.T) {
+	t.Parallel()
 	// Same agent, 2 sessions, each writes the same file → AgentMetric.FilesChanged == 2
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		writeRec("s1", "agent1", "/tmp/foo.go", "create", 0),
 		writeRec("s2", "agent1", "/tmp/foo.go", "strReplace", 10*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	byName := map[string]AgentMetric{}
 	for _, a := range d.Overview.Agents {
 		byName[a.Name] = a
@@ -1679,12 +1838,13 @@ func TestFilesChangedAgentTwoSessions(t *testing.T) {
 }
 
 func TestSessionDetailChangesChronological(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []Record{
 		writeRec("s1", "a", "/tmp/b.go", "create", 2*time.Minute),
 		writeRec("s1", "a", "/tmp/a.go", "create", 1*time.Minute),
 	}
-	d := AggregateDetail(records, now)
+	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(d.Sessions))
 	}
@@ -1697,5 +1857,25 @@ func TestSessionDetailChangesChronological(t *testing.T) {
 	}
 	if changes[0].Path != "/tmp/a.go" {
 		t.Errorf("Changes[0].Path: want /tmp/a.go, got %s", changes[0].Path)
+	}
+}
+
+func TestAggregateDetail_CancelledCtx(t *testing.T) {
+	t.Parallel()
+	records := []Record{
+		rec("s1", "agent1", apmconfig.EventAgentSpawn, "", 0),
+		rec("s1", "agent1", apmconfig.EventStop, "", 1*time.Minute),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dm, err := AggregateDetail(ctx, records, baseTime.Add(time.Hour))
+	if err == nil {
+		t.Fatal("expected ctx.Err(), got nil")
+	}
+	if err != context.Canceled {
+		t.Errorf("got %v, want context.Canceled", err)
+	}
+	if len(dm.Sessions) != 0 {
+		t.Errorf("expected zero DetailedMetrics on cancel, got %d sessions", len(dm.Sessions))
 	}
 }

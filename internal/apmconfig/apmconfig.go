@@ -85,3 +85,12 @@ var HookEvents = []string{
 	EventPostToolUse,
 	EventStop,
 }
+
+// Tool names (wire format, matching Kiro hook payloads).
+const (
+	ToolRead  = "read"
+	ToolWrite = "write"
+	ToolShell = "shell"
+	ToolGrep  = "grep"
+	ToolGlob  = "glob"
+)

@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"maps"
 	"regexp"
@@ -207,9 +208,11 @@ func newAggState(n int, now time.Time) *aggState {
 }
 
 // AggregateDetail walks the record stream once and builds everything the TUI needs.
-func AggregateDetail(records []Record, now time.Time) DetailedMetrics {
+// Returns ctx.Err() if ctx is cancelled during record processing or session
+// finalization. Returns a zero DetailedMetrics when there are no records.
+func AggregateDetail(ctx context.Context, records []Record, now time.Time) (DetailedMetrics, error) {
 	if len(records) == 0 {
-		return DetailedMetrics{}
+		return DetailedMetrics{}, nil
 	}
 
 	// Sort records chronologically once so timelines and pre/post matching are ordered.
@@ -226,11 +229,19 @@ func AggregateDetail(records []Record, now time.Time) DetailedMetrics {
 	})
 
 	st := newAggState(len(sorted), now)
-	for _, r := range sorted {
+	for i, r := range sorted {
+		if i&1023 == 0 {
+			if err := ctx.Err(); err != nil {
+				return DetailedMetrics{}, err
+			}
+		}
 		processRecord(st, r)
 	}
+	if err := ctx.Err(); err != nil {
+		return DetailedMetrics{}, err
+	}
 	finalizeSessionStats(st)
-	return assembleDetails(st)
+	return assembleDetails(st), nil
 }
 
 // processRecord folds one record into the aggregation state.
@@ -240,7 +251,7 @@ func processRecord(st *aggState, r Record) {
 	// Re-key shell tool calls into derived per-command buckets so metrics can
 	// distinguish "git push failing" from "ls succeeding". All downstream
 	// aggregation keys off r.Tool, so a single rewrite propagates everywhere.
-	if r.Tool == "shell" && (r.Event == apmconfig.EventPreToolUse || r.Event == apmconfig.EventPostToolUse) {
+	if r.Tool == apmconfig.ToolShell && (r.Event == apmconfig.EventPreToolUse || r.Event == apmconfig.EventPostToolUse) {
 		r.Tool = classifyShell(r.ToolInput, r.Cwd)
 	}
 
@@ -248,7 +259,7 @@ func processRecord(st *aggState, r Record) {
 	s.timeline = append(s.timeline, EventEntry{Ts: r.Ts, Event: r.Event, Tool: r.Tool})
 	idx := len(s.timeline) - 1
 
-	if r.Event == apmconfig.EventPreToolUse && r.Tool == "write" {
+	if r.Event == apmconfig.EventPreToolUse && r.Tool == apmconfig.ToolWrite {
 		if fc, ok := parseWriteInput(r.ToolInput, r.Ts, s.cwd); ok {
 			s.changes = append(s.changes, fc)
 		}
@@ -304,7 +315,7 @@ func recordPreToolUse(st *aggState, s *sessionState, r Record, idx int) {
 	key := pendingKey(r.Tool, r.ToolInput)
 	s.pending[key] = append(s.pending[key], pending{tool: r.Tool, ts: r.Ts, index: idx, summary: summary})
 	toolEntry(st.tools, r.Tool).CallCount++
-	if r.Tool == "read" && len(r.ToolInput) > 0 {
+	if r.Tool == apmconfig.ToolRead && len(r.ToolInput) > 0 {
 		if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
 			st.skills[string(match[1])]++
 		}
@@ -471,18 +482,65 @@ func sessionToolSummary(timeline []EventEntry) []SessionToolSummary {
 	return out
 }
 
-// sessionTimeseries buckets preToolUse events from a session timeline.
+// toolAgg accumulates call counts and durations for one tool within an agent.
+type toolAgg struct {
+	callCount  int
+	errorCount int
+	durSum     time.Duration
+	durCount   int
+}
+
+// aggregateAgentToolStats walks each session's timeline and builds an
+// agent → tool → *toolAgg map. ToolErrorCnt on each AgentDetail is also
+// incremented here so the caller does not need to re-walk the timeline.
+func aggregateAgentToolStats(st *aggState) map[string]map[string]*toolAgg {
+	agentTools := map[string]map[string]*toolAgg{}
+	for _, s := range st.sessions {
+		a := st.agents[s.agent]
+		if agentTools[s.agent] == nil {
+			agentTools[s.agent] = map[string]*toolAgg{}
+		}
+		tm := agentTools[s.agent]
+		for _, ev := range s.timeline {
+			if ev.Event != apmconfig.EventPreToolUse {
+				continue
+			}
+			ta := tm[ev.Tool]
+			if ta == nil {
+				ta = &toolAgg{}
+				tm[ev.Tool] = ta
+			}
+			ta.callCount++
+			if ev.IsError {
+				ta.errorCount++
+				a.ToolErrorCnt++
+			} else if ev.Duration > 0 {
+				ta.durSum += time.Duration(ev.Duration)
+				ta.durCount++
+			}
+		}
+	}
+	return agentTools
+}
+
+// toolAggToSummary converts a *toolAgg into a SessionToolSummary.
+func toolAggToSummary(tool string, ta *toolAgg) SessionToolSummary {
+	var rate float64
+	if ta.callCount > 0 {
+		rate = float64(ta.callCount-ta.errorCount) / float64(ta.callCount)
+	}
+	var avg JSONDuration
+	if ta.durCount > 0 {
+		avg = JSONDuration(ta.durSum / time.Duration(ta.durCount))
+	}
+	return SessionToolSummary{
+		Tool: tool, CallCount: ta.callCount, ErrorCount: ta.errorCount,
+		SuccessRate: rate, AvgDuration: avg,
+	}
+}
+
 // foldSessionIntoAgents folds every session into agent aggregation and sorts sessions newest-first.
 func foldSessionIntoAgents(st *aggState) {
-	// Temporary per-agent tool aggregation.
-	type toolAgg struct {
-		callCount  int
-		errorCount int
-		durSum     time.Duration
-		durCount   int
-	}
-	agentTools := map[string]map[string]*toolAgg{} // agent -> tool -> agg
-
 	for _, s := range st.sessions {
 		a, ok := st.agents[s.agent]
 		if !ok {
@@ -494,29 +552,8 @@ func foldSessionIntoAgents(st *aggState) {
 		a.Prompts += len(s.prompts)
 		a.FilesChanged += countUniqueFiles(s.changes)
 		a.Sessions = append(a.Sessions, newSessionMetric(s, st.now))
-
-		if agentTools[s.agent] == nil {
-			agentTools[s.agent] = map[string]*toolAgg{}
-		}
-		tm := agentTools[s.agent]
-		for _, ev := range s.timeline {
-			if ev.Event == apmconfig.EventPreToolUse {
-				ta := tm[ev.Tool]
-				if ta == nil {
-					ta = &toolAgg{}
-					tm[ev.Tool] = ta
-				}
-				ta.callCount++
-				if ev.IsError {
-					ta.errorCount++
-					a.ToolErrorCnt++
-				} else if ev.Duration > 0 {
-					ta.durSum += time.Duration(ev.Duration)
-					ta.durCount++
-				}
-			}
-		}
 	}
+	agentTools := aggregateAgentToolStats(st)
 	for name, a := range st.agents {
 		slices.SortFunc(a.Sessions, func(x, y SessionMetric) int {
 			if c := y.StartTime.Compare(x.StartTime); c != 0 {
@@ -527,18 +564,7 @@ func foldSessionIntoAgents(st *aggState) {
 		tm := agentTools[name]
 		out := make([]SessionToolSummary, 0, len(tm))
 		for tool, ta := range tm {
-			var rate float64
-			if ta.callCount > 0 {
-				rate = float64(ta.callCount-ta.errorCount) / float64(ta.callCount)
-			}
-			var avg JSONDuration
-			if ta.durCount > 0 {
-				avg = JSONDuration(ta.durSum / time.Duration(ta.durCount))
-			}
-			out = append(out, SessionToolSummary{
-				Tool: tool, CallCount: ta.callCount, ErrorCount: ta.errorCount,
-				SuccessRate: rate, AvgDuration: avg,
-			})
+			out = append(out, toolAggToSummary(tool, ta))
 		}
 		slices.SortFunc(out, func(a, b SessionToolSummary) int {
 			if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {

@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,13 +9,16 @@ import (
 )
 
 // RunJSON loads records, aggregates, optionally filters, and writes JSON to w.
-func RunJSON(logsDir string, since time.Duration, session, agent string, w io.Writer) error {
+func RunJSON(ctx context.Context, logsDir string, since time.Duration, session, agent string, w io.Writer) error {
 	records, err := LoadRecords(logsDir, time.Now().Add(-since))
 	if err != nil {
 		return err
 	}
 
-	dm := AggregateDetail(records, time.Now())
+	dm, err := AggregateDetail(ctx, records, time.Now())
+	if err != nil {
+		return err
+	}
 
 	switch {
 	case session != "" && agent != "":

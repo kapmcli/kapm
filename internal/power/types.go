@@ -45,6 +45,7 @@ type Result struct {
 	HooksDir       string
 	ResolvedCommit string
 	Warnings       []string
+	Skipped        bool
 }
 
 type SourceMeta struct {

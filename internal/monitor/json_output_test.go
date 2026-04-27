@@ -2,6 +2,7 @@ package monitor_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -14,8 +15,9 @@ const testLogsDir = "../../testdata/monitor"
 const testSince = 8760 * time.Hour // 1 year
 
 func TestRunJSON_NoFilter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(testLogsDir, testSince, "", "", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "", "", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -29,8 +31,9 @@ func TestRunJSON_NoFilter(t *testing.T) {
 
 // TestRunJSON_SessionFilter: --session alone returns merged view (Agent=="(all)").
 func TestRunJSON_SessionFilter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(testLogsDir, testSince, "sess-1", "", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "sess-1", "", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -50,8 +53,9 @@ func TestRunJSON_SessionFilter(t *testing.T) {
 }
 
 func TestRunJSON_AgentFilter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(testLogsDir, testSince, "", "kiro", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "", "kiro", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -72,8 +76,9 @@ func TestRunJSON_AgentFilter(t *testing.T) {
 
 // TestRunJSON_BothFilters: --session + --agent returns per-agent entry.
 func TestRunJSON_BothFilters(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(testLogsDir, testSince, "sess-1", "kiro", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "sess-1", "kiro", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -91,8 +96,9 @@ func TestRunJSON_BothFilters(t *testing.T) {
 
 // TestRunJSON_NoMatchSession: --session with missing sid exits with error containing sid.
 func TestRunJSON_NoMatchSession(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	err := monitor.RunJSON(testLogsDir, testSince, "nonexistent-sid", "", &buf)
+	err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "nonexistent-sid", "", &buf)
 	if err == nil {
 		t.Fatal("expected error for missing session, got nil")
 	}
@@ -103,8 +109,9 @@ func TestRunJSON_NoMatchSession(t *testing.T) {
 
 // TestRunJSON_NoMatchSessionAndAgent: --session + --agent with missing agent exits with error containing both.
 func TestRunJSON_NoMatchSessionAndAgent(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
-	err := monitor.RunJSON(testLogsDir, testSince, "sess-1", "nonexistent-agent", &buf)
+	err := monitor.RunJSON(context.Background(), testLogsDir, testSince, "sess-1", "nonexistent-agent", &buf)
 	if err == nil {
 		t.Fatal("expected error for missing session+agent, got nil")
 	}

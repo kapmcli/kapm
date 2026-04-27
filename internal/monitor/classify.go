@@ -3,6 +3,8 @@ package monitor
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 // shellSubAllowlist lists top-level commands whose subcommand is meaningful
@@ -48,12 +50,11 @@ var shellWrapperPrefixes = map[string]struct{}{
 //	"FOO=bar cmd"                       -> "shell"  (env-var prefix, no inner token extracted)
 //	""                                  -> "shell"
 func classifyShell(rawInput json.RawMessage, cwd string) string {
-	const base = "shell"
 	var in struct {
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(rawInput, &in); err != nil || in.Command == "" {
-		return base
+		return apmconfig.ToolShell
 	}
 	cmd := stripCdToCwd(in.Command, cwd)
 	tokens := strings.Fields(cmd)
@@ -68,12 +69,12 @@ func classifyShell(rawInput json.RawMessage, cwd string) string {
 			continue
 		}
 		if strings.Contains(tokens[i], "=") {
-			return base
+			return apmconfig.ToolShell
 		}
 		break
 	}
 	if i >= len(tokens) {
-		return base
+		return apmconfig.ToolShell
 	}
 
 	top := tokens[i]
@@ -81,10 +82,10 @@ func classifyShell(rawInput json.RawMessage, cwd string) string {
 		sub := tokens[i+1]
 		// Ignore flag-only second tokens (e.g. "git --help").
 		if !strings.HasPrefix(sub, "-") {
-			return base + ":" + top + " " + sub
+			return apmconfig.ToolShell + ":" + top + " " + sub
 		}
 	}
-	return base + ":" + top
+	return apmconfig.ToolShell + ":" + top
 }
 
 // baseToolName returns the original tool name for a (possibly derived) bucket

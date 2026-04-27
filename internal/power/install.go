@@ -35,87 +35,118 @@ type PowerManifest struct {
 
 // Install fetches a Power package and stores it in .kiro/powers/<name>/.
 func Install(ctx context.Context, opts InstallOptions) (*Result, error) {
-	effective := opts
-	if effective.TargetDir == "" {
-		effective.TargetDir = "."
-	}
-	if effective.Timeout == 0 {
-		effective.Timeout = DefaultTimeout
-	}
+	opts = resolveInstallOptions(opts)
 
-	fetcher, err := fetcherForSource(effective.Source)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchCtx, cancel := context.WithTimeout(ctx, effective.Timeout)
-	defer cancel()
-
-	slog.Info("fetching power", "source", sourceLabel(effective.Source))
-	localDir, commit, cleanup, err := fetcher.Fetch(fetchCtx, effective.Source)
-	if cleanup == nil {
-		cleanup = func() {}
-	}
+	tempDir, commit, cleanup, err := fetchPowerPackage(ctx, opts)
 	defer cleanup()
 	if err != nil {
-		return nil, fmt.Errorf("fetch power: %w", err)
+		return nil, err
 	}
 
-	manifest, err := readPower(localDir)
-	if err != nil {
-		return nil, err
-	}
-	_, warnings, err := loadPowerSteering(localDir)
-	if err != nil {
-		return nil, err
-	}
-	hasMCP, err := hasPowerMCP(localDir)
-	if err != nil {
-		return nil, err
-	}
-	hasHooks, err := hasPowerHooks(localDir)
+	manifest, hasMCP, hasHooks, warnings, err := validateManifest(tempDir)
 	if err != nil {
 		return nil, err
 	}
 
-	powerDir := PowerDir(effective.TargetDir, manifest.Name)
-
-	slog.Info("installing power", "name", manifest.Name, "powerDir", powerDir)
-	if err := writePowerPackage(effective.TargetDir, localDir, manifest.Name, effective.Force); err != nil {
-		if errors.Is(err, ErrSkipExisting) {
-			resourcePaths, pathErr := listInstalledResourcePaths(powerDir)
-			if pathErr != nil {
-				return nil, pathErr
-			}
-			slog.Warn("skipped existing power install (use --force)", "powerDir", powerDir)
-			return &Result{
-				Name:           manifest.Name,
-				PowerDir:       powerDir,
-				ResourcePaths:  resourcePaths,
-				MCPConfigPath:  resultMCPPath(effective.TargetDir, manifest.Name, hasMCP),
-				HooksDir:       resultHooksDir(effective.TargetDir, manifest.Name, hasHooks),
-				ResolvedCommit: commit,
-			}, nil
-		}
-		return nil, err
-	}
-	resourcePaths, err := listInstalledResourcePaths(powerDir)
+	installedDir, skipped, err := installPowerPackage(tempDir, manifest, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, warning := range warnings {
-		slog.Warn(warning)
+	resourcePaths, err := listInstalledResourcePaths(installedDir)
+	if err != nil {
+		return nil, err
+	}
+	if skipped {
+		return &Result{
+			Name:           manifest.Name,
+			PowerDir:       installedDir,
+			ResourcePaths:  resourcePaths,
+			MCPConfigPath:  resultMCPPath(opts.TargetDir, manifest.Name, hasMCP),
+			HooksDir:       resultHooksDir(opts.TargetDir, manifest.Name, hasHooks),
+			ResolvedCommit: commit,
+			Skipped:        true,
+		}, nil
+	}
+	for _, w := range warnings {
+		slog.Warn(w)
 	}
 	return &Result{
 		Name:           manifest.Name,
-		PowerDir:       powerDir,
+		PowerDir:       installedDir,
 		ResourcePaths:  resourcePaths,
-		MCPConfigPath:  resultMCPPath(effective.TargetDir, manifest.Name, hasMCP),
-		HooksDir:       resultHooksDir(effective.TargetDir, manifest.Name, hasHooks),
+		MCPConfigPath:  resultMCPPath(opts.TargetDir, manifest.Name, hasMCP),
+		HooksDir:       resultHooksDir(opts.TargetDir, manifest.Name, hasHooks),
 		ResolvedCommit: commit,
 		Warnings:       warnings,
+		Skipped:        false,
 	}, nil
+}
+
+func resolveInstallOptions(opts InstallOptions) InstallOptions {
+	if opts.TargetDir == "" {
+		opts.TargetDir = "."
+	}
+	if opts.Timeout == 0 {
+		opts.Timeout = DefaultTimeout
+	}
+	return opts
+}
+
+func fetchPowerPackage(ctx context.Context, opts InstallOptions) (tempDir, commit string, cleanup func(), err error) {
+	cleanup = func() {}
+	fetcher, err := fetcherForSource(opts.Source)
+	if err != nil {
+		return "", "", cleanup, err
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	slog.Info("fetching power", "source", sourceLabel(opts.Source))
+	localDir, resolvedCommit, rawCleanup, fetchErr := fetcher.Fetch(fetchCtx, opts.Source)
+	cleanup = func() {
+		cancel()
+		if rawCleanup != nil {
+			rawCleanup()
+		}
+	}
+	if fetchErr != nil {
+		return "", "", cleanup, fmt.Errorf("fetch power: %w", fetchErr)
+	}
+	return localDir, resolvedCommit, cleanup, nil
+}
+
+func validateManifest(tempDir string) (*PowerManifest, bool, bool, []string, error) {
+	manifest, err := readPower(tempDir)
+	if err != nil {
+		return nil, false, false, nil, err
+	}
+	_, warnings, err := loadPowerSteering(tempDir)
+	if err != nil {
+		return nil, false, false, nil, err
+	}
+	hasMCP, err := hasPowerMCP(tempDir)
+	if err != nil {
+		return nil, false, false, nil, err
+	}
+	hasHooks, err := hasPowerHooks(tempDir)
+	if err != nil {
+		return nil, false, false, nil, err
+	}
+	return manifest, hasMCP, hasHooks, warnings, nil
+}
+
+// installPowerPackage writes the package to disk and returns (powerDir, skipped, error).
+func installPowerPackage(tempDir string, manifest *PowerManifest, opts InstallOptions) (string, bool, error) {
+	powerDir := PowerDir(opts.TargetDir, manifest.Name)
+	slog.Info("installing power", "name", manifest.Name, "powerDir", powerDir)
+	err := writePowerFiles(opts.TargetDir, tempDir, manifest.Name, opts.Force)
+	if errors.Is(err, ErrSkipExisting) {
+		slog.Warn("skipped existing power install (use --force)", "powerDir", powerDir)
+		return powerDir, true, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return powerDir, false, nil
 }
 
 func readPower(dir string) (*PowerManifest, error) {
@@ -155,7 +186,7 @@ func readPower(dir string) (*PowerManifest, error) {
 	}, nil
 }
 
-func writePowerPackage(targetDir, srcDir, powerName string, force bool) error {
+func writePowerFiles(targetDir, srcDir, powerName string, force bool) error {
 	powerDir := PowerDir(targetDir, powerName)
 	if exists, err := pathExists(powerDir); err != nil {
 		return fmt.Errorf("stat %q: %w", powerDir, err)

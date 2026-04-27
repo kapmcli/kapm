@@ -9,6 +9,7 @@ import (
 )
 
 func TestJSONDuration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		d    time.Duration
 		want string
@@ -47,6 +48,7 @@ func TestJSONDuration(t *testing.T) {
 }
 
 func TestDetailedMetricsJSON(t *testing.T) {
+	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
 	records := []Record{
 		rec("s1", "agent1", apmconfig.EventAgentSpawn, "", 0),
@@ -54,7 +56,7 @@ func TestDetailedMetricsJSON(t *testing.T) {
 		rec("s1", "agent1", apmconfig.EventPostToolUse, "bash", 7*time.Minute),
 		rec("s1", "agent1", apmconfig.EventStop, "", 9*time.Minute),
 	}
-	dm := AggregateDetail(records, now)
+	dm := mustAggregate(t, records, now)
 
 	b, err := json.Marshal(dm)
 	if err != nil {

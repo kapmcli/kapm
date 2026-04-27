@@ -12,6 +12,7 @@ func ts(min int) time.Time {
 }
 
 func TestMergeSessionDetails(t *testing.T) {
+	t.Parallel()
 	type want struct {
 		id, agent, agentKey, title, cwd string
 		start, end                      time.Time
@@ -110,6 +111,7 @@ func TestMergeSessionDetails(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			merged, refs := MergeSessionDetails(tc.input)
 			if tc.want.id == "" && len(tc.input) == 0 {
 				if merged.ID != "" || len(refs) != 0 {
@@ -177,6 +179,7 @@ func TestMergeSessionDetails(t *testing.T) {
 }
 
 func TestMergeToolSummary(t *testing.T) {
+	t.Parallel()
 	// Agent A: bash 3 calls (1 error, avg 2s), read 2 calls (0 errors, avg 1s)
 	// Agent B: bash 2 calls (0 errors, avg 4s), write 1 call (1 error, avg 0)
 	// Merged bash: 5 calls, 1 error, successRate=0.8, avgDuration weighted by successCount
@@ -240,6 +243,7 @@ func TestMergeToolSummary(t *testing.T) {
 }
 
 func TestMergeAssistantResponse(t *testing.T) {
+	t.Parallel()
 	details := []SessionDetail{
 		{
 			SessionMetric:     SessionMetric{ID: "s1", Agent: "alpha", AgentKey: "s1|alpha", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)},
@@ -267,6 +271,7 @@ func TestMergeAssistantResponse(t *testing.T) {
 }
 
 func TestMergeAssistantResponseSingle(t *testing.T) {
+	t.Parallel()
 	details := []SessionDetail{
 		{
 			SessionMetric:     SessionMetric{ID: "s1", Agent: "solo", AgentKey: "s1|solo", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)},
@@ -282,6 +287,7 @@ func TestMergeAssistantResponseSingle(t *testing.T) {
 // --- Task 4: MergeSessionDetails FileChange integration ---------------------
 
 func TestMergeFilesChangedSameFile(t *testing.T) {
+	t.Parallel()
 	// 2 agents both write foo.txt → merged.FilesChanged == 1
 	details := []SessionDetail{
 		{
@@ -303,6 +309,7 @@ func TestMergeFilesChangedSameFile(t *testing.T) {
 }
 
 func TestMergeFilesChangedDifferentFiles(t *testing.T) {
+	t.Parallel()
 	// 2 agents write different files → merged.FilesChanged == 2
 	details := []SessionDetail{
 		{
@@ -321,6 +328,7 @@ func TestMergeFilesChangedDifferentFiles(t *testing.T) {
 }
 
 func TestMergeChangesChronological(t *testing.T) {
+	t.Parallel()
 	// Changes from both agents must be sorted by Ts ascending
 	details := []SessionDetail{
 		{
@@ -349,6 +357,7 @@ func TestMergeChangesChronological(t *testing.T) {
 }
 
 func TestMergeFilesChangedNormalized(t *testing.T) {
+	t.Parallel()
 	// agent A writes /tmp/foo.txt (absolute), agent B writes foo.txt with cwd=/tmp
 	// Both normalize to /tmp/foo.txt → merged.FilesChanged == 1
 	details := []SessionDetail{
@@ -367,5 +376,3 @@ func TestMergeFilesChangedNormalized(t *testing.T) {
 		t.Errorf("FilesChanged: want 1 (normalized dedup), got %d", merged.FilesChanged)
 	}
 }
-
-

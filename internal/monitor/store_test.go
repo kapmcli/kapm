@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"compress/gzip"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ func mustTime(s string) time.Time {
 }
 
 func TestLoadRecords(t *testing.T) {
+	t.Parallel()
 	// session1.jsonl has records at 06:00, 07:00, 08:00
 	recs, err := LoadRecords(testdataDir, mustTime("2026-04-20T06:30:00Z"))
 	if err != nil {
@@ -40,6 +42,7 @@ func TestLoadRecords(t *testing.T) {
 }
 
 func TestLoadRecordsGzip(t *testing.T) {
+	t.Parallel()
 	// session2.jsonl.gz has records at 05:00 and 11:00
 	recs, err := LoadRecords(testdataDir, mustTime("2026-04-20T10:00:00Z"))
 	if err != nil {
@@ -64,6 +67,7 @@ func TestLoadRecordsGzip(t *testing.T) {
 }
 
 func TestLoadRecordsEmpty(t *testing.T) {
+	t.Parallel()
 	recs, err := LoadRecords("/nonexistent/path/that/does/not/exist", time.Time{})
 	if err != nil {
 		t.Fatalf("expected nil error for missing dir, got: %v", err)
@@ -74,6 +78,7 @@ func TestLoadRecordsEmpty(t *testing.T) {
 }
 
 func TestLoadRecordsIncompleteLine(t *testing.T) {
+	t.Parallel()
 	// incomplete.jsonl has one complete line (09:00) and one truncated line
 	recs, err := LoadRecords(testdataDir, mustTime("2026-04-20T08:30:00Z"))
 	if err != nil {
@@ -107,6 +112,7 @@ func writeJSONL(t testing.TB, path string, lines []string) {
 }
 
 func TestLoadRecords_ReusesCacheWhenUnchanged(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeJSONL(t, filepath.Join(dir, "a.jsonl"), []string{
 		`{"ts":"2026-04-20T09:00:00Z","session":"s1","event":"stop"}`,
@@ -116,7 +122,7 @@ func TestLoadRecords_ReusesCacheWhenUnchanged(t *testing.T) {
 	})
 
 	since := mustTime("2026-04-20T00:00:00Z")
-	recs1, cache1, err := loadRecordsWithCache(dir, since, nil)
+	recs1, cache1, err := loadRecordsWithCache(context.Background(), dir, since, nil)
 	if err != nil {
 		t.Fatalf("first load: %v", err)
 	}
@@ -127,7 +133,7 @@ func TestLoadRecords_ReusesCacheWhenUnchanged(t *testing.T) {
 		t.Fatalf("first load: cache size = %d, want 2", len(cache1))
 	}
 
-	recs2, cache2, err := loadRecordsWithCache(dir, since, cache1)
+	recs2, cache2, err := loadRecordsWithCache(context.Background(), dir, since, cache1)
 	if err != nil {
 		t.Fatalf("second load: %v", err)
 	}
@@ -151,6 +157,7 @@ func TestLoadRecords_ReusesCacheWhenUnchanged(t *testing.T) {
 }
 
 func TestLoadRecords_InvalidatesOnSizeChange(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "a.jsonl")
 	writeJSONL(t, path, []string{
@@ -158,7 +165,7 @@ func TestLoadRecords_InvalidatesOnSizeChange(t *testing.T) {
 	})
 
 	since := mustTime("2026-04-20T00:00:00Z")
-	recs1, cache1, err := loadRecordsWithCache(dir, since, nil)
+	recs1, cache1, err := loadRecordsWithCache(context.Background(), dir, since, nil)
 	if err != nil {
 		t.Fatalf("first load: %v", err)
 	}
@@ -181,7 +188,7 @@ func TestLoadRecords_InvalidatesOnSizeChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recs2, cache2, err := loadRecordsWithCache(dir, since, cache1)
+	recs2, cache2, err := loadRecordsWithCache(context.Background(), dir, since, cache1)
 	if err != nil {
 		t.Fatalf("second load: %v", err)
 	}
@@ -204,14 +211,14 @@ func BenchmarkLoadRecordsRepeat(b *testing.B) {
 		writeJSONL(b, filepath.Join(dir, fmt.Sprintf("f%d.jsonl", i)), lines)
 	}
 	since := mustTime("2026-04-20T00:00:00Z")
-	_, cache, err := loadRecordsWithCache(dir, since, nil)
+	_, cache, err := loadRecordsWithCache(context.Background(), dir, since, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, cache, err = loadRecordsWithCache(dir, since, cache)
+		_, cache, err = loadRecordsWithCache(context.Background(), dir, since, cache)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -219,6 +226,7 @@ func BenchmarkLoadRecordsRepeat(b *testing.B) {
 }
 
 func TestRecordCacheLoadReusesFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeJSONL(t, filepath.Join(dir, "s1.jsonl"), []string{
 		`{"ts":"2026-04-20T09:00:00Z","session":"s1","event":"stop"}`,
@@ -226,12 +234,12 @@ func TestRecordCacheLoadReusesFiles(t *testing.T) {
 	})
 
 	c := NewRecordCache()
-	recs1, err := c.Load(dir, time.Time{})
+	recs1, err := c.Load(context.Background(), dir, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	recs2, err := c.Load(dir, time.Time{})
+	recs2, err := c.Load(context.Background(), dir, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,6 +249,7 @@ func TestRecordCacheLoadReusesFiles(t *testing.T) {
 }
 
 func TestRecordCacheConcurrent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeJSONL(t, filepath.Join(dir, "s1.jsonl"), []string{
 		`{"ts":"2026-04-20T09:00:00Z","session":"s1","event":"stop"}`,
@@ -249,12 +258,13 @@ func TestRecordCacheConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, _ = c.Load(dir, time.Time{}) }()
+		go func() { defer wg.Done(); _, _ = c.Load(context.Background(), dir, time.Time{}) }()
 	}
 	wg.Wait()
 }
 
 func TestRecordCacheConcurrentReads(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for i, name := range []string{"a.jsonl", "b.jsonl", "c.jsonl"} {
 		writeJSONL(t, filepath.Join(dir, name), []string{
@@ -264,7 +274,7 @@ func TestRecordCacheConcurrentReads(t *testing.T) {
 	since := time.Time{}
 	c := NewRecordCache()
 	// Warm the cache.
-	warm, err := c.Load(dir, since)
+	warm, err := c.Load(context.Background(), dir, since)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +286,7 @@ func TestRecordCacheConcurrentReads(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				recs, err := c.Load(dir, since)
+				recs, err := c.Load(context.Background(), dir, since)
 				if err != nil {
 					t.Errorf("Load error: %v", err)
 					return
@@ -303,7 +313,7 @@ func BenchmarkRecordCacheLoadCold(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		c := NewRecordCache()
-		if _, err := c.Load(dir, since); err != nil {
+		if _, err := c.Load(context.Background(), dir, since); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -320,12 +330,12 @@ func BenchmarkRecordCacheLoadWarm(b *testing.B) {
 	}
 	since := mustTime("2026-04-20T00:00:00Z")
 	c := NewRecordCache()
-	if _, err := c.Load(dir, since); err != nil {
+	if _, err := c.Load(context.Background(), dir, since); err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := c.Load(dir, since); err != nil {
+		if _, err := c.Load(context.Background(), dir, since); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -364,6 +374,7 @@ func writeGzipBombForTest(t *testing.T, dir string, decompressedSize int64) stri
 }
 
 func TestLoadRecords_CorruptGzipSkipped(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Write a valid .jsonl file alongside a corrupt .jsonl.gz file.
 	writeJSONL(t, filepath.Join(dir, "valid.jsonl"), []string{
@@ -383,11 +394,12 @@ func TestLoadRecords_CorruptGzipSkipped(t *testing.T) {
 }
 
 func TestLoadFile_GzipTooLarge(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	const testLimit int64 = 1 << 20
 	writeGzipBombForTest(t, tmp, testLimit+1)
 
-	recs, _, err := loadRecordsWithCacheLimit(tmp, time.Time{}, nil, testLimit)
+	recs, _, err := loadRecordsWithCacheLimit(context.Background(), tmp, time.Time{}, nil, testLimit)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -396,5 +408,21 @@ func TestLoadFile_GzipTooLarge(t *testing.T) {
 		if r.Session == "bomb" {
 			t.Errorf("bomb record should have been skipped, got session=%q", r.Session)
 		}
+	}
+}
+
+func TestRecordCacheLoad_CancelledCtx(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeJSONL(t, filepath.Join(dir, "s.jsonl"), []string{
+		`{"ts":"2026-04-20T09:00:00Z","session":"s","event":"stop"}`,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c := NewRecordCache()
+	if _, err := c.Load(ctx, dir, time.Time{}); err == nil {
+		t.Fatal("expected ctx.Err(), got nil")
+	} else if err != context.Canceled {
+		t.Errorf("got %v, want context.Canceled", err)
 	}
 }

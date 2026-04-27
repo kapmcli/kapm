@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const maxWriteFieldBytes = 256 * 1024 // per-field cap to bound memory
+const maxWriteFieldBytes = 256 << 10 // per-field cap to bound memory
 
 // writeInput is the typed view of the write tool's tool_input payload.
 type writeInput struct {

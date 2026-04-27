@@ -10,6 +10,7 @@ import (
 var changeTs = time.Date(2026, 4, 27, 9, 0, 0, 0, time.UTC)
 
 func TestParseWriteInput(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", maxWriteFieldBytes+1)
 
 	cases := []struct {
@@ -191,6 +192,7 @@ func TestParseWriteInput(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			fc, ok := parseWriteInput(json.RawMessage(c.raw), changeTs, c.cwd)
 			if ok != c.wantOk {
 				t.Fatalf("ok = %v; want %v", ok, c.wantOk)
@@ -227,6 +229,7 @@ func TestParseWriteInput(t *testing.T) {
 }
 
 func TestNormalizeChangePath(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		path string
@@ -244,6 +247,7 @@ func TestNormalizeChangePath(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := normalizeChangePath(c.path, c.cwd)
 			if got != c.want {
 				t.Errorf("normalizeChangePath(%q, %q) = %q; want %q", c.path, c.cwd, got, c.want)
@@ -253,6 +257,7 @@ func TestNormalizeChangePath(t *testing.T) {
 }
 
 func TestCountUniqueFiles(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		changes []FileChange
@@ -295,6 +300,7 @@ func TestCountUniqueFiles(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := countUniqueFiles(c.changes)
 			if got != c.want {
 				t.Errorf("countUniqueFiles = %d; want %d", got, c.want)

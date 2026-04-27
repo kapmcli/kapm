@@ -8,10 +8,11 @@ import (
 
 	udiff "github.com/aymanbagabas/go-udiff"
 
+	"github.com/kapmcli/kapm/internal/apmconfig"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
-const diffByteCap = 64 * 1024
+const diffByteCap = 64 << 10
 
 func renderDiff(fc monitor.FileChange) template.HTML {
 	if fc.Oversized {
@@ -76,7 +77,7 @@ func validUTF8Fields(fc monitor.FileChange) bool {
 // "shell:<cmd>" buckets via classifyShell, so both forms must be matched.
 func hasShellEvent(s monitor.SessionDetail) bool {
 	for _, e := range s.Timeline {
-		if e.Tool == "shell" || strings.HasPrefix(e.Tool, "shell:") {
+		if e.Tool == apmconfig.ToolShell || strings.HasPrefix(e.Tool, "shell:") {
 			return true
 		}
 	}

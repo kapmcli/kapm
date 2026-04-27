@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -86,7 +87,7 @@ func fixture() DetailedMetrics {
 }
 
 func newTestModel() *model {
-	m := NewModel(".kapm/logs", 24*time.Hour)
+	m := NewModel(context.Background(), ".kapm/logs", 24*time.Hour)
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40
@@ -99,6 +100,7 @@ func press(m *model, key string) *model {
 }
 
 func TestTUIOverviewRender(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	out := m.renderView()
 	for _, want := range []string{"kapm monitor", "Overview", "Sessions", "Agents", "Tools", "Summary", "Top tools", "Top agents", "Activity"} {
@@ -109,6 +111,7 @@ func TestTUIOverviewRender(t *testing.T) {
 }
 
 func TestTUITabsSwitchViaTab(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "tab")
 	if m.tab != tabSessions {
@@ -122,6 +125,7 @@ func TestTUITabsSwitchViaTab(t *testing.T) {
 }
 
 func TestTUISessionDetail(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2") // Sessions tab
 	m = press(m, "enter")
@@ -141,6 +145,7 @@ func TestTUISessionDetail(t *testing.T) {
 }
 
 func TestTUIAgentDetail(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "3") // Agents
 	m = press(m, "enter")
@@ -154,6 +159,7 @@ func TestTUIAgentDetail(t *testing.T) {
 }
 
 func TestTUIToolDetail(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "4") // Tools
 	m = press(m, "enter")
@@ -164,6 +170,7 @@ func TestTUIToolDetail(t *testing.T) {
 }
 
 func TestTUIBackFromDetail(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.tab = tabSessions
 	m.detail = true
@@ -174,6 +181,7 @@ func TestTUIBackFromDetail(t *testing.T) {
 }
 
 func TestTUIDownUpSelection(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2") // Sessions
 	m = press(m, "down")
@@ -187,7 +195,8 @@ func TestTUIDownUpSelection(t *testing.T) {
 }
 
 func TestTUIRenderEmpty(t *testing.T) {
-	m := NewModel("/nowhere", time.Hour)
+	t.Parallel()
+	m := NewModel(context.Background(), "/nowhere", time.Hour)
 	m.width, m.height = 100, 30
 	out := m.renderView()
 	if !strings.Contains(out, "No log data found") {
@@ -196,6 +205,7 @@ func TestTUIRenderEmpty(t *testing.T) {
 }
 
 func TestTUIHelpLineChanges(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	if !strings.Contains(m.helpLine(), "switch") {
 		t.Errorf("overview help missing tab hint")
@@ -211,6 +221,7 @@ func TestTUIHelpLineChanges(t *testing.T) {
 }
 
 func TestTUITabFiveSkills(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "5")
 	if m.tab != tabSkills {
@@ -225,6 +236,7 @@ func TestTUITabFiveSkills(t *testing.T) {
 }
 
 func TestTUIOverviewHasSkillsBox(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	out := m.renderView()
 	if !strings.Contains(out, "Skills (reads)") {
@@ -236,6 +248,7 @@ func TestTUIOverviewHasSkillsBox(t *testing.T) {
 }
 
 func TestTUIOverviewHidesSkillsBoxWhenEmpty(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.metrics.Skills = nil
 	out := m.renderView()
@@ -245,6 +258,7 @@ func TestTUIOverviewHidesSkillsBoxWhenEmpty(t *testing.T) {
 }
 
 func TestTUISessionsListHasLastActivityColumn(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.tab = tabSessions
 	out := m.renderView()
@@ -254,6 +268,7 @@ func TestTUISessionsListHasLastActivityColumn(t *testing.T) {
 }
 
 func TestTUIToolDetailErrorHasInput(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "4") // Tools
 	// cursor defaults to 0 → bash (no errors), advance to grep
@@ -283,6 +298,7 @@ func largeSkillsFixture() DetailedMetrics {
 }
 
 func TestTUIOverviewSkillsCapTen(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.metrics = largeSkillsFixture()
 	out := m.renderView()
@@ -301,6 +317,7 @@ func TestTUIOverviewSkillsCapTen(t *testing.T) {
 }
 
 func TestTUIRecentSessionsCapTen(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	// Build 12 sessions to verify the box shows 10 in Recent active sessions.
 	base := fixture()
@@ -334,6 +351,7 @@ func TestTUIRecentSessionsCapTen(t *testing.T) {
 }
 
 func TestTUIDetailNavRight(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")     // sessions tab (2 sessions)
 	m = press(m, "enter") // enter detail on first session (cursor=0)
@@ -356,6 +374,7 @@ func TestTUIDetailNavRight(t *testing.T) {
 }
 
 func TestTUIDetailNavClamp(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")
 	m = press(m, "enter")
@@ -374,6 +393,7 @@ func TestTUIDetailNavClamp(t *testing.T) {
 }
 
 func TestTUIDetailNavResetsScroll(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.height = 15
 	m = press(m, "2")
@@ -389,6 +409,7 @@ func TestTUIDetailNavResetsScroll(t *testing.T) {
 }
 
 func TestTUISessionDetailNoCap(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	// Build a session with >30 timeline events.
 	base := fixture()
@@ -415,6 +436,7 @@ func TestTUISessionDetailNoCap(t *testing.T) {
 }
 
 func TestTUISessionDetailShowsInputSummary(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	base.Sessions[0].Timeline[2].InputSummary = "echo hello"
@@ -428,6 +450,7 @@ func TestTUISessionDetailShowsInputSummary(t *testing.T) {
 }
 
 func TestTUISessionDetailShowsDuration(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	base.Sessions[0].Timeline[2].Duration = JSONDuration(1200 * time.Millisecond)
@@ -441,6 +464,7 @@ func TestTUISessionDetailShowsDuration(t *testing.T) {
 }
 
 func TestTUITabKeyDoesNotNavInDetail(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")
 	m = press(m, "enter")
@@ -456,6 +480,7 @@ func TestTUITabKeyDoesNotNavInDetail(t *testing.T) {
 }
 
 func TestTUIDetailScrollKeys(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.height = 15         // small viewport so detail overflows
 	m = press(m, "2")     // sessions tab
@@ -505,6 +530,7 @@ func TestTUIDetailScrollKeys(t *testing.T) {
 }
 
 func TestTUIListNavUnchangedOutsideDetail(t *testing.T) {
+	t.Parallel()
 	// up/down in list mode still move cursor, not scroll.
 	m := newTestModel()
 	m = press(m, "2") // sessions list
@@ -521,6 +547,7 @@ func TestTUIListNavUnchangedOutsideDetail(t *testing.T) {
 }
 
 func TestTUIDetailHelpLine(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m.tab = tabSessions
 	m.detail = true
@@ -533,6 +560,7 @@ func TestTUIDetailHelpLine(t *testing.T) {
 }
 
 func TestTUITimelineHidesPostToolUse(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")
 	m = press(m, "enter")
@@ -548,6 +576,7 @@ func TestTUITimelineHidesPostToolUse(t *testing.T) {
 }
 
 func TestTUITimelineSimplifiedLabels(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")
 	m = press(m, "enter")
@@ -568,6 +597,7 @@ func TestTUITimelineSimplifiedLabels(t *testing.T) {
 }
 
 func TestTUITimelineTimeOnly(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")
 	m = press(m, "enter")
@@ -583,6 +613,7 @@ func TestTUITimelineTimeOnly(t *testing.T) {
 }
 
 func TestTUITimelinePathShortening(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	base.Sessions[0].Cwd = "/home/user/project"
@@ -598,7 +629,8 @@ func TestTUITimelinePathShortening(t *testing.T) {
 }
 
 func TestSwitchToTab(t *testing.T) {
-	m := NewModel(".", time.Hour)
+	t.Parallel()
+	m := NewModel(context.Background(), ".", time.Hour)
 	m.detail = true
 	m.detailScroll = 42
 	m.tab = tabOverview
@@ -617,6 +649,7 @@ func TestSwitchToTab(t *testing.T) {
 }
 
 func TestSingleLine(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected string
@@ -639,6 +672,7 @@ func TestSingleLine(t *testing.T) {
 }
 
 func TestTUIDetailUnrecognizedKeyDoesNotAffectListCursor(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "2")     // sessions tab
 	m = press(m, "down")  // cursor = 1
@@ -687,7 +721,7 @@ func TestAbbrevHome_SinglyResolved(t *testing.T) {
 		t.Setenv("HOMEDRIVE", "")
 		t.Setenv("HOMEPATH", "")
 	}
-	m := NewModel(filepath.Join(t.TempDir(), "logs"), 24*time.Hour)
+	m := NewModel(context.Background(), filepath.Join(t.TempDir(), "logs"), 24*time.Hour)
 	if m.homeDir != fakeHome {
 		t.Errorf("NewModel homeDir = %q, want %q", m.homeDir, fakeHome)
 	}
@@ -701,6 +735,7 @@ func TestAbbrevHome_SinglyResolved(t *testing.T) {
 }
 
 func TestTUISessionsListGroupingIndent(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	sid := "shared-session-id"
@@ -743,6 +778,7 @@ func TestTUISessionsListGroupingIndent(t *testing.T) {
 }
 
 func TestTUIRenderSessionDetailTitle(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	base.Sessions[0].Title = "my-test-title"
@@ -759,6 +795,7 @@ func TestTUIRenderSessionDetailTitle(t *testing.T) {
 }
 
 func TestTUIRecentSessionsBoxGroupingIndent(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	sid := "shared-session-id"
@@ -797,6 +834,7 @@ func TestTUIRecentSessionsBoxGroupingIndent(t *testing.T) {
 }
 
 func TestTUIAgentDetailTitleColumn(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	m = press(m, "3") // Agents tab
 	m = press(m, "enter")
@@ -807,6 +845,7 @@ func TestTUIAgentDetailTitleColumn(t *testing.T) {
 }
 
 func TestTUISessionsListTitleTruncation(t *testing.T) {
+	t.Parallel()
 	m := newTestModel()
 	base := fixture()
 	longTitle := "こんにちは、これはサンプルプロンプトです。このタイトルは非常に長いです。"

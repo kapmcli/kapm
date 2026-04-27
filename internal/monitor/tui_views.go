@@ -466,8 +466,15 @@ func (m *model) renderSessionDetail() string {
 	if idx >= len(sessions) {
 		idx = len(sessions) - 1
 	}
-	s := sessions[idx]
+	s := &sessions[idx]
+	return m.renderSessionHeader(s) +
+		m.renderSessionToolSummary(s) +
+		m.renderSessionAssistantResponse(s) +
+		m.renderSessionPrompts(s) +
+		m.renderSessionTimeline(s)
+}
 
+func (m *model) renderSessionHeader(s *SessionDetail) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s\n", sectionStyle.Render("Session"), s.ID)
 	fmt.Fprintf(&b, "  title:    %s\n", cmp.Or(s.Title, "—"))
@@ -478,58 +485,69 @@ func (m *model) renderSessionDetail() string {
 	fmt.Fprintf(&b, "  duration: %s\n", formatDur(time.Duration(s.Duration)))
 	fmt.Fprintf(&b, "  status:   %s\n", statusBadge(s.Active))
 	fmt.Fprintf(&b, "  tools:    %d    prompts: %d\n\n", s.ToolCalls, s.Prompts)
+	return b.String()
+}
 
-	// Tool summary section
-	if len(s.ToolSummary) > 0 {
-		fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Tool Summary"))
-		tools := s.ToolSummary
-		if len(tools) > 10 {
-			tools = tools[:10]
-		}
-		maxCalls := tools[0].CallCount
-		interior := m.interiorWidth()
-		// Fixed: 2(indent) + 12(tool) + 2 + bar + 1 + 4(Calls) + 2 + 6(Errors) + 2 + 8(Success%) + 2 + 8(Avg Dur)
-		barW := interior - 49
-		if barW < 3 {
-			barW = 3
-		}
-		if barW > 20 {
-			barW = 20
-		}
-		fmt.Fprintf(&b, "  %-12s  %-*s %4s  %6s  %8s  %8s\n", "Tool", barW, "Bar", "Calls", "Errors", "Success%", "Avg Dur")
-		for _, t := range tools {
-			bar := barChart(t.CallCount, maxCalls, barW)
-			fmt.Fprintf(&b, "  %-12s  %s %4d  %6d  %7.1f%%  %8s\n",
-				truncate(t.Tool, 12), barStyleOK.Render(bar), t.CallCount, t.ErrorCount,
-				t.SuccessRate*100, formatDur(time.Duration(t.AvgDuration)))
-		}
-		b.WriteString("\n")
+func (m *model) renderSessionToolSummary(s *SessionDetail) string {
+	if len(s.ToolSummary) == 0 {
+		return ""
 	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Tool Summary"))
+	tools := s.ToolSummary
+	if len(tools) > 10 {
+		tools = tools[:10]
+	}
+	maxCalls := tools[0].CallCount
+	interior := m.interiorWidth()
+	// Fixed: 2(indent) + 12(tool) + 2 + bar + 1 + 4(Calls) + 2 + 6(Errors) + 2 + 8(Success%) + 2 + 8(Avg Dur)
+	barW := interior - 49
+	if barW < 3 {
+		barW = 3
+	}
+	if barW > 20 {
+		barW = 20
+	}
+	fmt.Fprintf(&b, "  %-12s  %-*s %4s  %6s  %8s  %8s\n", "Tool", barW, "Bar", "Calls", "Errors", "Success%", "Avg Dur")
+	for _, t := range tools {
+		bar := barChart(t.CallCount, maxCalls, barW)
+		fmt.Fprintf(&b, "  %-12s  %s %4d  %6d  %7.1f%%  %8s\n",
+			truncate(t.Tool, 12), barStyleOK.Render(bar), t.CallCount, t.ErrorCount,
+			t.SuccessRate*100, formatDur(time.Duration(t.AvgDuration)))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
 
-	// Assistant response section
-	if s.AssistantResponse != "" {
-		fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Session Result"))
-		resp := s.AssistantResponse
-		interior := m.interiorWidth()
-		// Wrap long lines to interior width
-		words := strings.Fields(resp)
-		var line strings.Builder
-		for _, w := range words {
-			if line.Len() > 0 && line.Len()+1+len(w) > interior-2 {
-				fmt.Fprintf(&b, "  %s\n", mutedStyle.Render(line.String()))
-				line.Reset()
-			}
-			if line.Len() > 0 {
-				line.WriteString(" ")
-			}
-			line.WriteString(w)
+func (m *model) renderSessionAssistantResponse(s *SessionDetail) string {
+	if s.AssistantResponse == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Session Result"))
+	interior := m.interiorWidth()
+	// Wrap long lines to interior width
+	words := strings.Fields(s.AssistantResponse)
+	var line strings.Builder
+	for _, w := range words {
+		if line.Len() > 0 && line.Len()+1+len(w) > interior-2 {
+			fmt.Fprintf(&b, "  %s\n", mutedStyle.Render(line.String()))
+			line.Reset()
 		}
 		if line.Len() > 0 {
-			fmt.Fprintf(&b, "  %s\n", mutedStyle.Render(line.String()))
+			line.WriteString(" ")
 		}
-		b.WriteString("\n")
+		line.WriteString(w)
 	}
+	if line.Len() > 0 {
+		fmt.Fprintf(&b, "  %s\n", mutedStyle.Render(line.String()))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
 
+func (m *model) renderSessionPrompts(s *SessionDetail) string {
+	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Prompts (newest first)"))
 	if len(s.PromptHistory) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
@@ -543,7 +561,11 @@ func (m *model) renderSessionDetail() string {
 		}
 	}
 	b.WriteString("\n")
+	return b.String()
+}
 
+func (m *model) renderSessionTimeline(s *SessionDetail) string {
+	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Timeline"))
 	// Fixed columns: 2(indent) + 1(marker) + 1 + 8(time) + 2 + 12(label) + 2 + 7(dur) + 2 = 37
 	const tlFixed = 37

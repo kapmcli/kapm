@@ -3,6 +3,7 @@ package monitor
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -48,7 +49,7 @@ type fileEntry struct {
 // LoadRecords reads all .jsonl and .jsonl.gz files in logsDir and returns records
 // with Ts >= since. Returns an empty slice (not an error) if the directory is missing.
 func LoadRecords(logsDir string, since time.Time) ([]Record, error) {
-	recs, _, err := loadRecordsWithCache(logsDir, since, nil)
+	recs, _, err := loadRecordsWithCache(context.Background(), logsDir, since, nil)
 	return recs, err
 }
 
@@ -66,12 +67,13 @@ func NewRecordCache() *RecordCache {
 
 // Load reads all .jsonl/.jsonl.gz files in logsDir returning records with
 // Ts >= since. Files unchanged since the last call are served from cache.
-// Safe for concurrent use.
-func (c *RecordCache) Load(logsDir string, since time.Time) ([]Record, error) {
+// Safe for concurrent use. Returns ctx.Err() if ctx is cancelled during the
+// file I/O loop.
+func (c *RecordCache) Load(ctx context.Context, logsDir string, since time.Time) ([]Record, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	recs, next, err := loadRecordsWithCache(logsDir, since, c.m)
+	recs, next, err := loadRecordsWithCache(ctx, logsDir, since, c.m)
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +85,11 @@ func (c *RecordCache) Load(logsDir string, since time.Time) ([]Record, error) {
 // It reuses entries from cache when (mtime, size) are unchanged, and returns a
 // fresh cache map containing only files that still exist. Only successful
 // file reads are inserted into the returned cache.
-func loadRecordsWithCache(logsDir string, since time.Time, cache map[string]fileEntry) ([]Record, map[string]fileEntry, error) {
-	return loadRecordsWithCacheLimit(logsDir, since, cache, maxDecompressedLogBytes)
+func loadRecordsWithCache(ctx context.Context, logsDir string, since time.Time, cache map[string]fileEntry) ([]Record, map[string]fileEntry, error) {
+	return loadRecordsWithCacheLimit(ctx, logsDir, since, cache, maxDecompressedLogBytes)
 }
 
-func loadRecordsWithCacheLimit(logsDir string, since time.Time, cache map[string]fileEntry, maxDecompressedBytes int64) ([]Record, map[string]fileEntry, error) {
+func loadRecordsWithCacheLimit(ctx context.Context, logsDir string, since time.Time, cache map[string]fileEntry, maxDecompressedBytes int64) ([]Record, map[string]fileEntry, error) {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -99,6 +101,9 @@ func loadRecordsWithCacheLimit(logsDir string, since time.Time, cache map[string
 	next := make(map[string]fileEntry, len(entries))
 	var records []Record
 	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		if e.IsDir() {
 			continue
 		}

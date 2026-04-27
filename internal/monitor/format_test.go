@@ -6,6 +6,7 @@ import (
 )
 
 func TestFormatDuration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		d    time.Duration
 		want string
@@ -28,6 +29,7 @@ func TestFormatDuration(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
+			t.Parallel()
 			got := FormatDuration(tc.d)
 			if got != tc.want {
 				t.Errorf("FormatDuration(%v) = %q, want %q", tc.d, got, tc.want)

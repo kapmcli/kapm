@@ -173,7 +173,7 @@ var templateFuncs = template.FuncMap{
 	"localtime": func(t time.Time, format string) template.HTML {
 		utc := t.UTC().Format("2006-01-02T15:04:05Z")
 		display := t.UTC().Format("2006-01-02 15:04:05 UTC")
-		return template.HTML(fmt.Sprintf(`<time class="js-localtime" datetime="%s" data-format="%s">%s</time>`, utc, format, display))
+		return template.HTML(fmt.Sprintf(`<time class="js-localtime" datetime="%s" data-format="%s">%s</time>`, utc, html.EscapeString(format), display))
 	},
 	// truncTitle renders a table cell with truncated text and a title tooltip.
 	"truncTitle": func(title string) template.HTML {
@@ -344,7 +344,9 @@ func securityHeaders(h http.Handler) http.Handler {
 // loadMetrics reads and aggregates records for the configured window.
 // Results are cached for s.ttl to avoid repeated AggregateDetail calls.
 // Only one goroutine runs AggregateDetail per TTL window (singleflight).
-func (s *Server) loadMetrics() (loadedMetrics, error) {
+// ctx is forwarded to the record load and aggregation so request cancellation
+// aborts in-flight work.
+func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 	now := s.now()
 
 	s.metricsMu.Lock()
@@ -365,11 +367,14 @@ func (s *Server) loadMetrics() (loadedMetrics, error) {
 		}
 		s.metricsMu.Unlock()
 
-		recs, err := s.cache.Load(s.opts.LogsDir, now.Add(-s.opts.Since))
+		recs, err := s.cache.Load(ctx, s.opts.LogsDir, now.Add(-s.opts.Since))
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
 		}
-		dm := aggregateDetailFn(recs, now)
+		dm, err := aggregateDetailFn(ctx, recs, now)
+		if err != nil {
+			return loadedMetrics{}, fmt.Errorf("serve aggregate records: %w", err)
+		}
 		sessions := computeDashboardSessions(dm.Overview.Sessions)
 
 		s.metricsMu.Lock()
@@ -386,7 +391,7 @@ func (s *Server) loadMetrics() (loadedMetrics, error) {
 
 // handleAPIMetrics returns the full DetailedMetrics (optionally filtered) as JSON.
 func (s *Server) handleAPIMetrics(w http.ResponseWriter, r *http.Request) {
-	loaded, err := s.loadMetrics()
+	loaded, err := s.loadMetrics(r.Context())
 	if err != nil {
 		s.handleError(w, r, err, http.StatusInternalServerError)
 		return
@@ -447,7 +452,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 //   - `event: summary` with rendered summary-cards HTML (for htmx sse-swap)
 //   - `event: overview` with Overview JSON (for ECharts update in client JS)
 func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request) bool {
-	loaded, err := s.loadMetrics()
+	loaded, err := s.loadMetrics(r.Context())
 	if err != nil {
 		slog.Warn("serve sse load metrics", "err", err)
 		return false
@@ -561,10 +566,20 @@ func computeDashboardSessions(sessions []monitor.SessionMetric) []monitor.Sessio
 	return out
 }
 
+// marshalForTemplate serializes v as JSON wrapped in template.JS for embedding
+// in HTML via html/template. Returns an error for the caller to propagate.
+func marshalForTemplate(v any) (template.JS, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return template.JS(b), nil //nolint:gosec // json.Marshal escapes <,>,& so </script> injection is impossible
+}
+
 // withMetrics calls fn with the current metrics. If loading fails, it
 // writes an error response and fn is not called.
 func (s *Server) withMetrics(w http.ResponseWriter, r *http.Request, fn func(loadedMetrics)) {
-	loaded, err := s.loadMetrics()
+	loaded, err := s.loadMetrics(r.Context())
 	if err != nil {
 		s.handleError(w, r, err, http.StatusInternalServerError)
 		return
@@ -575,7 +590,7 @@ func (s *Server) withMetrics(w http.ResponseWriter, r *http.Request, fn func(loa
 // handleDashboard renders the Overview page from embedded templates.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		overviewJSON, err := json.Marshal(loaded.dm.Overview)
+		overviewJSON, err := marshalForTemplate(loaded.dm.Overview)
 		if err != nil {
 			s.handleError(w, r, err, http.StatusInternalServerError)
 			return
@@ -583,15 +598,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		overview := loaded.dm.Overview
 		overview.Sessions = loaded.sessions
 		s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
-			"Title":    "Overview",
-			"Active":   "overview",
-			"Overview": overview,
-			"Skills":   loaded.dm.Skills,
-			// template.JS is required here: html/template treats content inside a
-			// <script> tag as JS context and will otherwise stringify the JSON,
-			// breaking JSON.parse in the browser. json.Marshal escapes <,>,& so
-			// </script> injection is impossible.
-			"OverviewJSON": template.JS(overviewJSON), //nolint:gosec // see comment above
+			"Title":        "Overview",
+			"Active":       "overview",
+			"Overview":     overview,
+			"Skills":       loaded.dm.Skills,
+			"OverviewJSON": overviewJSON,
 		})
 	})
 }
@@ -720,7 +731,7 @@ func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
 			s.handleNotFound(w, r)
 			return
 		}
-		toolDetailJSON, err := json.Marshal(buildToolDetailVM(tool, s.now()))
+		toolDetailJSON, err := marshalForTemplate(buildToolDetailVM(tool, s.now()))
 		if err != nil {
 			s.handleError(w, r, err, http.StatusInternalServerError)
 			return
@@ -729,7 +740,7 @@ func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
 			"Title":          "Tool " + name,
 			"Active":         "tools",
 			"Tool":           tool,
-			"ToolDetailJSON": template.JS(toolDetailJSON), //nolint:gosec // json.Marshal escapes <,>,& so </script> injection is impossible
+			"ToolDetailJSON": toolDetailJSON,
 		})
 	})
 }

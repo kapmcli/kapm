@@ -1,15 +1,17 @@
 package monitor
 
+import "github.com/kapmcli/kapm/internal/apmconfig"
+
 // toolFormatter returns a formatted summary for a tool input.
 // ok=false means no tool-specific handling applied; caller should use genericSummary.
 type toolFormatter func(in toolInput, cwd string) (summary string, ok bool)
 
 var toolFormatters = map[string]toolFormatter{
-	"read":  formatReadSummary,
-	"grep":  formatGrepSummary,
-	"glob":  formatGlobSummary,
-	"shell": formatShellSummary,
-	"write": formatWriteSummary,
+	apmconfig.ToolRead:  formatReadSummary,
+	apmconfig.ToolGrep:  formatGrepSummary,
+	apmconfig.ToolGlob:  formatGlobSummary,
+	apmconfig.ToolShell: formatShellSummary,
+	apmconfig.ToolWrite: formatWriteSummary,
 }
 
 func formatReadSummary(in toolInput, _ string) (string, bool) {
