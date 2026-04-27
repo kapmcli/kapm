@@ -22,7 +22,7 @@
 
 kapm은 Kiro 에이전트 워크스페이스를 이해하고 관리하기 쉽게 만드는 CLI입니다.
 
-- **Kiro 세션 모니터링**: hook 이벤트를 `.kapm/logs`에 기록하고, 세션, 도구 호출, 실패, 소요 시간, 생성된 에이전트, 프롬프트, 응답, Skill 읽기 정보를 TUI와 WebUI에서 확인합니다.
+- **Kiro 세션 모니터링**: hook 이벤트를 `.kapm/logs`에 기록하고, 세션, 도구 호출, 실패, 소요 시간, 생성된 에이전트, 프롬프트, 응답, 파일 변경, Skill 읽기 정보를 TUI와 WebUI에서 확인합니다.
 - **Kiro 에이전트 관리**: `.kiro/agents/*.json`과 `.kiro/agent-prompts/*.md`를 대화형으로 만들고 업데이트합니다.
 - **패키지 형식 연결**: APM 패키지와 Kiro Power를 프로젝트 로컬 `.kiro/` 파일로 동기화합니다.
 

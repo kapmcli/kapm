@@ -22,7 +22,7 @@
 
 kapm helps you understand and maintain Kiro agent workspaces.
 
-- **Monitor Kiro sessions**: record hook events to `.kapm/logs` and inspect sessions, tool calls, failures, durations, spawned agents, prompts, responses, and skill reads in a terminal UI or WebUI.
+- **Monitor Kiro sessions**: record hook events to `.kapm/logs` and inspect sessions, tool calls, failures, durations, spawned agents, prompts, responses, file changes, and skill reads in a terminal UI or WebUI.
 - **Manage Kiro agents**: create and update `.kiro/agents/*.json` and `.kiro/agent-prompts/*.md` interactively.
 - **Bridge package formats**: sync APM packages and Kiro Powers into project-local `.kiro/` files.
 
