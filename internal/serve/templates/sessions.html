@@ -2,7 +2,7 @@
 <section class="card">
   <div class="card-title">Sessions</div>
   <table>
-    <thead><tr><th>ID</th><th>Agent</th><th>Title</th><th>Duration</th><th>Status</th><th>Tools</th><th>Prompts</th><th>Started</th><th>Last activity</th></tr></thead>
+    <thead><tr><th>ID</th><th>Agent</th><th>Title</th><th>Duration</th><th>Status</th><th>Tools</th><th>Prompts</th><th>Files</th><th>Started</th><th>Last activity</th></tr></thead>
     <tbody>
     {{- range .Sessions}}
       <tr>
@@ -13,11 +13,12 @@
         <td>{{template "status-badge" .}}</td>
         <td>{{.ToolCalls}}</td>
         <td>{{.Prompts}}</td>
+        <td>{{.FilesChanged}}</td>
         <td>{{localtime .StartTime "datetime"}}</td>
         <td>{{localtime .LastActivity "datetime"}}</td>
       </tr>
     {{- else}}
-      <tr><td colspan="9" class="muted">No sessions</td></tr>
+      <tr><td colspan="10" class="muted">No sessions</td></tr>
     {{- end}}
     </tbody>
   </table>

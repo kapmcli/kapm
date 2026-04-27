@@ -2,7 +2,7 @@
 <section class="card">
   <div class="card-title">Agents</div>
   <table>
-    <thead><tr><th>Name</th><th>Sessions</th><th>Tool calls</th><th>Prompts</th></tr></thead>
+    <thead><tr><th>Name</th><th>Sessions</th><th>Tool calls</th><th>Prompts</th><th>Files</th></tr></thead>
     <tbody>
     {{- range .Agents}}
       <tr hx-get="/agents/{{.Name}}" hx-target="#content" hx-push-url="true" style="cursor:pointer">
@@ -10,9 +10,10 @@
         <td>{{.SessionCount}}</td>
         <td>{{.ToolCalls}}</td>
         <td>{{.Prompts}}</td>
+        <td>{{.FilesChanged}}</td>
       </tr>
     {{- else}}
-      <tr><td colspan="4" class="muted">No agents</td></tr>
+      <tr><td colspan="5" class="muted">No agents</td></tr>
     {{- end}}
     </tbody>
   </table>

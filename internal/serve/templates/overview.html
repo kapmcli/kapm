@@ -35,12 +35,12 @@
   <div class="card">
     <div class="card-title">Top agents</div>
     <table>
-      <thead><tr><th>Agent</th><th>Sessions</th><th>Tools</th><th>Prompts</th></tr></thead>
+      <thead><tr><th>Agent</th><th>Sessions</th><th>Tools</th><th>Prompts</th><th>Files</th></tr></thead>
       <tbody>
       {{- range $o.Agents}}
-        <tr><td><a href="/agents/{{.Name}}">{{.Name}}</a></td><td>{{.SessionCount}}</td><td>{{.ToolCalls}}</td><td>{{.Prompts}}</td></tr>
+        <tr><td><a href="/agents/{{.Name}}">{{.Name}}</a></td><td>{{.SessionCount}}</td><td>{{.ToolCalls}}</td><td>{{.Prompts}}</td><td>{{.FilesChanged}}</td></tr>
       {{- else}}
-        <tr><td colspan="4" class="muted">No agents</td></tr>
+        <tr><td colspan="5" class="muted">No agents</td></tr>
       {{- end}}
       </tbody>
     </table>
@@ -137,8 +137,8 @@
 {{end}}
 
 {{define "summary-cards"}}
-{{- $active := 0 -}}{{- $tools := 0 -}}{{- $prompts := 0 -}}{{- $errors := 0 -}}
-{{- range .Sessions}}{{if .Active}}{{$active = add $active 1}}{{end}}{{$tools = add $tools .ToolCalls}}{{$prompts = add $prompts .Prompts}}{{end}}
+{{- $active := 0 -}}{{- $tools := 0 -}}{{- $prompts := 0 -}}{{- $errors := 0 -}}{{- $files := 0 -}}
+{{- range .Sessions}}{{if .Active}}{{$active = add $active 1}}{{end}}{{$tools = add $tools .ToolCalls}}{{$prompts = add $prompts .Prompts}}{{$files = add $files .FilesChanged}}{{end}}
 {{- range .Tools}}{{$errors = add $errors .ErrorCount}}{{end}}
 <div class="cards">
   <div class="card"><div class="card-title">Sessions</div><div class="card-value">{{len .Sessions}}</div></div>
@@ -147,5 +147,6 @@
   <div class="card"><div class="card-title">Tool calls</div><div class="card-value">{{$tools}}</div></div>
   <div class="card"><div class="card-title">Prompts</div><div class="card-value">{{$prompts}}</div></div>
   <div class="card"><div class="card-title">Errors</div><div class="card-value">{{$errors}}</div></div>
+  <div class="card"><div class="card-title">Files changed</div><div class="card-value">{{$files}}</div></div>
 </div>
 {{end}}

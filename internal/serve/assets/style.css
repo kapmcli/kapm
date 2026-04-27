@@ -178,3 +178,10 @@ tbody tr:hover { background: rgba(125, 86, 244, 0.08); }
 
 /* Truncated text cell */
 .truncate { max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Diff viewer */
+.diff { font-family: ui-monospace, monospace; white-space: pre; overflow-x: auto; background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px; font-size: 12px; }
+.diff-add  { background: rgba(4,181,117,0.15); color: var(--success); display: block; }
+.diff-del  { background: rgba(224,108,117,0.15); color: var(--error); display: block; }
+.diff-ctx  { color: var(--muted); display: block; }
+.diff-hunk { color: var(--accent); display: block; }

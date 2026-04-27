@@ -7,6 +7,7 @@
       <tr><th>Sessions</th><td>{{$a.SessionCount}}</td></tr>
       <tr><th>Tool calls</th><td>{{$a.ToolCalls}}</td></tr>
       <tr><th>Prompts</th><td>{{$a.Prompts}}</td></tr>
+      <tr><th>Files changed</th><td>{{$a.FilesChanged}}</td></tr>
       <tr><th>Errors</th><td>{{if $a.ToolErrorCnt}}<span class="badge badge-error">{{$a.ToolErrorCnt}}</span>{{else}}0{{end}}</td></tr>
       <tr><th>Error rate</th><td>{{if $a.ToolCalls}}{{printf "%.1f%%" (mul (div (itof $a.ToolErrorCnt) (itof $a.ToolCalls)) 100)}}{{else}}—{{end}}</td></tr>
     </tbody>

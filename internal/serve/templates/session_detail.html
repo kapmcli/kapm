@@ -18,6 +18,7 @@
       <tr><th>Status</th><td>{{template "status-badge" $s}}</td></tr>
       <tr><th>Tool calls</th><td>{{$s.ToolCalls}}</td></tr>
       <tr><th>Prompts</th><td>{{$s.Prompts}}</td></tr>
+      <tr><th>Files changed</th><td>{{$s.FilesChanged}}</td></tr>
     </tbody>
   </table>
 </section>
@@ -45,6 +46,35 @@
     {{- end}}
     </tbody>
   </table>
+</section>
+{{- end}}
+
+{{- if $s.Changes}}
+<section class="card">
+  <div class="card-title">Changes</div>
+  {{- if hasShellEvent $s}}
+  <div class="badge badge-warning" style="display:block;padding:8px 12px;margin-bottom:8px">This session also ran shell commands — file changes made via shell are not shown here.</div>
+  {{- end}}
+  <p class="muted">See also Timeline for the full event order.</p>
+  {{- range $path, $changes := groupChangesByPath $s.Changes}}
+  {{- $last := index $changes (sub (len $changes) 1)}}
+  <details id="change-{{$path}}" style="margin:6px 0">
+    <summary style="cursor:pointer;padding:6px 0">
+      <code>{{$path}}</code>
+      <span class="muted">· {{len $changes}} edit{{if gt (len $changes) 1}}s{{end}} · last {{localtime $last.Ts "datetime"}}</span>
+    </summary>
+    {{- range $changes}}
+    <div style="padding:8px 0;border-top:1px solid rgba(255,255,255,0.05)">
+      <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center">
+        <span class="badge badge-muted">{{.Command}}</span>
+        {{localtime .Ts "datetime"}}
+        {{- if .Purpose}}<span class="muted">— {{.Purpose}}</span>{{- end}}
+      </div>
+      {{renderDiff .}}
+    </div>
+    {{- end}}
+  </details>
+  {{- end}}
 </section>
 {{- end}}
 

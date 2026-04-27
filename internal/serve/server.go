@@ -158,7 +158,10 @@ var templateFuncs = template.FuncMap{
 	},
 	"itof":           func(a int) float64 { return float64(a) },
 	"dur":            func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
-	"renderMarkdown": renderMarkdown,
+	"renderMarkdown":      renderMarkdown,
+	"renderDiff":          renderDiff,
+	"hasShellEvent":       hasShellEvent,
+	"groupChangesByPath":  groupChangesByPath,
 	"shortID": func(id string, n int) string {
 		if len(id) <= n {
 			return id
