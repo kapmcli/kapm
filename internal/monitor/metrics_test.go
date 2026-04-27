@@ -1608,3 +1608,94 @@ func TestSessionAssistantResponse(t *testing.T) {
 		t.Errorf("AssistantResponse: want %q, got %q", want, got)
 	}
 }
+
+// --- Task 4: FileChange pipeline integration --------------------------------
+
+func writeRec(session, agent, path, command string, offset time.Duration) Record {
+	input, _ := json.Marshal(map[string]string{"command": command, "path": path, "content": "x"})
+	return Record{
+		Ts:        baseTime.Add(offset),
+		Session:   session,
+		Agent:     agent,
+		Event:     apmconfig.EventPreToolUse,
+		Tool:      "write",
+		ToolInput: input,
+		Cwd:       "/tmp",
+	}
+}
+
+func TestFilesChangedSessionMetric(t *testing.T) {
+	now := baseTime.Add(1 * time.Hour)
+	records := []Record{
+		writeRec("s1", "a", "/tmp/foo.go", "create", 0),
+		writeRec("s1", "a", "/tmp/bar.go", "strReplace", 1*time.Minute),
+		writeRec("s1", "a", "/tmp/foo.go", "strReplace", 2*time.Minute), // duplicate path
+	}
+	d := AggregateDetail(records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	if got := d.Sessions[0].FilesChanged; got != 2 {
+		t.Errorf("FilesChanged: want 2, got %d", got)
+	}
+	if got := d.Overview.Sessions[0].FilesChanged; got != 2 {
+		t.Errorf("Overview.Sessions[0].FilesChanged: want 2, got %d", got)
+	}
+}
+
+func TestFilesChangedNoWrite(t *testing.T) {
+	now := baseTime.Add(1 * time.Hour)
+	records := []Record{
+		rec("s1", "a", apmconfig.EventAgentSpawn, "", 0),
+		rec("s1", "a", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
+	}
+	d := AggregateDetail(records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	if got := d.Sessions[0].FilesChanged; got != 0 {
+		t.Errorf("FilesChanged: want 0, got %d", got)
+	}
+	if d.Sessions[0].Changes != nil {
+		t.Errorf("Changes: want nil, got %v", d.Sessions[0].Changes)
+	}
+}
+
+func TestFilesChangedAgentTwoSessions(t *testing.T) {
+	// Same agent, 2 sessions, each writes the same file → AgentMetric.FilesChanged == 2
+	now := baseTime.Add(1 * time.Hour)
+	records := []Record{
+		writeRec("s1", "agent1", "/tmp/foo.go", "create", 0),
+		writeRec("s2", "agent1", "/tmp/foo.go", "strReplace", 10*time.Minute),
+	}
+	d := AggregateDetail(records, now)
+	byName := map[string]AgentMetric{}
+	for _, a := range d.Overview.Agents {
+		byName[a.Name] = a
+	}
+	if got := byName["agent1"].FilesChanged; got != 2 {
+		t.Errorf("AgentMetric.FilesChanged: want 2 (sum of per-session unique counts), got %d", got)
+	}
+}
+
+func TestSessionDetailChangesChronological(t *testing.T) {
+	now := baseTime.Add(1 * time.Hour)
+	records := []Record{
+		writeRec("s1", "a", "/tmp/b.go", "create", 2*time.Minute),
+		writeRec("s1", "a", "/tmp/a.go", "create", 1*time.Minute),
+	}
+	d := AggregateDetail(records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	changes := d.Sessions[0].Changes
+	if len(changes) != 2 {
+		t.Fatalf("want 2 changes, got %d", len(changes))
+	}
+	if !changes[0].Ts.Before(changes[1].Ts) {
+		t.Errorf("Changes not in Ts ascending order: %v, %v", changes[0].Ts, changes[1].Ts)
+	}
+	if changes[0].Path != "/tmp/a.go" {
+		t.Errorf("Changes[0].Path: want /tmp/a.go, got %s", changes[0].Path)
+	}
+}

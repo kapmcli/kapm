@@ -24,6 +24,20 @@ const (
 	maxAssistantResponseLength = 2048
 )
 
+// FileChange captures a single file modification via the write tool.
+// Diff is NOT stored — rendered on demand by template helper to avoid
+// re-computing on every AggregateDetail call.
+type FileChange struct {
+	Path      string    // normalized (filepath.Clean + cwd if relative) at extraction time
+	Ts        time.Time
+	Command   string    // "create" | "strReplace" | "insert"
+	Purpose   string    // optional, from tool_input.__tool_use_purpose
+	Content   string    // for create/insert (empty if Oversized)
+	OldStr    string    // for strReplace (empty if Oversized)
+	NewStr    string    // for strReplace (empty if Oversized)
+	Oversized bool      // true when any content field was truncated due to size cap
+}
+
 // SessionMetric is an overview-level session summary retained for backwards compatibility.
 type SessionMetric struct {
 	ID           string
@@ -38,6 +52,7 @@ type SessionMetric struct {
 	Active       bool // no stop event AND last event within 5min of now
 	ToolCalls    int
 	Prompts      int
+	FilesChanged int
 }
 
 // ToolMetric is an overview-level tool usage summary retained for backwards compatibility.
@@ -54,6 +69,7 @@ type AgentMetric struct {
 	SessionCount int
 	ToolCalls    int
 	Prompts      int
+	FilesChanged int
 }
 
 // HourlyMetric is an hourly event count for activity chart display.
@@ -109,6 +125,7 @@ type SessionDetail struct {
 	Timeline          []EventEntry         // full ordered event list for this session
 	ToolSummary       []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
 	AssistantResponse string               // LLM final response from stop event (max 2KB)
+	Changes           []FileChange         // chronological order (sorted by Ts ascending)
 }
 
 // AgentDetail is the per-agent drill-down payload.
@@ -163,6 +180,7 @@ type sessionState struct {
 	pending   map[string][]pending // bucket key -> queue of unmatched preToolUse
 	sumTitle  string               // latest summary-tool taskDescription (if any)
 	assistantResponse string       // from stop event
+	changes   []FileChange         // write preToolUse events, chronological
 }
 
 // aggState holds the mutable accumulators shared by the three
@@ -229,6 +247,12 @@ func processRecord(st *aggState, r Record) {
 	s := touchSessionState(st, r)
 	s.timeline = append(s.timeline, EventEntry{Ts: r.Ts, Event: r.Event, Tool: r.Tool})
 	idx := len(s.timeline) - 1
+
+	if r.Event == apmconfig.EventPreToolUse && r.Tool == "write" {
+		if fc, ok := parseWriteInput(r.ToolInput, r.Ts, s.cwd); ok {
+			s.changes = append(s.changes, fc)
+		}
+	}
 
 	switch r.Event {
 	case apmconfig.EventStop:
@@ -347,6 +371,7 @@ func newSessionMetric(s *sessionState, now time.Time) SessionMetric {
 		ID: s.id, AgentKey: compositeKey(s.id, s.agent), Agent: s.agent, Title: title, Cwd: s.cwd,
 		StartTime: s.start, EndTime: s.end, LastActivity: s.end, Duration: JSONDuration(s.end.Sub(s.start)),
 		Active: active, ToolCalls: s.toolCalls, Prompts: len(s.prompts),
+		FilesChanged: countUniqueFiles(s.changes),
 	}
 }
 
@@ -376,12 +401,18 @@ func buildSessionDetails(st *aggState) {
 			promptsRev = []string{}
 		}
 		slices.Reverse(promptsRev)
+		var changes []FileChange
+		if len(s.changes) > 0 {
+			changes = slices.Clone(s.changes)
+			slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
+		}
 		st.sessionDetails = append(st.sessionDetails, SessionDetail{
 			SessionMetric:     base,
 			PromptHistory:     promptsRev,
 			Timeline:          s.timeline,
 			ToolSummary:       sessionToolSummary(s.timeline),
 			AssistantResponse: s.assistantResponse,
+			Changes:           changes,
 		})
 	}
 }
@@ -461,6 +492,7 @@ func foldSessionIntoAgents(st *aggState) {
 		a.SessionCount++
 		a.ToolCalls += s.toolCalls
 		a.Prompts += len(s.prompts)
+		a.FilesChanged += countUniqueFiles(s.changes)
 		a.Sessions = append(a.Sessions, newSessionMetric(s, st.now))
 
 		if agentTools[s.agent] == nil {

@@ -279,4 +279,93 @@ func TestMergeAssistantResponseSingle(t *testing.T) {
 	}
 }
 
+// --- Task 4: MergeSessionDetails FileChange integration ---------------------
+
+func TestMergeFilesChangedSameFile(t *testing.T) {
+	// 2 agents both write foo.txt → merged.FilesChanged == 1
+	details := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
+		},
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(2), Command: "strReplace"}},
+		},
+	}
+	merged, _ := MergeSessionDetails(details)
+	if merged.FilesChanged != 1 {
+		t.Errorf("FilesChanged: want 1, got %d", merged.FilesChanged)
+	}
+	if len(merged.Changes) != 2 {
+		t.Errorf("Changes len: want 2, got %d", len(merged.Changes))
+	}
+}
+
+func TestMergeFilesChangedDifferentFiles(t *testing.T) {
+	// 2 agents write different files → merged.FilesChanged == 2
+	details := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
+		},
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			Changes:       []FileChange{{Path: "/tmp/bar.txt", Ts: ts(2), Command: "create"}},
+		},
+	}
+	merged, _ := MergeSessionDetails(details)
+	if merged.FilesChanged != 2 {
+		t.Errorf("FilesChanged: want 2, got %d", merged.FilesChanged)
+	}
+}
+
+func TestMergeChangesChronological(t *testing.T) {
+	// Changes from both agents must be sorted by Ts ascending
+	details := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
+			Changes: []FileChange{
+				{Path: "/tmp/a.go", Ts: ts(5), Command: "create"},
+				{Path: "/tmp/c.go", Ts: ts(9), Command: "strReplace"},
+			},
+		},
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
+			Changes: []FileChange{
+				{Path: "/tmp/b.go", Ts: ts(7), Command: "create"},
+			},
+		},
+	}
+	merged, _ := MergeSessionDetails(details)
+	if len(merged.Changes) != 3 {
+		t.Fatalf("Changes len: want 3, got %d", len(merged.Changes))
+	}
+	for i := 1; i < len(merged.Changes); i++ {
+		if merged.Changes[i].Ts.Before(merged.Changes[i-1].Ts) {
+			t.Errorf("Changes not sorted: [%d].Ts=%v before [%d].Ts=%v", i, merged.Changes[i].Ts, i-1, merged.Changes[i-1].Ts)
+		}
+	}
+}
+
+func TestMergeFilesChangedNormalized(t *testing.T) {
+	// agent A writes /tmp/foo.txt (absolute), agent B writes foo.txt with cwd=/tmp
+	// Both normalize to /tmp/foo.txt → merged.FilesChanged == 1
+	details := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
+		},
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
+			// normalizeChangePath("foo.txt", "/tmp") = "/tmp/foo.txt"
+			Changes: []FileChange{{Path: "/tmp/foo.txt", Ts: ts(2), Command: "strReplace"}},
+		},
+	}
+	merged, _ := MergeSessionDetails(details)
+	if merged.FilesChanged != 1 {
+		t.Errorf("FilesChanged: want 1 (normalized dedup), got %d", merged.FilesChanged)
+	}
+}
+
 

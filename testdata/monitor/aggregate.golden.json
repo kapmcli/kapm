@@ -13,7 +13,8 @@
         "Duration": "6h0m0s",
         "Active": false,
         "ToolCalls": 0,
-        "Prompts": 0
+        "Prompts": 0,
+        "FilesChanged": 0
       },
       {
         "ID": "sess-2",
@@ -27,7 +28,8 @@
         "Duration": "0s",
         "Active": false,
         "ToolCalls": 0,
-        "Prompts": 0
+        "Prompts": 0,
+        "FilesChanged": 0
       },
       {
         "ID": "sess-1",
@@ -41,7 +43,8 @@
         "Duration": "2h0m0s",
         "Active": false,
         "ToolCalls": 0,
-        "Prompts": 0
+        "Prompts": 0,
+        "FilesChanged": 0
       }
     ],
     "Tools": null,
@@ -50,7 +53,8 @@
         "Name": "kiro",
         "SessionCount": 3,
         "ToolCalls": 0,
-        "Prompts": 0
+        "Prompts": 0,
+        "FilesChanged": 0
       }
     ],
     "HourlyActivity": [
@@ -94,6 +98,7 @@
       "Active": false,
       "ToolCalls": 0,
       "Prompts": 0,
+      "FilesChanged": 0,
       "PromptHistory": [],
       "Timeline": [
         {
@@ -116,7 +121,8 @@
         }
       ],
       "ToolSummary": null,
-      "AssistantResponse": ""
+      "AssistantResponse": "",
+      "Changes": null
     },
     {
       "ID": "sess-2",
@@ -131,6 +137,7 @@
       "Active": false,
       "ToolCalls": 0,
       "Prompts": 0,
+      "FilesChanged": 0,
       "PromptHistory": [],
       "Timeline": [
         {
@@ -144,7 +151,8 @@
         }
       ],
       "ToolSummary": null,
-      "AssistantResponse": ""
+      "AssistantResponse": "",
+      "Changes": null
     },
     {
       "ID": "sess-1",
@@ -159,6 +167,7 @@
       "Active": false,
       "ToolCalls": 0,
       "Prompts": 0,
+      "FilesChanged": 0,
       "PromptHistory": [],
       "Timeline": [
         {
@@ -190,7 +199,8 @@
         }
       ],
       "ToolSummary": null,
-      "AssistantResponse": ""
+      "AssistantResponse": "",
+      "Changes": null
     }
   ],
   "Agents": [
@@ -199,6 +209,7 @@
       "SessionCount": 3,
       "ToolCalls": 0,
       "Prompts": 0,
+      "FilesChanged": 0,
       "Sessions": [
         {
           "ID": "sess-2",
@@ -212,7 +223,8 @@
           "Duration": "0s",
           "Active": false,
           "ToolCalls": 0,
-          "Prompts": 0
+          "Prompts": 0,
+          "FilesChanged": 0
         },
         {
           "ID": "sess-1",
@@ -226,7 +238,8 @@
           "Duration": "2h0m0s",
           "Active": false,
           "ToolCalls": 0,
-          "Prompts": 0
+          "Prompts": 0,
+          "FilesChanged": 0
         },
         {
           "ID": "sess-gz",
@@ -240,7 +253,8 @@
           "Duration": "6h0m0s",
           "Active": false,
           "ToolCalls": 0,
-          "Prompts": 0
+          "Prompts": 0,
+          "FilesChanged": 0
         }
       ],
       "ToolSummary": [],

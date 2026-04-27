@@ -160,6 +160,16 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	merged.ToolSummary = mergeToolSummary(src)
 	merged.AssistantResponse = mergeAssistantResponse(src)
 
+	var changes []FileChange
+	for _, sd := range src {
+		changes = append(changes, sd.Changes...)
+	}
+	if len(changes) > 0 {
+		slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
+		merged.Changes = changes
+	}
+	merged.FilesChanged = countUniqueFiles(changes)
+
 	return merged, refs
 }
 
