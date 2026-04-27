@@ -8,7 +8,6 @@ import (
 
 	udiff "github.com/aymanbagabas/go-udiff"
 
-	"github.com/kapmcli/kapm/internal/apmconfig"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
@@ -70,18 +69,6 @@ func classifyDiffLine(line string) string {
 
 func validUTF8Fields(fc monitor.FileChange) bool {
 	return utf8.ValidString(fc.Content) && utf8.ValidString(fc.OldStr) && utf8.ValidString(fc.NewStr)
-}
-
-// hasShellEvent reports whether the session's timeline contains any shell
-// tool invocation. processRecord rewrites the shell tool name into
-// "shell:<cmd>" buckets via classifyShell, so both forms must be matched.
-func hasShellEvent(s monitor.SessionDetail) bool {
-	for _, e := range s.Timeline {
-		if e.Tool == apmconfig.ToolShell || strings.HasPrefix(e.Tool, "shell:") {
-			return true
-		}
-	}
-	return false
 }
 
 // groupChangesByPath groups changes by their Path field.

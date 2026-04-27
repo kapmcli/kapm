@@ -160,7 +160,7 @@ var templateFuncs = template.FuncMap{
 	"dur":            func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
 	"renderMarkdown":      renderMarkdown,
 	"renderDiff":          renderDiff,
-	"hasShellEvent":       hasShellEvent,
+	"hasShellEvent":       monitor.HasShellEvent,
 	"groupChangesByPath":  groupChangesByPath,
 	"shortID": func(id string, n int) string {
 		if len(id) <= n {

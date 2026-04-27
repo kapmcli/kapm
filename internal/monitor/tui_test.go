@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -264,6 +265,16 @@ func TestTUISessionsListHasLastActivityColumn(t *testing.T) {
 	out := m.renderView()
 	if !strings.Contains(out, "Last act") {
 		t.Errorf("sessions list missing Last activity column header")
+	}
+}
+
+func TestTUISessionsListHasFilesColumn(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.tab = tabSessions
+	out := m.renderView()
+	if !strings.Contains(out, "Files") {
+		t.Errorf("sessions list missing Files column header")
 	}
 }
 
@@ -862,5 +873,263 @@ func TestTUISessionsListTitleTruncation(t *testing.T) {
 	// Full title should not appear verbatim.
 	if strings.Contains(out, longTitle) {
 		t.Errorf("full long title should be truncated, but appeared verbatim")
+	}
+}
+
+// stripANSI removes ANSI escape sequences from s for plain-text assertions.
+func stripANSI(s string) string {
+	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return re.ReplaceAllString(s, "")
+}
+
+// --- renderSessionChanges tests ---
+
+func TestTUIRenderSessionChanges_Empty(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	base.Sessions[0].Changes = nil
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if strings.Contains(out, "▸ Changes") {
+		t.Errorf("expected no Changes section when Changes is empty, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_SectionHeader_Singular(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "(1 file, 1 edit)") {
+		t.Errorf("expected '(1 file, 1 edit)' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_SectionHeader_Plural(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "first"},
+		{Path: "/tmp/b.go", Ts: ts.Add(time.Second), Command: "strReplace", Purpose: "second"},
+		{Path: "/tmp/a.go", Ts: ts.Add(2 * time.Second), Command: "strReplace", Purpose: "third"},
+	}
+	base.Sessions[0].FilesChanged = 2
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "(2 files, 3 edits)") {
+		t.Errorf("expected '(2 files, 3 edits)' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_SinglePath(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "purpose text"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	if !strings.Contains(out, "1 edit") {
+		t.Errorf("expected '1 edit' in output, got: %s", out)
+	}
+	if !strings.Contains(out, "[create]") {
+		t.Errorf("expected '[create]' in output, got: %s", out)
+	}
+	if !strings.Contains(out, `"purpose text"`) {
+		t.Errorf("expected '\"purpose text\"' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_MultiPath_AlphabeticalSort(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/z.go", Ts: ts, Command: "create", Purpose: "z"},
+		{Path: "/tmp/a.go", Ts: ts.Add(time.Second), Command: "create", Purpose: "a"},
+		{Path: "/tmp/m.go", Ts: ts.Add(2 * time.Second), Command: "create", Purpose: "m"},
+	}
+	base.Sessions[0].FilesChanged = 3
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	idxA := strings.Index(out, "a.go")
+	idxM := strings.Index(out, "m.go")
+	idxZ := strings.Index(out, "z.go")
+	if idxA < 0 || idxM < 0 || idxZ < 0 {
+		t.Fatalf("expected a.go, m.go, z.go in output, got: %s", out)
+	}
+	if idxA >= idxM || idxM >= idxZ {
+		t.Errorf("expected alphabetical order a.go < m.go < z.go, got indices %d %d %d", idxA, idxM, idxZ)
+	}
+}
+
+func TestTUIRenderSessionChanges_ShellWarning(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	base.Sessions[0].Timeline = append(base.Sessions[0].Timeline, EventEntry{
+		Ts: ts, Event: apmconfig.EventPreToolUse, Tool: apmconfig.ToolShell,
+	})
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "also ran shell") {
+		t.Errorf("expected shell warning in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_NoShellWarning_WhenNoShell(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	// Ensure no shell events in timeline.
+	base.Sessions[0].Timeline = []EventEntry{
+		{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: "write"},
+	}
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if strings.Contains(out, "also ran shell") {
+		t.Errorf("expected no shell warning when no shell events, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_Oversized(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "strReplace", Purpose: "big edit", Oversized: true},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	if !strings.Contains(out, "[oversized]") {
+		t.Errorf("expected '[oversized]' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_NoPurpose(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "strReplace", Purpose: ""},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := stripANSI(m.renderSessionChanges(&m.metrics.Sessions[0]))
+	if !strings.Contains(out, "(no purpose)") {
+		t.Errorf("expected '(no purpose)' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_SeeTimelineHint(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "see Timeline for full event order") {
+		t.Errorf("expected 'see Timeline for full event order' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_MultipleEditsPluralForm(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "strReplace", Purpose: "first"},
+		{Path: "/tmp/a.go", Ts: ts.Add(time.Second), Command: "strReplace", Purpose: "second"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "2 edits") {
+		t.Errorf("expected '2 edits' in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionChanges_LastTimestampFormat(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	out := m.renderSessionChanges(&m.metrics.Sessions[0])
+	re := regexp.MustCompile(`last \d{2}:\d{2}:\d{2}`)
+	if !re.MatchString(out) {
+		t.Errorf("expected 'last HH:MM:SS' pattern in output, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionHeader_IncludesFilesCount(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	base.Sessions[0].FilesChanged = 5
+	m.metrics = base
+	out := m.renderSessionHeader(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "files: 5") {
+		t.Errorf("expected 'files: 5' in header, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionDetail_SectionOrder(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	ts := time.Date(2026, 4, 20, 12, 30, 5, 0, time.UTC)
+	base.Sessions[0].AssistantResponse = "done"
+	base.Sessions[0].Changes = []FileChange{
+		{Path: "/tmp/a.go", Ts: ts, Command: "create", Purpose: "init"},
+	}
+	base.Sessions[0].FilesChanged = 1
+	m.metrics = base
+	m = press(m, "2")
+	m = press(m, "enter")
+	out := m.renderView()
+	idxResult := strings.Index(out, "Session Result")
+	idxChanges := strings.Index(out, "▸ Changes")
+	idxPrompts := strings.Index(out, "▸ Prompts")
+	if idxResult < 0 || idxChanges < 0 || idxPrompts < 0 {
+		t.Fatalf("missing sections: Session Result=%d, ▸ Changes=%d, ▸ Prompts=%d\noutput:\n%s", idxResult, idxChanges, idxPrompts, out)
+	}
+	if idxResult >= idxChanges || idxChanges >= idxPrompts {
+		t.Errorf("expected Session Result < ▸ Changes < ▸ Prompts, got indices %d %d %d", idxResult, idxChanges, idxPrompts)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -386,9 +387,9 @@ func (m *model) renderSessionsList() string {
 	sessions := m.metrics.Sessions
 	interior := m.interiorWidth()
 
-	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 11(Last act) = 57 + agent + title
+	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 5(Files) + 1 + 11(Last act)
 	titleW := 40
-	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 11
+	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 11
 	agentW := interior - fixed
 	if agentW < 10 {
 		agentW = 10
@@ -398,8 +399,8 @@ func (m *model) renderSessionsList() string {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %-11s\n",
-		"ID", agentW, "Agent", titleW, "Title", "Dur", "Status", "Tool", "Prompt", "Last act")
+	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %5s %-11s\n",
+		"ID", agentW, "Agent", titleW, "Title", "Dur", "Status", "Tool", "Prompt", "Files", "Last act")
 	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
 	b.WriteString("\n")
 
@@ -422,13 +423,13 @@ func (m *model) renderSessionsList() string {
 		prevID = s.ID
 		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
 		status := statusBadge(s.Active)
-		row := fmt.Sprintf("  %-12s %-*s %s %-8s %s %4d %5d %-11s",
+		row := fmt.Sprintf("  %-12s %-*s %s %-8s %s %4d %5d %5d %-11s",
 			idCell,
 			agentW, agentCell,
 			padRightVisible(titleCell, titleW),
 			formatDur(time.Duration(s.Duration)),
 			padRightVisible(status, 9),
-			s.ToolCalls, s.Prompts,
+			s.ToolCalls, s.Prompts, s.FilesChanged,
 			formatLastActivity(s.LastActivity, now),
 		)
 		if i == m.cursor[tabSessions] {
@@ -470,6 +471,7 @@ func (m *model) renderSessionDetail() string {
 	return m.renderSessionHeader(s) +
 		m.renderSessionToolSummary(s) +
 		m.renderSessionAssistantResponse(s) +
+		m.renderSessionChanges(s) +
 		m.renderSessionPrompts(s) +
 		m.renderSessionTimeline(s)
 }
@@ -484,7 +486,7 @@ func (m *model) renderSessionHeader(s *SessionDetail) string {
 	fmt.Fprintf(&b, "  ended:    %s\n", s.EndTime.Local().Format(tsLayout))
 	fmt.Fprintf(&b, "  duration: %s\n", formatDur(time.Duration(s.Duration)))
 	fmt.Fprintf(&b, "  status:   %s\n", statusBadge(s.Active))
-	fmt.Fprintf(&b, "  tools:    %d    prompts: %d\n\n", s.ToolCalls, s.Prompts)
+	fmt.Fprintf(&b, "  tools:    %d    prompts: %d    files: %d\n\n", s.ToolCalls, s.Prompts, s.FilesChanged)
 	return b.String()
 }
 
@@ -541,6 +543,77 @@ func (m *model) renderSessionAssistantResponse(s *SessionDetail) string {
 	}
 	if line.Len() > 0 {
 		fmt.Fprintf(&b, "  %s\n", mutedStyle.Render(line.String()))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+
+func (m *model) renderSessionChanges(s *SessionDetail) string {
+	if len(s.Changes) == 0 {
+		return ""
+	}
+
+	// Group changes by path, preserving insertion order for sort.
+	paths := make([]string, 0, s.FilesChanged)
+	seen := map[string][]FileChange{}
+	for _, fc := range s.Changes {
+		if _, ok := seen[fc.Path]; !ok {
+			paths = append(paths, fc.Path)
+		}
+		seen[fc.Path] = append(seen[fc.Path], fc)
+	}
+	sort.Strings(paths)
+
+	nFiles := s.FilesChanged
+	nEdits := len(s.Changes)
+	fileWord := "files"
+	if nFiles == 1 {
+		fileWord = "file"
+	}
+	editWord := "edits"
+	if nEdits == 1 {
+		editWord = "edit"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", sectionStyle.Render(fmt.Sprintf("▸ Changes (%d %s, %d %s)", nFiles, fileWord, nEdits, editWord)))
+	fmt.Fprintf(&b, "%s\n", mutedStyle.Render("  see Timeline for full event order"))
+	if HasShellEvent(*s) {
+		fmt.Fprintf(&b, "%s\n", mutedStyle.Render("  ⚠ also ran shell — file changes via shell not shown"))
+	}
+
+	for _, p := range paths {
+		edits := seen[p]
+		shortPath := shortenPath(m.homeDir, p, s.Cwd)
+		editCount := len(edits)
+		editCountStr := fmt.Sprintf("%d edits", editCount)
+		if editCount == 1 {
+			editCountStr = "1 edit"
+		}
+		lastTs := edits[len(edits)-1].Ts.Local().Format("15:04:05")
+		metaStr := editCountStr + "  last " + lastTs
+
+		lineWidth := 2 + len(shortPath) + 2 + len(editCountStr) + 2 + len("last 00:00:00")
+		if lineWidth > m.interiorWidth() {
+			fmt.Fprintf(&b, "  %s\n    %s\n", shortPath, metaStr)
+		} else {
+			fmt.Fprintf(&b, "  %s  %s\n", shortPath, metaStr)
+		}
+
+		for _, fc := range edits {
+			var purpose string
+			if fc.Purpose != "" {
+				purpose = `"` + fc.Purpose + `"`
+			} else {
+				purpose = mutedStyle.Render("(no purpose)")
+			}
+			var oversized string
+			if fc.Oversized {
+				oversized = " " + mutedStyle.Render("[oversized]")
+			}
+			fmt.Fprintf(&b, "    • [%s] %s%s\n", mutedStyle.Render(fc.Command), purpose, oversized)
+		}
 	}
 	b.WriteString("\n")
 	return b.String()

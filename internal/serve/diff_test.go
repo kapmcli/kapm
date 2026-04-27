@@ -87,25 +87,3 @@ func TestRenderDiff_HappyPath(t *testing.T) {
 	}
 }
 
-func TestHasShellEvent(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name     string
-		timeline []monitor.EventEntry
-		want     bool
-	}{
-		{"bare shell", []monitor.EventEntry{{Tool: "shell"}}, true},
-		{"classified shell prefix", []monitor.EventEntry{{Tool: "shell:git push"}}, true},
-		{"only write/read", []monitor.EventEntry{{Tool: "write"}, {Tool: "read"}}, false},
-		{"empty timeline", nil, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			s := monitor.SessionDetail{Timeline: c.timeline}
-			if got := hasShellEvent(s); got != c.want {
-				t.Errorf("hasShellEvent = %v, want %v", got, c.want)
-			}
-		})
-	}
-}
