@@ -88,8 +88,8 @@ func compressFile(src, dst string) error {
 	// points to the renamed inode (Unix semantics).
 	rotating := src + ".rotating"
 	if err := os.Rename(src, rotating); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil // already rotated by another process
+		if errors.Is(err, fs.ErrNotExist) || isShareViolation(err) {
+			return nil // already rotated or being rotated by another process
 		}
 		return err
 	}
