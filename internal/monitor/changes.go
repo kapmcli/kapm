@@ -2,7 +2,8 @@ package monitor
 
 import (
 	"encoding/json"
-	"path/filepath"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -66,13 +67,23 @@ func parseWriteInput(raw json.RawMessage, ts time.Time, cwd string) (FileChange,
 }
 
 // normalizeChangePath returns a canonical key for uniqueness comparison.
-// If path is relative and cwd is non-empty, joins with cwd.
-// Always applies filepath.Clean.
-func normalizeChangePath(path, cwd string) string {
-	if !filepath.IsAbs(path) && cwd != "" {
-		return filepath.Clean(filepath.Join(cwd, path))
+// Paths in JSON logs use forward slashes regardless of host OS, so we use
+// the stdlib `path` package (always /) instead of `filepath` (OS-dependent)
+// to keep behavior identical on Linux, macOS, and Windows.
+// If path is relative and cwd is non-empty, joins with cwd (also slash-based).
+// Always applies path.Clean.
+func normalizeChangePath(p, cwd string) string {
+	if !isSlashAbs(p) && cwd != "" {
+		return path.Clean(path.Join(cwd, p))
 	}
-	return filepath.Clean(path)
+	return path.Clean(p)
+}
+
+// isSlashAbs reports whether p is absolute in forward-slash logical path
+// terms. It treats a leading "/" as absolute on every OS, which matches the
+// paths recorded by kapm agents across platforms.
+func isSlashAbs(p string) bool {
+	return strings.HasPrefix(p, "/")
 }
 
 // countUniqueFiles returns the number of distinct Path values
