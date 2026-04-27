@@ -24,9 +24,33 @@ Type "2"
 Wait+Screen /Last act/
 Sleep 2.5s
 
+# Move cursor to session with file changes (index 4: 6319dffc, files=5)
+Type "j"
+Sleep 200ms
+Type "j"
+Sleep 200ms
+Type "j"
+Sleep 200ms
+Type "j"
+Sleep 500ms
+
 # Enter session detail
 Enter
 Sleep 1s
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
+Type "j"
+Sleep 300ms
 Type "j"
 Sleep 300ms
 Type "j"

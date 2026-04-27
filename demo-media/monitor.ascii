@@ -1,4 +1,4 @@
-$
+
 
 
 
@@ -51,7 +51,7 @@ $
 
 
 ────────────────────────────────────────────────────────────────────────────────
-$
+
 
 
 
@@ -104,7 +104,7 @@ $
 
 
 ────────────────────────────────────────────────────────────────────────────────
-$
+
 
 
 
@@ -157,7 +157,7 @@ $
 
 
 ────────────────────────────────────────────────────────────────────────────────
-$
+
 
 
 
@@ -210,7 +210,7 @@ $
 
 
 ────────────────────────────────────────────────────────────────────────────────
-$
+
 
 
 
@@ -359,33 +359,33 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
 
-╭────────────────────────────────────────╮ ╭────────────────────────────────────────╮
-│ ▸ Summary                              │ │ ▸ Activity                             │
-│   logs dir: testdata/monitor/logs      │ │   ▁           ▅ ▃ █ ▅ ▃                │
-│   sessions:   13     active: 0         │ │   18    03    01    20                 │
-│   agents:     8      errors: 3         │ │   max: 172 events/hour                 │
-│   tool calls: 303    prompts: 17       │ ╰────────────────────────────────────────╯
-╰────────────────────────────────────────╯
-╭──────────────────────────╮ ╭──────────────────────────╮ ╭─────────────────────────╮
-│ ▸ Top tools              │ │ ▸ Top agents             │ │ ▸ Skills (reads)        │
-│   read         ███   64  │ │   Name       Sess Tools  │ │   git-master            │
-│ err:  0.0%               │ │ Prompt                   │ │ ███    1                │
-│   grep         █     36  │ │   frontend      1    60  │ │   library-docs          │
-│ err:  5.6%               │ │ 1                        │ │ ███    1                │
-│   shell:npx d… █     21  │ │   lead          2    49  │ │                         │
-│ err:  0.0%               │ │ 4                        │ ╰─────────────────────────╯
-│   shell:grep   █     16  │ │   reviewer      1    48  │
-│ err:  0.0%               │ │ 1                        │
-│   write        █     15  │ │   explorer      3    43  │
-│ err:  0.0%               │ │ 4                        │
-│   shell:curl   █     13  │ │   researc…      1    39  │
-│ err:  0.0%               │ │ 1                        │
-│   shell:uvx d… █     13  │ │   qa            1    37  │
-│ err:  0.0%               │ │ 1                        │
-│   shell:git d… █     10  │ │   orchest…      2    18  │
-│ err:  0.0%               │ │ 2                        │
-│   shell:go te… █      7  │ │   coder         2     9  │
-│ err:  0.0%               │ │ 3                        │
+No log data found in testdata/monitor/logs
+tab/←→: switch · 1-5: jump · q: quit · r: refresh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -516,30 +516,30 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 
 ╭───────────────────────────────────────────────────────────────────────────────────╮
 │   ID           Agent      Title                                    Dur            │
-│ Status    Tool Prompt Last act                                                    │
+│ Status    Tool Prompt Files Last act                                              │
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ cd75bf13-61b researcher Research GoReleaser v2 (latest stable a… 5m39s    ○     │
-│ done      39     1 04-24 23:50                                                    │
+│ done      39     1     0 04-24 23:50                                              │
 │   72f643cf-7fc frontend   ## Delegation Brief ### TASK Implement … 7m07s    ○     │
-│ done      60     1 04-24 20:17                                                    │
+│ done      60     1     3 04-24 20:17                                              │
 │   80d3cc59-1ca reviewer   CRITICAL REVIEW: You are an independent… 5m17s    ○     │
-│ done      48     1 04-24 15:38                                                    │
+│ done      48     1     0 04-24 15:38                                              │
 │   7d8a6978-321 explorer   NAMING & CONVENTION PASS: Analyze the k… 2m04s    ○     │
-│ done      35     1 04-24 15:26                                                    │
+│ done      35     1     0 04-24 15:26                                              │
 │   6319dffc-c59 qa         ## Delegation Brief: T7 — Final Verific… 5m06s    ○     │
-│ done      37     1 04-24 11:29                                                    │
+│ done      37     1     5 04-24 11:29                                              │
 │   8d0e225e-4b6 lead       グラフが消えたかも                       23m03s   ○     │
-│ done      47     3 04-24 01:53                                                    │
+│ done      47     3     1 04-24 01:53                                              │
 │                  orchest… run .kiro/plans/2026-04-24-refactor-top… 31m56s   ○     │
-│ done      14     1 04-24 01:27                                                    │
+│ done      14     1     0 04-24 01:27                                              │
 │   ma-session-0 orchestra… orchestrate the build pipeline           2m00s    ○     │
-│ done       4     1 04-21 19:02                                                    │
+│ done       4     1     0 04-21 19:02                                              │
 │                  lead     implement the assigned subtask           30s      ○     │
-│ done       2     1 04-21 19:01                                                    │
+│ done       2     1     0 04-21 19:01                                              │
 │   session-def4 explorer   explore the codebase                     5m00s    ○     │
-│ done       5     2 04-21 03:00                                                    │
+│ done       5     2     0 04-21 03:00                                              │
 │   def67890     explorer   find files                               10m00s   ○     │
-│ done       3     1 04-20 19:10                                                    │
+│ done       3     1     0 04-20 19:10                                              │
 │   abc12345     coder      implement feature                        5m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
@@ -547,30 +547,30 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 
 ╭───────────────────────────────────────────────────────────────────────────────────╮
 │   ID           Agent      Title                                    Dur            │
-│ Status    Tool Prompt Last act                                                    │
+│ Status    Tool Prompt Files Last act                                              │
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ cd75bf13-61b researcher Research GoReleaser v2 (latest stable a… 5m39s    ○     │
-│ done      39     1 04-24 23:50                                                    │
+│ done      39     1     0 04-24 23:50                                              │
 │   72f643cf-7fc frontend   ## Delegation Brief ### TASK Implement … 7m07s    ○     │
-│ done      60     1 04-24 20:17                                                    │
+│ done      60     1     3 04-24 20:17                                              │
 │   80d3cc59-1ca reviewer   CRITICAL REVIEW: You are an independent… 5m17s    ○     │
-│ done      48     1 04-24 15:38                                                    │
+│ done      48     1     0 04-24 15:38                                              │
 │   7d8a6978-321 explorer   NAMING & CONVENTION PASS: Analyze the k… 2m04s    ○     │
-│ done      35     1 04-24 15:26                                                    │
+│ done      35     1     0 04-24 15:26                                              │
 │   6319dffc-c59 qa         ## Delegation Brief: T7 — Final Verific… 5m06s    ○     │
-│ done      37     1 04-24 11:29                                                    │
+│ done      37     1     5 04-24 11:29                                              │
 │   8d0e225e-4b6 lead       グラフが消えたかも                       23m03s   ○     │
-│ done      47     3 04-24 01:53                                                    │
+│ done      47     3     1 04-24 01:53                                              │
 │                  orchest… run .kiro/plans/2026-04-24-refactor-top… 31m56s   ○     │
-│ done      14     1 04-24 01:27                                                    │
+│ done      14     1     0 04-24 01:27                                              │
 │   ma-session-0 orchestra… orchestrate the build pipeline           2m00s    ○     │
-│ done       4     1 04-21 19:02                                                    │
+│ done       4     1     0 04-21 19:02                                              │
 │                  lead     implement the assigned subtask           30s      ○     │
-│ done       2     1 04-21 19:01                                                    │
+│ done       2     1     0 04-21 19:01                                              │
 │   session-def4 explorer   explore the codebase                     5m00s    ○     │
-│ done       5     2 04-21 03:00                                                    │
+│ done       5     2     0 04-21 03:00                                              │
 │   def67890     explorer   find files                               10m00s   ○     │
-│ done       3     1 04-20 19:10                                                    │
+│ done       3     1     0 04-20 19:10                                              │
 │   abc12345     coder      implement feature                        5m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
@@ -578,30 +578,30 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
 
 ╭───────────────────────────────────────────────────────────────────────────────────╮
 │   ID           Agent      Title                                    Dur            │
-│ Status    Tool Prompt Last act                                                    │
+│ Status    Tool Prompt Files Last act                                              │
 │ ───────────────────────────────────────────────────────────────────────────────── │
 │ ▸ cd75bf13-61b researcher Research GoReleaser v2 (latest stable a… 5m39s    ○     │
-│ done      39     1 04-24 23:50                                                    │
+│ done      39     1     0 04-24 23:50                                              │
 │   72f643cf-7fc frontend   ## Delegation Brief ### TASK Implement … 7m07s    ○     │
-│ done      60     1 04-24 20:17                                                    │
+│ done      60     1     3 04-24 20:17                                              │
 │   80d3cc59-1ca reviewer   CRITICAL REVIEW: You are an independent… 5m17s    ○     │
-│ done      48     1 04-24 15:38                                                    │
+│ done      48     1     0 04-24 15:38                                              │
 │   7d8a6978-321 explorer   NAMING & CONVENTION PASS: Analyze the k… 2m04s    ○     │
-│ done      35     1 04-24 15:26                                                    │
+│ done      35     1     0 04-24 15:26                                              │
 │   6319dffc-c59 qa         ## Delegation Brief: T7 — Final Verific… 5m06s    ○     │
-│ done      37     1 04-24 11:29                                                    │
+│ done      37     1     5 04-24 11:29                                              │
 │   8d0e225e-4b6 lead       グラフが消えたかも                       23m03s   ○     │
-│ done      47     3 04-24 01:53                                                    │
+│ done      47     3     1 04-24 01:53                                              │
 │                  orchest… run .kiro/plans/2026-04-24-refactor-top… 31m56s   ○     │
-│ done      14     1 04-24 01:27                                                    │
+│ done      14     1     0 04-24 01:27                                              │
 │   ma-session-0 orchestra… orchestrate the build pipeline           2m00s    ○     │
-│ done       4     1 04-21 19:02                                                    │
+│ done       4     1     0 04-21 19:02                                              │
 │                  lead     implement the assigned subtask           30s      ○     │
-│ done       2     1 04-21 19:01                                                    │
+│ done       2     1     0 04-21 19:01                                              │
 │   session-def4 explorer   explore the codebase                     5m00s    ○     │
-│ done       5     2 04-21 03:00                                                    │
+│ done       5     2     0 04-21 03:00                                              │
 │   def67890     explorer   find files                               10m00s   ○     │
-│ done       3     1 04-20 19:10                                                    │
+│ done       3     1     0 04-20 19:10                                              │
 │   abc12345     coder      implement feature                        5m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
