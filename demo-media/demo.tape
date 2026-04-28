@@ -14,10 +14,12 @@ Show
 
 Sleep 1s
 
+Hide
 Type "./kapm monitor --since 8760h --logs-dir testdata/monitor/logs --sessions-dir testdata/monitor/sessions --global"
+Show
 Enter
 Wait+Screen /Overview/
-Sleep 2.5s
+Sleep 4s
 
 # Sessions tab
 Type "2"
