@@ -122,7 +122,7 @@ func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdF
 		}
 
 		jsonPath := filepath.Join(sessionsDir, name)
-		info, err := os.Stat(jsonPath)
+		info, err := e.Info()
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
