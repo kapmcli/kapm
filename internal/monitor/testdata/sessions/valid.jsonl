@@ -1,0 +1,3 @@
+{"version":"v1","kind":"Prompt","data":{"message_id":"aaaa0001-0000-0000-0000-000000000001","content":[{"kind":"text","data":"hello world"}],"meta":{"timestamp":1700000000,"additionalContext":""}}}
+{"version":"v1","kind":"AssistantMessage","data":{"message_id":"aaaa0002-0000-0000-0000-000000000002","content":[{"kind":"text","data":"I will help you."},{"kind":"toolUse","data":{"toolUseId":"tooluse_abc123","name":"shell","input":{"command":"echo hi"}}}]}}
+{"version":"v1","kind":"ToolResults","data":{"message_id":"aaaa0003-0000-0000-0000-000000000003","content":[{"kind":"toolResult","data":{"toolUseId":"tooluse_abc123","content":[{"kind":"text","data":"hi"}],"status":"success"}}]}}

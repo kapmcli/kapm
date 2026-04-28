@@ -80,11 +80,8 @@ const (
 
 // HookEvents is the canonical ordered list of events kapm init-hook registers.
 var HookEvents = []string{
-	EventAgentSpawn,
-	EventUserPromptSubmit,
 	EventPreToolUse,
 	EventPostToolUse,
-	EventStop,
 }
 
 // Tool names (wire format, matching Kiro hook payloads).

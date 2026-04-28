@@ -99,14 +99,6 @@ func TestInitHookAddsAllFiveEventsToFreshAgent(t *testing.T) {
 		}
 	}
 
-	for _, event := range []string{"agentSpawn", "userPromptSubmit", "stop"} {
-		var entry map[string]string
-		_ = json.Unmarshal(hooksMap[event][0], &entry)
-		if _, ok := entry["matcher"]; ok {
-			t.Errorf("event %q: should not have matcher field", event)
-		}
-	}
-
 	// Verify original fields preserved
 	var name string
 	_ = json.Unmarshal(m["name"], &name)
@@ -216,7 +208,7 @@ func TestInitHookRemoveStripsOnlyKapmEntries(t *testing.T) {
 		t.Errorf("user entry not preserved after remove: %v", entry)
 	}
 
-	for _, event := range []string{"agentSpawn", "userPromptSubmit", "preToolUse", "stop"} {
+	for _, event := range []string{"preToolUse"} {
 		if _, ok := hooksMap[event]; ok {
 			t.Errorf("event %q should be removed but still present", event)
 		}

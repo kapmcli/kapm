@@ -41,10 +41,15 @@ type SessionMetric struct {
 	EndTime      time.Time
 	LastActivity time.Time
 	Duration     JSONDuration
-	Active       bool // no stop event AND last event within 5min of now
+	Active       bool // last event within 5min of now
 	ToolCalls    int
 	Prompts      int
 	FilesChanged int
+
+	TotalInputTokens  int     // sessions meta derived
+	TotalOutputTokens int     // sessions meta derived
+	TotalCredits      float64 // sessions meta derived (metering_usage sum)
+	TurnDurationSecs  float64 // sessions meta derived (turn_duration sum)
 }
 
 // ToolMetric is an overview-level tool usage summary retained for backwards compatibility.
@@ -87,6 +92,9 @@ type EventEntry struct {
 	ErrorDetail  string       // exit code + stderr excerpt (max 256 chars), empty if no error
 	InputSummary string       // short human-readable summary of tool_input (preToolUse only)
 	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (preToolUse only, 0 for errors)
+
+	toolUseID string // unexported: used for toolUse/toolResult pairing
+	matched   bool   // unexported: true when a toolResult resolved this toolUse
 }
 
 // ToolCall is one completed tool invocation (preToolUse matched with postToolUse)
@@ -151,25 +159,15 @@ type DetailedMetrics struct {
 	Skills   []SkillUsage
 }
 
-// pending is a queued preToolUse awaiting its postToolUse match.
-type pending struct {
-	tool    string // original tool name (bucket key may be tool + input hash)
-	ts      time.Time
-	index   int // index in timeline (so we can mark error later)
-	summary string
-}
-
 type sessionState struct {
 	id                 string
 	agent              string
 	cwd                string
 	start              time.Time
 	end                time.Time
-	isStopped          bool
 	toolCalls          int
 	prompts            []string
 	timeline           []EventEntry
-	pending            map[string][]pending // bucket key -> queue of unmatched preToolUse
 	sumTitle           string               // latest summary-tool taskDescription (if any)
 	assistantResponse  string               // from stop event
 	changes            []FileChange         // write preToolUse events, chronological

@@ -72,7 +72,7 @@ func TestMarshalIndentedJSON(t *testing.T) {
 func TestHookEventsOrderAndValues(t *testing.T) {
 	t.Parallel()
 
-	want := []string{"agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"}
+	want := []string{"preToolUse", "postToolUse"}
 	if len(HookEvents) != len(want) {
 		t.Fatalf("HookEvents length = %d, want %d", len(HookEvents), len(want))
 	}

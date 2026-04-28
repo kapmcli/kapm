@@ -226,10 +226,12 @@ var (
 
 // Options configures a Server.
 type Options struct {
-	Port       int
-	LogsDir    string
-	Since      time.Duration
-	MetricsTTL time.Duration // 0 means default 1s
+	Port        int
+	SessionsDir string
+	LogsDir     string
+	CwdFilter   string
+	Since       time.Duration
+	MetricsTTL  time.Duration // 0 means default 1s
 	// MaxSSE caps concurrent SSE connections. 0 means default 64.
 	MaxSSE int
 }
@@ -253,7 +255,7 @@ type Server struct {
 	opts         Options
 	now          func() time.Time
 	handler      http.Handler
-	cache        *monitor.RecordCache
+	cache        *monitor.SessionCache
 	ttl          time.Duration
 	metricsMu    sync.Mutex
 	metricsCache *metricsCacheEntry
@@ -268,7 +270,7 @@ func New(opts Options) *Server {
 	if ttl == 0 {
 		ttl = time.Second
 	}
-	s := &Server{opts: opts, now: time.Now, cache: monitor.NewRecordCache(), ttl: ttl}
+	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), ttl: ttl}
 	s.sseMax = defaultMaxSSE
 	if opts.MaxSSE > 0 {
 		if opts.MaxSSE > math.MaxInt32 {
@@ -313,7 +315,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		// best-effort graceful shutdown; connection cleanup still happens on timeout
 		_ = srv.Shutdown(shutdownCtx)
@@ -399,10 +401,11 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 		}
 		s.metricsMu.Unlock()
 
-		recs, err := s.cache.Load(ctx, s.opts.LogsDir, now.Add(-s.opts.Since))
+		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache)
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
 		}
+		s.cache = nextCache
 		dm, err := aggregateDetailFn(ctx, recs, now)
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve aggregate records: %w", err)

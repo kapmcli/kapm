@@ -259,41 +259,6 @@ func TestRotateConcurrentNoDoubleProcess(t *testing.T) {
 	}
 }
 
-// TestHandleRotatesOnAgentSpawn verifies the integration: Handle calls rotate after
-// writing the agentSpawn record.
-func TestHandleRotatesOnAgentSpawn(t *testing.T) {
-	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".kapm", "logs")
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	oldContent := `{"event":"x"}` + "\n"
-	oldPath := filepath.Join(logDir, "old.jsonl")
-	writeJSONL(t, oldPath, oldContent)
-	// Set mtime to 48h ago so it passes the 24h threshold.
-	old := time.Now().Add(-48 * time.Hour)
-	if err := os.Chtimes(oldPath, old, old); err != nil {
-		t.Fatalf("chtimes %q: %v", oldPath, err)
-	}
-
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"new","cwd":"/tmp"}`)
-	code := Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
-	if code != 0 {
-		t.Fatalf("want 0, got %d", code)
-	}
-
-	if _, err := os.Stat(filepath.Join(logDir, "old.jsonl")); !os.IsNotExist(err) {
-		t.Error("old.jsonl should be rotated away")
-	}
-	if _, err := os.Stat(filepath.Join(logDir, "old.jsonl.gz")); err != nil {
-		t.Error("old.jsonl.gz should exist")
-	}
-	// Current session file must still exist.
-	if _, err := os.Stat(filepath.Join(logDir, "new.jsonl")); err != nil {
-		t.Error("new.jsonl should exist")
-	}
-}
-
 func TestRotateSkipsRecentFiles(t *testing.T) {
 	dir := t.TempDir()
 	content := `{"event":"x"}` + "\n"
@@ -387,24 +352,6 @@ func TestWriteGzipTo_GzCloseFailJoinsOutClose(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "out close fail") {
 		t.Errorf("expected out close error in message, got: %v", err)
-	}
-}
-
-// TestHandleNoRotateOnOtherEvents verifies rotate is NOT called for non-agentSpawn events.
-func TestHandleNoRotateOnOtherEvents(t *testing.T) {
-	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".kapm", "logs")
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	oldContent := `{"event":"x"}` + "\n"
-	writeJSONL(t, filepath.Join(logDir, "old.jsonl"), oldContent)
-
-	in := strings.NewReader(`{"hook_event_name":"postToolUse","session_id":"new","cwd":"/tmp"}`)
-	Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
-
-	if _, err := os.Stat(filepath.Join(logDir, "old.jsonl")); err != nil {
-		t.Error("old.jsonl should NOT be rotated for non-agentSpawn events")
 	}
 }
 

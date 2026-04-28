@@ -17,8 +17,6 @@ import (
 	"github.com/kapmcli/kapm/internal/paths"
 )
 
-const rotateMinAge = 24 * time.Hour
-
 const maxHookEvent = 10 << 20 // 10 MiB
 
 var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -49,18 +47,33 @@ type hookEvent struct {
 }
 
 // record is the JSONL line written to the log file.
-// Fixed key order via struct field order + omitempty.
 type record struct {
-	Ts                string          `json:"ts"`
-	Agent             string          `json:"agent,omitempty"`
-	Session           string          `json:"session,omitempty"`
-	Event             string          `json:"event,omitempty"`
-	Tool              string          `json:"tool,omitempty"`
-	ToolInput         json.RawMessage `json:"tool_input,omitempty"`
-	ToolResponse      json.RawMessage `json:"tool_response,omitempty"`
-	AssistantResponse json.RawMessage `json:"assistant_response,omitempty"`
-	Prompt            string          `json:"prompt,omitempty"`
-	Cwd               string          `json:"cwd,omitempty"`
+	Ts              string `json:"ts"`
+	Session         string `json:"session,omitempty"`
+	Event           string `json:"event,omitempty"`
+	Agent           string `json:"agent,omitempty"`
+	Tool            string `json:"tool,omitempty"`
+	ShellExitStatus string `json:"shell_exit_status,omitempty"`
+}
+
+// extractShellExitStatus extracts exit_status from tool_response.items[].Json.exit_status.
+func extractShellExitStatus(raw json.RawMessage) string {
+	var resp struct {
+		Items []struct {
+			Json struct {
+				ExitStatus string `json:"exit_status"`
+			} `json:"Json"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return ""
+	}
+	for _, item := range resp.Items {
+		if item.Json.ExitStatus != "" {
+			return item.Json.ExitStatus
+		}
+	}
+	return ""
 }
 
 // Handle reads a Kiro hook event from in, appends a JSONL record to logs under rootDir,
@@ -108,17 +121,22 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		}
 	}
 
+	if ev.HookEventName == apmconfig.EventUserPromptSubmit ||
+		ev.HookEventName == apmconfig.EventAgentSpawn ||
+		ev.HookEventName == apmconfig.EventStop {
+		return 0
+	}
+
 	rec := record{
-		Ts:                now().UTC().Format(time.RFC3339Nano),
-		Agent:             agent,
-		Session:           sessionID,
-		Event:             ev.HookEventName,
-		Tool:              ev.ToolName,
-		ToolInput:         ev.ToolInput,
-		ToolResponse:      ev.ToolResponse,
-		AssistantResponse: ev.AssistantResponse,
-		Prompt:            ev.Prompt,
-		Cwd:               ev.Cwd,
+		Ts:      now().UTC().Format(time.RFC3339Nano),
+		Agent:   agent,
+		Session: sessionID,
+		Event:   ev.HookEventName,
+		Tool:    ev.ToolName,
+	}
+
+	if ev.HookEventName == apmconfig.EventPostToolUse && ev.ToolName == "shell" {
+		rec.ShellExitStatus = extractShellExitStatus(ev.ToolResponse)
 	}
 
 	line, err := json.Marshal(rec)
@@ -166,8 +184,5 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		_, _ = fmt.Fprintf(stderr, "hook-handler: write %q: %v\n", logPath, err)
 	}
 
-	if ev.HookEventName == apmconfig.EventAgentSpawn {
-		rotate(logDir, sessionID, stderr, rotateMinAge)
-	}
 	return 0
 }

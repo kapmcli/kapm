@@ -12,7 +12,7 @@ var ComputeDashboardSessions = computeDashboardSessions
 
 // AggregateDetailFnForTest overrides aggregateDetailFn for tests and restores
 // it via the returned cleanup function.
-func AggregateDetailFnForTest(fn func(context.Context, []monitor.Record, time.Time) (monitor.DetailedMetrics, error)) func() {
+func AggregateDetailFnForTest(fn func(context.Context, []monitor.MergedRecord, time.Time) (monitor.DetailedMetrics, error)) func() {
 	orig := aggregateDetailFn
 	aggregateDetailFn = fn
 	return func() { aggregateDetailFn = orig }

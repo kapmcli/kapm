@@ -17,8 +17,10 @@ import (
 
 // logsFlags holds the parsed result of the common --since / --logs-dir / --target-dir flags.
 type logsFlags struct {
-	LogsDir string
-	Since   time.Duration
+	SessionsDir string
+	LogsDir     string
+	Since       time.Duration
+	CwdFilter   string // empty = global (show all sessions)
 }
 
 // parseLogsCommand parses a command's flags and rejects positional arguments.
@@ -38,15 +40,16 @@ func parseLogsCommand(fs *flag.FlagSet, args []string, command string) (bool, er
 
 // addLogsFlags registers the common flags on fs and returns pointers to the flag values.
 // Call resolveLogsFlags after fs.Parse(args) succeeds.
-func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir *string) {
+func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir *string, global *bool) {
 	since = fs.String("since", "24h", "time window (e.g. 1h, 3d, 1w)")
 	logsDir = fs.String("logs-dir", "", "path to logs directory (default: <target-dir>/.kapm/logs)")
 	targetDir = fs.String("target-dir", ".", "target directory (default: current directory)")
+	global = fs.Bool("global", false, "show sessions from all projects (default: current directory only)")
 	return
 }
 
 // resolveLogsFlags validates and resolves the common flags into a logsFlags.
-func resolveLogsFlags(since, logsDir, targetDir string) (logsFlags, error) {
+func resolveLogsFlags(since, logsDir, targetDir string, global bool) (logsFlags, error) {
 	td, err := expandTarget(targetDir)
 	if err != nil {
 		return logsFlags{}, err
@@ -60,7 +63,20 @@ func resolveLogsFlags(since, logsDir, targetDir string) (logsFlags, error) {
 	if err != nil {
 		return logsFlags{}, fmt.Errorf("--since: %w", err)
 	}
-	return logsFlags{LogsDir: resolved, Since: d}, nil
+	home, _ := os.UserHomeDir()
+	sessionsDir := ""
+	if home != "" {
+		sessionsDir = filepath.Join(home, ".kiro", "sessions", "cli")
+	}
+	var cwdFilter string
+	if !global {
+		abs, err := filepath.Abs(td)
+		if err != nil {
+			return logsFlags{}, fmt.Errorf("resolve target-dir: %w", err)
+		}
+		cwdFilter = abs
+	}
+	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, Since: d, CwdFilter: cwdFilter}, nil
 }
 
 // runLogsCommand returns a command handler that sets up flags, parses args,
@@ -73,7 +89,7 @@ func runLogsCommand(
 	return func(args []string) error {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
 		fs.SetOutput(os.Stderr)
-		since, logsDir, targetDir := addLogsFlags(fs)
+		since, logsDir, targetDir, global := addLogsFlags(fs)
 		if registerExtras != nil {
 			registerExtras(fs)
 		}
@@ -91,7 +107,7 @@ func runLogsCommand(
 			return nil
 		}
 
-		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir)
+		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir, *global)
 		if err != nil {
 			return err
 		}

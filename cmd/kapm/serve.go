@@ -20,7 +20,7 @@ var runServe = runLogsCommand(
 		port := fs.Lookup("port").Value.(interface{ Get() interface{} }).Get().(int)
 		open := fs.Lookup("open").Value.(interface{ Get() interface{} }).Get().(bool)
 
-		srv := serve.New(serve.Options{Port: port, LogsDir: lf.LogsDir, Since: lf.Since})
+		srv := serve.New(serve.Options{Port: port, SessionsDir: lf.SessionsDir, LogsDir: lf.LogsDir, CwdFilter: lf.CwdFilter, Since: lf.Since})
 
 		url := fmt.Sprintf("http://%s/", srv.Addr())
 		_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)

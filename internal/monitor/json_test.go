@@ -50,10 +50,11 @@ func TestJSONDuration(t *testing.T) {
 func TestDetailedMetricsJSON(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(10 * time.Minute)
-	records := []Record{
+	pre, post := recPair("s1", "agent1", "bash", 2*time.Minute, 7*time.Minute)
+	records := []MergedRecord{
 		rec("s1", "agent1", apmconfig.EventAgentSpawn, "", 0),
-		rec("s1", "agent1", apmconfig.EventPreToolUse, "bash", 2*time.Minute),
-		rec("s1", "agent1", apmconfig.EventPostToolUse, "bash", 7*time.Minute),
+		pre,
+		post,
 		rec("s1", "agent1", apmconfig.EventStop, "", 9*time.Minute),
 	}
 	dm := mustAggregate(t, records, now)

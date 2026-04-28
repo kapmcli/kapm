@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kapmcli/kapm/internal/monitor"
 	"github.com/kapmcli/kapm/internal/testutil"
 )
 
@@ -38,9 +37,9 @@ func logFile(dir, session string) string {
 	return filepath.Join(dir, ".kapm", "logs", session+".jsonl")
 }
 
-func TestHandleWritesAgentSpawnRecord(t *testing.T) {
+func TestHandleWritesPreToolUseRecord(t *testing.T) {
 	dir := t.TempDir()
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s1","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s1","cwd":"/tmp","tool_name":"read"}`)
 	code := Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "myagent")
 	if code != 0 {
 		t.Fatalf("want 0, got %d", code)
@@ -53,7 +52,7 @@ func TestHandleWritesAgentSpawnRecord(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if rec["event"] != "agentSpawn" {
+	if rec["event"] != "preToolUse" {
 		t.Errorf("event: got %v", rec["event"])
 	}
 	if rec["agent"] != "myagent" {
@@ -64,18 +63,23 @@ func TestHandleWritesAgentSpawnRecord(t *testing.T) {
 	}
 }
 
-func TestHandleWritesAllFiveEventTypes(t *testing.T) {
+func TestHandleWritesToolEventTypes(t *testing.T) {
 	events := []struct {
 		name  string
 		input string
 	}{
-		{"agentSpawn", `{"hook_event_name":"agentSpawn","session_id":"s2","cwd":"/tmp"}`},
-		{"userPromptSubmit", `{"hook_event_name":"userPromptSubmit","session_id":"s2","cwd":"/tmp","prompt":"hi"}`},
 		{"preToolUse", `{"hook_event_name":"preToolUse","session_id":"s2","cwd":"/tmp","tool_name":"fs_read","tool_input":{"path":"/x"}}`},
 		{"postToolUse", `{"hook_event_name":"postToolUse","session_id":"s2","cwd":"/tmp","tool_name":"fs_write","tool_input":{"path":"/y"},"tool_response":{"ok":true}}`},
-		{"stop", `{"hook_event_name":"stop","session_id":"s2","cwd":"/tmp"}`},
 	}
 	dir := t.TempDir()
+	// agentSpawn, userPromptSubmit, stop should write nothing
+	for _, skip := range []string{
+		`{"hook_event_name":"agentSpawn","session_id":"s2","cwd":"/tmp"}`,
+		`{"hook_event_name":"userPromptSubmit","session_id":"s2","cwd":"/tmp","prompt":"hi"}`,
+		`{"hook_event_name":"stop","session_id":"s2","cwd":"/tmp"}`,
+	} {
+		Handle(strings.NewReader(skip), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	}
 	for _, ev := range events {
 		code := Handle(strings.NewReader(ev.input), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
 		if code != 0 {
@@ -83,8 +87,8 @@ func TestHandleWritesAllFiveEventTypes(t *testing.T) {
 		}
 	}
 	lines := readLines(t, logFile(dir, "s2"))
-	if len(lines) != 5 {
-		t.Fatalf("want 5 lines, got %d", len(lines))
+	if len(lines) != 2 {
+		t.Fatalf("want 2 lines (only pre/postToolUse), got %d", len(lines))
 	}
 	for i, ev := range events {
 		var rec map[string]any
@@ -99,7 +103,7 @@ func TestHandleWritesAllFiveEventTypes(t *testing.T) {
 
 func TestHandleOmitsMissingFields(t *testing.T) {
 	dir := t.TempDir()
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s3","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s3","cwd":"/tmp"}`)
 	Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
 	lines := readLines(t, logFile(dir, "s3"))
 	var rec map[string]any
@@ -108,9 +112,6 @@ func TestHandleOmitsMissingFields(t *testing.T) {
 	}
 	if _, ok := rec["tool"]; ok {
 		t.Error("tool field should be omitted")
-	}
-	if _, ok := rec["tool_input"]; ok {
-		t.Error("tool_input field should be omitted")
 	}
 	if _, ok := rec["prompt"]; ok {
 		t.Error("prompt field should be omitted")
@@ -121,7 +122,7 @@ func TestHandleFallsBackWhenSessionIdEmpty(t *testing.T) {
 	dir := t.TempDir()
 	var nano int64 = 1234567890
 	now := func() time.Time { return time.Unix(0, nano) }
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","cwd":"/tmp","tool_name":"read"}`)
 	var stderr bytes.Buffer
 	code := Handle(in, &bytes.Buffer{}, &stderr, now, dir, "a")
 	if code != 0 {
@@ -140,7 +141,7 @@ func TestHandleFallsBackWhenSessionIdEmpty(t *testing.T) {
 func TestHandleNeverWritesStdout(t *testing.T) {
 	dir := t.TempDir()
 	var stdout bytes.Buffer
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s4","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s4","cwd":"/tmp","tool_name":"read"}`)
 	Handle(in, &stdout, &bytes.Buffer{}, fixedNow, dir, "a")
 	if stdout.Len() != 0 {
 		t.Errorf("stdout should be empty, got %q", stdout.String())
@@ -151,7 +152,7 @@ func TestHandleAgentFlagWinsOverEnv(t *testing.T) {
 	// The Handle function receives agent as a parameter; the caller (main.go) resolves
 	// flag vs env. This test verifies that when agent="bar" is passed, it wins.
 	dir := t.TempDir()
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s5","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s5","cwd":"/tmp","tool_name":"read"}`)
 	Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "bar")
 	lines := readLines(t, logFile(dir, "s5"))
 	var rec map[string]any
@@ -166,7 +167,7 @@ func TestHandleAgentFlagWinsOverEnv(t *testing.T) {
 func TestHandleSurvivesPanicInRecord(t *testing.T) {
 	// Inject a now() that panics to simulate an unexpected panic.
 	dir := t.TempDir()
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s6","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s6","cwd":"/tmp","tool_name":"read"}`)
 	panicNow := func() time.Time { panic("test panic") }
 	var stderr bytes.Buffer
 	code := Handle(in, &bytes.Buffer{}, &stderr, panicNow, dir, "a")
@@ -270,7 +271,7 @@ func TestHandleRejectsSymlinkedKapm(t *testing.T) {
 	if err := os.Symlink(target, kapmLink); err != nil {
 		t.Skipf("os.Symlink not available: %v", err)
 	}
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s-sym","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-sym","cwd":"/tmp","tool_name":"read"}`)
 	var stderr bytes.Buffer
 	code := Handle(in, &bytes.Buffer{}, &stderr, fixedNow, dir, "a")
 	if code != 0 {
@@ -287,7 +288,7 @@ func TestHandleRejectsSymlinkedKapm(t *testing.T) {
 
 func TestHandleInvalidAgent(t *testing.T) {
 	dir := t.TempDir()
-	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s-inv","cwd":"/tmp"}`)
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-inv","cwd":"/tmp","tool_name":"read"}`)
 	var stderr bytes.Buffer
 	code := Handle(in, &bytes.Buffer{}, &stderr, fixedNow, dir, "bad/agent")
 	if code != 0 {
@@ -314,14 +315,18 @@ func TestHandleJSONLRoundTrip(t *testing.T) {
 		t.Fatalf("want 0, got %d", code)
 	}
 	logsDir := filepath.Join(dir, ".kapm", "logs")
-	recs, err := monitor.LoadRecords(logsDir, time.Time{})
-	if err != nil {
-		t.Fatalf("LoadRecords: %v", err)
+	lines := readLines(t, filepath.Join(logsDir, "s-rt.jsonl"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 record, got %d", len(lines))
 	}
-	if len(recs) != 1 {
-		t.Fatalf("want 1 record, got %d", len(recs))
+	var r struct {
+		Event string `json:"event"`
+		Tool  string `json:"tool"`
+		Agent string `json:"agent"`
 	}
-	r := recs[0]
+	if err := json.Unmarshal([]byte(lines[0]), &r); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if r.Event != "preToolUse" {
 		t.Errorf("event: got %q", r.Event)
 	}
@@ -331,7 +336,66 @@ func TestHandleJSONLRoundTrip(t *testing.T) {
 	if r.Agent != "myagent" {
 		t.Errorf("agent: got %q", r.Agent)
 	}
-	if string(r.ToolInput) != `{"path":"/x"}` {
-		t.Errorf("tool_input: got %s", r.ToolInput)
+}
+
+func TestHandleMinimalRecord(t *testing.T) {
+	dir := t.TempDir()
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-min","tool_name":"fs_read","tool_input":{"path":"/x"},"cwd":"/proj","prompt":"hi","assistant_response":{"text":"ok"}}`)
+	Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	lines := readLines(t, logFile(dir, "s-min"))
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, banned := range []string{"tool_input", "tool_response", "assistant_response", "prompt", "cwd"} {
+		if _, ok := rec[banned]; ok {
+			t.Errorf("field %q must not appear in record", banned)
+		}
+	}
+	for _, required := range []string{"ts", "session", "event", "agent", "tool"} {
+		if _, ok := rec[required]; !ok {
+			t.Errorf("field %q must appear in record", required)
+		}
+	}
+}
+
+func TestHandleUserPromptSubmitWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	in := strings.NewReader(`{"hook_event_name":"userPromptSubmit","session_id":"s-ups","prompt":"hello"}`)
+	code := Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	logPath := logFile(dir, "s-ups")
+	if _, err := os.Stat(logPath); err == nil {
+		t.Error("log file must not be created for userPromptSubmit")
+	}
+}
+
+func TestHandleShellExitStatus(t *testing.T) {
+	dir := t.TempDir()
+	payload := `{"hook_event_name":"postToolUse","session_id":"s-sh","tool_name":"shell","tool_response":{"items":[{"Json":{"exit_status":"exit status: 1","stdout":"","stderr":""}}]}}`
+	Handle(strings.NewReader(payload), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	lines := readLines(t, logFile(dir, "s-sh"))
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rec["shell_exit_status"] != "exit status: 1" {
+		t.Errorf("shell_exit_status: got %v", rec["shell_exit_status"])
+	}
+}
+
+func TestHandlePostToolUseNonShellNoExitStatus(t *testing.T) {
+	dir := t.TempDir()
+	payload := `{"hook_event_name":"postToolUse","session_id":"s-nsh","tool_name":"fs_read","tool_response":{"items":[{"Json":{"exit_status":"exit status: 0"}}]}}`
+	Handle(strings.NewReader(payload), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	lines := readLines(t, logFile(dir, "s-nsh"))
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := rec["shell_exit_status"]; ok {
+		t.Error("shell_exit_status must not appear for non-shell tool")
 	}
 }

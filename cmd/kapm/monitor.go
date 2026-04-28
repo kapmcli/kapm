@@ -27,8 +27,8 @@ var runMonitor = runLogsCommand(
 		}
 
 		if jsonOut {
-			return monitor.RunJSON(ctx, lf.LogsDir, lf.Since, session, agent, os.Stdout)
+			return monitor.RunJSON(ctx, lf.SessionsDir, lf.LogsDir, lf.CwdFilter, lf.Since, session, agent, os.Stdout)
 		}
-		return monitor.RunTUI(ctx, lf.LogsDir, lf.Since)
+		return monitor.RunTUI(ctx, lf.SessionsDir, lf.LogsDir, lf.CwdFilter, lf.Since)
 	},
 )

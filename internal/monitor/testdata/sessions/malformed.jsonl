@@ -1,0 +1,5 @@
+{"version":"v1","kind":"Prompt","data":{"message_id":"bbbb0001-0000-0000-0000-000000000001","content":[{"kind":"text","data":"good line"}],"meta":{"timestamp":1700000001}}}
+{not valid json
+{"version":"v1","kind":"UnknownKind","data":{}}
+{"version":"v1","kind":"AssistantMessage","data":{"message_id":"bbbb0002-0000-0000-0000-000000000002","content":[]}}
+{"partial line without closing brace

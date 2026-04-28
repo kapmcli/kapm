@@ -1,0 +1,12 @@
+{
+  "session_id": "dddd0000-0000-0000-0000-000000000001",
+  "cwd": "/tmp",
+  "created_at": "2023-11-14T00:00:00Z",
+  "updated_at": "2023-11-14T00:00:00Z",
+  "session_state": {
+    "agent_name": "",
+    "conversation_metadata": {
+      "user_turn_metadatas": []
+    }
+  }
+}

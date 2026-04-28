@@ -9,8 +9,8 @@ import (
 )
 
 // RunJSON loads records, aggregates, optionally filters, and writes JSON to w.
-func RunJSON(ctx context.Context, logsDir string, since time.Duration, session, agent string, w io.Writer) error {
-	records, err := LoadRecordsContext(ctx, logsDir, time.Now().Add(-since))
+func RunJSON(ctx context.Context, sessionsDir, logsDir, cwdFilter string, since time.Duration, session, agent string, w io.Writer) error {
+	records, _, err := LoadAll(ctx, sessionsDir, logsDir, time.Now().Add(-since), cwdFilter, nil)
 	if err != nil {
 		return err
 	}

@@ -32,19 +32,22 @@ var singleLineReplacer = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 type metricsMsg struct {
 	metrics DetailedMetrics
+	cache   *SessionCache
 	err     error
 }
 
 type tickMsg time.Time
 
 type model struct {
-	metrics DetailedMetrics
-	logsDir string
-	homeDir string
-	since   time.Duration
+	metrics     DetailedMetrics
+	sessionsDir string
+	hookLogsDir string
+	cwdFilter   string
+	homeDir     string
+	since       time.Duration
 
 	ctx   context.Context
-	cache *RecordCache
+	cache *SessionCache
 
 	width  int
 	height int
@@ -62,13 +65,13 @@ type model struct {
 }
 
 // NewModel creates a new TUI model.
-func NewModel(ctx context.Context, logsDir string, since time.Duration) *model {
+func NewModel(ctx context.Context, sessionsDir, hookLogsDir, cwdFilter string, since time.Duration) *model {
 	// best-effort; empty string fallback is acceptable for path abbreviation
 	home, _ := os.UserHomeDir()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &model{ctx: ctx, logsDir: logsDir, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewRecordCache()}
+	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache()}
 }
 
 func (m *model) Init() tea.Cmd {
@@ -87,6 +90,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case metricsMsg:
 		m.metrics = msg.metrics
+		m.cache = msg.cache
 		m.err = msg.err
 		m.updatedAt = time.Now()
 		m.clampCursors()
@@ -345,7 +349,7 @@ func (m *model) renderTabs() string {
 
 func (m *model) renderBody() string {
 	if len(m.metrics.Overview.Sessions) == 0 {
-		return mutedStyle.Render("No log data found in " + m.logsDir)
+		return mutedStyle.Render("No log data found in " + m.sessionsDir)
 	}
 	switch m.tab {
 	case tabOverview:
@@ -472,12 +476,14 @@ func (m *model) helpLine() string {
 
 func (m *model) refreshCmd() tea.Cmd {
 	cache := m.cache
-	logsDir := m.logsDir
+	sessionsDir := m.sessionsDir
+	logsDir := m.hookLogsDir
+	cwdFilter := m.cwdFilter
 	sinceDur := m.since
 	ctx := m.ctx
 	return func() tea.Msg {
 		since := time.Now().Add(-sinceDur)
-		records, err := cache.Load(ctx, logsDir, since)
+		records, nextCache, err := LoadAll(ctx, sessionsDir, logsDir, since, cwdFilter, cache)
 		if err != nil {
 			return metricsMsg{err: err}
 		}
@@ -485,7 +491,7 @@ func (m *model) refreshCmd() tea.Cmd {
 		if err != nil {
 			return metricsMsg{err: err}
 		}
-		return metricsMsg{metrics: dm}
+		return metricsMsg{metrics: dm, cache: nextCache}
 	}
 }
 
@@ -551,8 +557,8 @@ func statusBadge(active bool) string {
 }
 
 // RunTUI creates and runs the bubbletea program.
-func RunTUI(ctx context.Context, logsDir string, since time.Duration) error {
-	p := tea.NewProgram(NewModel(ctx, logsDir, since))
+func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, cwdFilter string, since time.Duration) error {
+	p := tea.NewProgram(NewModel(ctx, sessionsDir, hookLogsDir, cwdFilter, since))
 	_, err := p.Run()
 	return err
 }

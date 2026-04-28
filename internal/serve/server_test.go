@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +54,41 @@ const testdataLogsDir = "../../testdata/monitor"
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return New(Options{Port: 0, LogsDir: testdataLogsDir, Since: 365 * 24 * time.Hour})
+	baseDir := setupTestSessionsDir(t)
+	return New(Options{Port: 0, SessionsDir: filepath.Join(baseDir, "sessions"), LogsDir: filepath.Join(baseDir, "hooks"), Since: 365 * 24 * time.Hour})
+}
+
+// setupTestSessionsDir creates a sessions dir with a session for agent "kiro".
+func setupTestSessionsDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	hookDir := filepath.Join(dir, "hooks")
+	sessDir := filepath.Join(dir, "sessions")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := `{"session_id":"sess-1","title":"test session","cwd":"/w","created_at":"2026-04-20T06:00:00Z","updated_at":"2026-04-20T08:00:00Z","session_state":{"agent_name":"kiro"}}`
+	jsonl := `{"version":"1","kind":"Prompt","data":{"message_id":"m1","content":[{"kind":"text","data":"\"hello\""}],"meta":{"timestamp":1745128800}}}
+{"version":"1","kind":"AssistantMessage","data":{"message_id":"m2","content":[{"kind":"toolUse","data":{"toolUseId":"tu-1","name":"read","input":{"path":"/a.go"}}}]}}
+{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-1","content":[],"status":"success"}}]}}
+`
+	if err := os.WriteFile(filepath.Join(sessDir, "sess-1.json"), []byte(meta), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessDir, "sess-1.jsonl"), []byte(jsonl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Hook logs for agent attribution
+	hooks := `{"ts":"2026-04-20T07:00:01Z","agent":"kiro","session":"sess-1","event":"preToolUse","tool":"read"}
+{"ts":"2026-04-20T07:00:02Z","agent":"kiro","session":"sess-1","event":"postToolUse","tool":"read"}
+`
+	if err := os.WriteFile(filepath.Join(hookDir, "sess-1.jsonl"), []byte(hooks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func TestAPIMetricsJSON(t *testing.T) {
@@ -499,7 +532,7 @@ func TestLoadMetricsSingleflight(t *testing.T) {
 
 	// Count AggregateDetail invocations.
 	var count atomic.Int32
-	restore := AggregateDetailFnForTest(func(ctx context.Context, recs []monitor.Record, now time.Time) (monitor.DetailedMetrics, error) {
+	restore := AggregateDetailFnForTest(func(ctx context.Context, recs []monitor.MergedRecord, now time.Time) (monitor.DetailedMetrics, error) {
 		count.Add(1)
 		return monitor.AggregateDetail(ctx, recs, now)
 	})
@@ -530,26 +563,26 @@ func TestLoadMetricsSingleflight(t *testing.T) {
 func buildFilterTestMetrics(t *testing.T) monitor.DetailedMetrics {
 	t.Helper()
 	base := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
-	rec := func(session, agent, event, tool string, offset time.Duration) monitor.Record {
-		return monitor.Record{
-			Ts: base.Add(offset), Session: session, Agent: agent,
-			Event: event, Tool: tool,
-		}
+	var recs []monitor.MergedRecord
+	// agent=A has session s1 with: read x3, grep x1 (all matched).
+	for i := 0; i < 3; i++ {
+		off := time.Duration(i*2) * time.Minute
+		recs = append(recs,
+			monitor.MergedRecord{SessionID: "s1", Agent: "A", Kind: "toolUse", ToolUseID: fmt.Sprintf("tu-read-%d", i), ToolName: "read", PreToolTs: base.Add(off)},
+			monitor.MergedRecord{SessionID: "s1", Agent: "A", Kind: "toolResult", ToolUseID: fmt.Sprintf("tu-read-%d", i), ToolName: "read", PostToolTs: base.Add(off + 1*time.Minute), ToolStatus: "success"},
+		)
 	}
-	recs := []monitor.Record{
-		rec("s1", "A", "preToolUse", "read", 0),
-		rec("s1", "A", "postToolUse", "read", 1*time.Minute),
-		rec("s1", "A", "preToolUse", "read", 2*time.Minute),
-		rec("s1", "A", "postToolUse", "read", 3*time.Minute),
-		rec("s1", "A", "preToolUse", "read", 4*time.Minute),
-		rec("s1", "A", "postToolUse", "read", 5*time.Minute),
-		rec("s1", "A", "preToolUse", "grep", 6*time.Minute),
-		rec("s1", "A", "postToolUse", "grep", 7*time.Minute),
-		rec("s2", "B", "preToolUse", "bash", 10*time.Minute),
-		rec("s2", "B", "postToolUse", "bash", 11*time.Minute),
-		rec("s2", "B", "preToolUse", "bash", 12*time.Minute),
-		// no post for the second bash → error
-	}
+	recs = append(recs,
+		monitor.MergedRecord{SessionID: "s1", Agent: "A", Kind: "toolUse", ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: base.Add(6 * time.Minute)},
+		monitor.MergedRecord{SessionID: "s1", Agent: "A", Kind: "toolResult", ToolUseID: "tu-grep", ToolName: "grep", PostToolTs: base.Add(7 * time.Minute), ToolStatus: "success"},
+	)
+	// agent=B has session s2 with: bash x2 (1 matched, 1 unmatched → error).
+	recs = append(recs,
+		monitor.MergedRecord{SessionID: "s2", Agent: "B", Kind: "toolUse", ToolUseID: "tu-bash1", ToolName: "bash", PreToolTs: base.Add(10 * time.Minute)},
+		monitor.MergedRecord{SessionID: "s2", Agent: "B", Kind: "toolResult", ToolUseID: "tu-bash1", ToolName: "bash", PostToolTs: base.Add(11 * time.Minute), ToolStatus: "success"},
+		monitor.MergedRecord{SessionID: "s2", Agent: "B", Kind: "toolUse", ToolUseID: "tu-bash2", ToolName: "bash", PreToolTs: base.Add(12 * time.Minute)},
+		// no result for tu-bash2 → error
+	)
 	dm, err := monitor.AggregateDetail(context.Background(), recs, base.Add(1*time.Hour))
 	if err != nil {
 		t.Fatalf("AggregateDetail: %v", err)
@@ -667,25 +700,42 @@ func TestFilterByAgentNotFound(t *testing.T) {
 // can hit the routes directly.
 func newMultiAgentServer(t *testing.T) (*Server, string) {
 	t.Helper()
-	dir := t.TempDir()
+	sessDir := t.TempDir()
+	hookDir := t.TempDir()
 	const sid = "11111111-2222-3333-4444-555555555555"
-	lines := []string{
-		// orchestrator agent
-		`{"ts":"2026-04-22T09:00:00Z","agent":"orchestrator","session":"` + sid + `","event":"userPromptSubmit","prompt":"kick off","cwd":"/w"}`,
-		`{"ts":"2026-04-22T09:00:01Z","agent":"orchestrator","session":"` + sid + `","event":"preToolUse","tool":"read","cwd":"/w"}`,
-		`{"ts":"2026-04-22T09:00:02Z","agent":"orchestrator","session":"` + sid + `","event":"postToolUse","tool":"read","cwd":"/w"}`,
-		// lead agent
-		`{"ts":"2026-04-22T09:01:00Z","agent":"lead","session":"` + sid + `","event":"userPromptSubmit","prompt":"lead takes over","cwd":"/w"}`,
-		`{"ts":"2026-04-22T09:01:01Z","agent":"lead","session":"` + sid + `","event":"preToolUse","tool":"bash","cwd":"/w"}`,
-		`{"ts":"2026-04-22T09:01:02Z","agent":"lead","session":"` + sid + `","event":"postToolUse","tool":"bash","cwd":"/w"}`,
-		// unknown-agent record: task-3 normalizes empty agent to "(unknown)"
-		`{"ts":"2026-04-22T09:02:00Z","agent":"","session":"` + sid + `","event":"userPromptSubmit","prompt":"hooked before agent was set","cwd":"/w"}`,
+
+	// Sessions metadata
+	meta := `{"session_id":"` + sid + `","title":"test","cwd":"/w","created_at":"2026-04-22T09:00:00Z","updated_at":"2026-04-22T09:02:00Z","session_state":{"agent_name":"orchestrator"}}`
+	if err := os.WriteFile(filepath.Join(sessDir, sid+".json"), []byte(meta), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	path := filepath.Join(dir, sid+".jsonl")
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
+
+	// Sessions JSONL (messages)
+	msgs := []string{
+		`{"version":"1","kind":"Prompt","data":{"message_id":"m1","content":[{"kind":"text","data":"\"kick off\""}],"meta":{"timestamp":1745312400}}}`,
+		`{"version":"1","kind":"AssistantMessage","data":{"message_id":"m2","content":[{"kind":"toolUse","data":{"toolUseId":"tu-read","name":"read","input":{}}}]}}`,
+		`{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-read","content":[],"status":"success"}}]}}`,
+		`{"version":"1","kind":"Prompt","data":{"message_id":"m3","content":[{"kind":"text","data":"\"lead takes over\""}],"meta":{"timestamp":1745312460}}}`,
+		`{"version":"1","kind":"AssistantMessage","data":{"message_id":"m4","content":[{"kind":"toolUse","data":{"toolUseId":"tu-bash","name":"bash","input":{"command":"echo hi"}}}]}}`,
+		`{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-bash","content":[],"status":"success"}}]}}`,
+		`{"version":"1","kind":"Prompt","data":{"message_id":"m5","content":[{"kind":"text","data":"\"hooked before agent was set\""}],"meta":{"timestamp":1745312520}}}`,
 	}
-	return New(Options{Port: 0, LogsDir: dir, Since: 365 * 24 * time.Hour}), sid
+	if err := os.WriteFile(filepath.Join(sessDir, sid+".jsonl"), []byte(strings.Join(msgs, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Hook logs for agent attribution
+	hooks := []string{
+		`{"ts":"2026-04-22T09:00:01Z","agent":"orchestrator","session":"` + sid + `","event":"preToolUse","tool":"read"}`,
+		`{"ts":"2026-04-22T09:00:02Z","agent":"orchestrator","session":"` + sid + `","event":"postToolUse","tool":"read"}`,
+		`{"ts":"2026-04-22T09:01:01Z","agent":"lead","session":"` + sid + `","event":"preToolUse","tool":"bash"}`,
+		`{"ts":"2026-04-22T09:01:02Z","agent":"lead","session":"` + sid + `","event":"postToolUse","tool":"bash"}`,
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, sid+".jsonl"), []byte(strings.Join(hooks, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return New(Options{Port: 0, SessionsDir: sessDir, LogsDir: hookDir, Since: 365 * 24 * time.Hour}), sid
 }
 
 func TestHandleSessionDetailMerged(t *testing.T) {
@@ -727,14 +777,12 @@ func TestHandleSessionAgentDetailHappyPath(t *testing.T) {
 	}
 }
 
-func TestHandleSessionAgentDetailUnknownRoundTrip(t *testing.T) {
+func TestHandleSessionAgentDetailMetaAgentRoundTrip(t *testing.T) {
 	t.Parallel()
 	srv, sid := newMultiAgentServer(t)
-	escaped := url.PathEscape("(unknown)")
-	if escaped != "%28unknown%29" {
-		t.Fatalf("PathEscape sanity: got %q, want %q", escaped, "%28unknown%29")
-	}
-	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid+"/"+escaped, nil)
+	// With the new logic, records before the first hook use the session
+	// meta's agent_name ("orchestrator"), so (unknown) no longer appears.
+	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sid+"/orchestrator", nil)
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
@@ -742,8 +790,8 @@ func TestHandleSessionAgentDetailUnknownRoundTrip(t *testing.T) {
 		t.Fatalf("status = %d, want 200 (body=%s)", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "(unknown)") {
-		t.Errorf("body missing '(unknown)' agent label: %s", body)
+	if !strings.Contains(body, "orchestrator") {
+		t.Errorf("body missing 'orchestrator' agent label: %s", body)
 	}
 }
 

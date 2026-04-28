@@ -1,6 +1,10 @@
 package monitor
 
 import (
+	"bufio"
+	"encoding/json"
+	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -147,7 +151,10 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 		if a.seq > b.seq {
 			return -1
 		}
-		return 1
+		if a.seq < b.seq {
+			return 1
+		}
+		return 0
 	})
 	merged.PromptHistory = make([]string, len(prompts))
 	for i, p := range prompts {
@@ -270,4 +277,264 @@ func mergeAssistantResponse(src []SessionDetail) string {
 	return out
 }
 
+// HookRecord is one line of a hook log in the new minimal format.
+type HookRecord struct {
+	Ts              time.Time `json:"ts"`
+	Session         string    `json:"session,omitempty"`
+	Event           string    `json:"event,omitempty"`
+	Agent           string    `json:"agent,omitempty"`
+	Tool            string    `json:"tool,omitempty"`
+	ShellExitStatus string    `json:"shell_exit_status,omitempty"`
+}
 
+// MergedRecord combines sessions (primary) and hook log (supplementary) data
+// for one event.
+type MergedRecord struct {
+	// sessions-derived
+	SessionID     string
+	Kind          string          // "prompt", "toolUse", "toolResult", "assistantText"
+	ToolUseID     string          // toolUse/toolResult pairing
+	ToolName      string
+	ToolInput     json.RawMessage // raw JSON from toolUse.input
+	ToolStatus    string          // toolResult status ("success"/"error")
+	ErrorDetail   string          // toolResult status=="error": content[0].data
+	PromptText    string
+	AssistantText string
+	PromptTs      time.Time // Prompt.meta.timestamp (unix seconds)
+
+	// hook-supplemented (zero if no hook match)
+	PreToolTs       time.Time
+	PostToolTs      time.Time
+	Agent           string
+	ShellExitStatus string
+
+	// sessions meta-derived
+	Title     string
+	Cwd       string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// parseHookRecords reads hook JSONL in the new minimal format.
+// Lines that don't parse as HookRecord (old format) are silently skipped.
+func parseHookRecords(path string) ([]HookRecord, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var recs []HookRecord
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+	var skipped int
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var rec HookRecord
+		if err := json.Unmarshal(line, &rec); err != nil || rec.Ts.IsZero() {
+			skipped++
+			continue // old format or malformed — skip silently
+		}
+		recs = append(recs, rec)
+	}
+	if skipped > 0 {
+		slog.Debug("skipped hook log lines (old format or malformed)", "count", skipped)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return recs, nil
+}
+
+// MergeSessions merges ParsedSession slices with hook log records into
+// MergedRecord slices. When hookLogs is nil or empty, sessions-only mode is
+// used and hook fields are zero values.
+func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedRecord {
+	// Group hook records by session UUID.
+	hookBySession := make(map[string][]HookRecord, len(hookLogs))
+	for _, h := range hookLogs {
+		hookBySession[h.Session] = append(hookBySession[h.Session], h)
+	}
+
+	var out []MergedRecord
+	for _, s := range sessions {
+		meta := s.Meta
+		createdAt, _ := time.Parse(time.RFC3339, meta.CreatedAt)
+		updatedAt, _ := time.Parse(time.RFC3339, meta.UpdatedAt)
+
+		sessionHooks := hookBySession[meta.SessionID]
+		// Collect preToolUse and postToolUse in order.
+		var preHooks, postHooks []HookRecord
+		for _, h := range sessionHooks {
+			switch h.Event {
+			case "preToolUse":
+				preHooks = append(preHooks, h)
+			case "postToolUse":
+				postHooks = append(postHooks, h)
+			}
+		}
+
+		// currentAgent tracks the active agent while walking this session's
+		// messages. Initialized from the session metadata agent_name so that
+		// records before the first hook-matched toolUse use the session's own
+		// agent. Once a hook preToolUse supplies a different agent (e.g. after
+		// delegation), currentAgent is updated and subsequent records inherit
+		// the new value. Falls back to the first non-empty agent in hook logs
+		// when the session metadata has no agent_name (e.g. sub-agent sessions).
+		currentAgent := meta.SessionState.AgentName
+		if currentAgent == "" {
+			for _, h := range sessionHooks {
+				if h.Agent != "" {
+					currentAgent = h.Agent
+					break
+				}
+			}
+		}
+
+		// Count toolUse positions for position-based matching.
+		toolUseIdx := 0
+		// Track the start index of this session's records for postToolUse pass.
+		sessionStart := len(out)
+
+		for _, msg := range s.Messages {
+			switch msg.Kind {
+			case "Prompt":
+				var pd PromptData
+				if err := json.Unmarshal(msg.Data, &pd); err != nil {
+					continue
+				}
+				promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
+				var promptText string
+				for _, ci := range pd.Content {
+					if ci.Kind == "text" {
+						var t string
+						if err := json.Unmarshal(ci.Data, &t); err == nil {
+							promptText += t
+						}
+					}
+				}
+				out = append(out, MergedRecord{
+					SessionID:  meta.SessionID,
+					Kind:       "prompt",
+					PromptText: promptText,
+					PromptTs:   promptTs,
+					Agent:      currentAgent,
+					Title:      meta.Title,
+					Cwd:        meta.Cwd,
+					CreatedAt:  createdAt,
+					UpdatedAt:  updatedAt,
+				})
+
+			case "AssistantMessage":
+				var ad AssistantData
+				if err := json.Unmarshal(msg.Data, &ad); err != nil {
+					continue
+				}
+				for _, ci := range ad.Content {
+					switch ci.Kind {
+					case "text":
+						var t string
+						if err := json.Unmarshal(ci.Data, &t); err == nil {
+							out = append(out, MergedRecord{
+								SessionID:     meta.SessionID,
+								Kind:          "assistantText",
+								AssistantText: t,
+								Agent:         currentAgent,
+								Title:         meta.Title,
+								Cwd:           meta.Cwd,
+								CreatedAt:     createdAt,
+								UpdatedAt:     updatedAt,
+							})
+						}
+					case "toolUse":
+						var tu ToolUseData
+						if err := json.Unmarshal(ci.Data, &tu); err != nil {
+							continue
+						}
+						// Position-based hook matching.
+						var preTs time.Time
+						if toolUseIdx < len(preHooks) {
+							preTs = preHooks[toolUseIdx].Ts
+							if preHooks[toolUseIdx].Agent != "" {
+								currentAgent = preHooks[toolUseIdx].Agent
+							}
+						}
+						out = append(out, MergedRecord{
+							SessionID: meta.SessionID,
+							Kind:      "toolUse",
+							ToolUseID: tu.ToolUseID,
+							ToolName:  tu.Name,
+							ToolInput: tu.Input,
+							PreToolTs: preTs,
+							Agent:     currentAgent,
+							Title:     meta.Title,
+							Cwd:       meta.Cwd,
+							CreatedAt: createdAt,
+							UpdatedAt: updatedAt,
+						})
+						toolUseIdx++
+					}
+				}
+
+			case "ToolResults":
+				var trs struct {
+					Content []ContentItem `json:"content"`
+				}
+				if err := json.Unmarshal(msg.Data, &trs); err != nil {
+					continue
+				}
+				for _, ci := range trs.Content {
+					if ci.Kind != "toolResult" {
+						continue
+					}
+					var tr ToolResultData
+					if err := json.Unmarshal(ci.Data, &tr); err != nil {
+						continue
+					}
+					var errorDetail string
+					if tr.Status == "error" && len(tr.Content) > 0 {
+						var d string
+						if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
+							errorDetail = d
+						}
+					}
+					out = append(out, MergedRecord{
+						SessionID:   meta.SessionID,
+						Kind:        "toolResult",
+						ToolUseID:   tr.ToolUseID,
+						ToolStatus:  tr.Status,
+						ErrorDetail: errorDetail,
+						Agent:       currentAgent,
+						Title:       meta.Title,
+						Cwd:         meta.Cwd,
+						CreatedAt:   createdAt,
+						UpdatedAt:   updatedAt,
+					})
+				}
+			}
+		}
+
+		// Second pass: attach postToolUse data to toolResult records by position.
+		if len(postHooks) > 0 {
+			postIdx := 0
+			for i := sessionStart; i < len(out); i++ {
+				if out[i].Kind != "toolResult" {
+					continue
+				}
+				if postIdx < len(postHooks) {
+					out[i].PostToolTs = postHooks[postIdx].Ts
+					if postHooks[postIdx].Agent != "" {
+						out[i].Agent = postHooks[postIdx].Agent
+					}
+					out[i].ShellExitStatus = postHooks[postIdx].ShellExitStatus
+					postIdx++
+				}
+			}
+		}
+	}
+
+	return out
+}

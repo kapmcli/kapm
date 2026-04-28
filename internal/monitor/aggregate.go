@@ -25,19 +25,20 @@ func newAggState(n int, now time.Time) *aggState {
 // AggregateDetail walks the record stream once and builds everything the TUI needs.
 // Returns ctx.Err() if ctx is cancelled during record processing or session
 // finalization. Returns a zero DetailedMetrics when there are no records.
-func AggregateDetail(ctx context.Context, records []Record, now time.Time) (DetailedMetrics, error) {
+func AggregateDetail(ctx context.Context, records []MergedRecord, now time.Time) (DetailedMetrics, error) {
 	if len(records) == 0 {
 		return DetailedMetrics{}, nil
 	}
 
-	// Sort records chronologically once so timelines and pre/post matching are ordered.
-	sorted := make([]Record, len(records))
+	// Sort records chronologically once so timelines are ordered.
+	sorted := make([]MergedRecord, len(records))
 	copy(sorted, records)
-	slices.SortStableFunc(sorted, func(a, b Record) int {
-		if c := a.Ts.Compare(b.Ts); c != 0 {
+	slices.SortStableFunc(sorted, func(a, b MergedRecord) int {
+		aTs, bTs := recordSortTs(a), recordSortTs(b)
+		if c := aTs.Compare(bTs); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(a.Session, b.Session); c != 0 {
+		if c := cmp.Compare(a.SessionID, b.SessionID); c != 0 {
 			return c
 		}
 		return cmp.Compare(a.Agent, b.Agent)
@@ -59,37 +60,129 @@ func AggregateDetail(ctx context.Context, records []Record, now time.Time) (Deta
 	return assembleDetails(st), nil
 }
 
-// processRecord folds one record into the aggregation state.
-func processRecord(st *aggState, r Record) {
-	st.hours[r.Ts.Truncate(time.Hour)]++
+// recordSortTs returns the best timestamp for sorting a MergedRecord.
+func recordSortTs(r MergedRecord) time.Time {
+	switch r.Kind {
+	case "prompt":
+		return r.PromptTs
+	case "toolUse":
+		if !r.PreToolTs.IsZero() {
+			return r.PreToolTs
+		}
+	case "toolResult":
+		if !r.PostToolTs.IsZero() {
+			return r.PostToolTs
+		}
+	}
+	// Fallback: use any non-zero timestamp.
+	for _, t := range []time.Time{r.PromptTs, r.PreToolTs, r.PostToolTs, r.CreatedAt} {
+		if !t.IsZero() {
+			return t
+		}
+	}
+	return time.Time{}
+}
 
-	// Re-key shell tool calls into derived per-command buckets so metrics can
-	// distinguish "git push failing" from "ls succeeding". All downstream
-	// aggregation keys off r.Tool, so a single rewrite propagates everywhere.
-	if r.Tool == apmconfig.ToolShell && (r.Event == apmconfig.EventPreToolUse || r.Event == apmconfig.EventPostToolUse) {
-		r.Tool = classifyShell(r.ToolInput, r.Cwd)
+// processRecord folds one record into the aggregation state.
+func processRecord(st *aggState, r MergedRecord) {
+	ts := recordSortTs(r)
+	st.hours[ts.Truncate(time.Hour)]++
+
+	toolName := r.ToolName
+
+	// Re-key shell tool calls into derived per-command buckets.
+	if toolName == apmconfig.ToolShell && (r.Kind == "toolUse" || r.Kind == "toolResult") {
+		toolName = classifyShell(r.ToolInput, r.Cwd)
 	}
 
 	s := touchSessionState(st, r)
-	s.timeline = append(s.timeline, EventEntry{Ts: r.Ts, Event: r.Event, Tool: r.Tool})
-	idx := len(s.timeline) - 1
 
-	if r.Event == apmconfig.EventPreToolUse && r.Tool == apmconfig.ToolWrite {
-		if fc, ok := parseWriteInput(r.ToolInput, r.Ts, s.cwd); ok {
-			s.changes = append(s.changes, fc)
+	switch r.Kind {
+	case "prompt":
+		s.timeline = append(s.timeline, EventEntry{Ts: r.PromptTs, Event: apmconfig.EventUserPromptSubmit})
+		s.prompts = append(s.prompts, r.PromptText)
+
+	case "toolUse":
+		s.toolCalls++
+		summary := inputSummary(r.ToolInput, toolName, s.cwd)
+		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, toolUseID: r.ToolUseID}
+		s.timeline = append(s.timeline, entry)
+
+		if toolName == "summary" {
+			if td := extractSummaryTitle(r.ToolInput); td != "" {
+				s.sumTitle = td
+			}
+		}
+		toolEntry(st.tools, toolName).CallCount++
+
+		if toolName == apmconfig.ToolRead && len(r.ToolInput) > 0 {
+			if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
+				st.skills[string(match[1])]++
+			}
+		}
+
+		if toolName == apmconfig.ToolWrite {
+			if fc, ok := parseWriteInput(r.ToolInput, ts, s.cwd); ok {
+				s.changes = append(s.changes, fc)
+			}
+		}
+
+	case "toolResult":
+		// toolResult records carry ToolUseID for pairing with toolUse.
+		// Find the matching toolUse entry in the timeline by ToolUseID.
+		resolveToolResult(st, s, r)
+
+	case "assistantText":
+		s.assistantResponse = r.AssistantText
+		if len(s.assistantResponse) > maxAssistantResponseLength {
+			s.assistantResponse = s.assistantResponse[:maxAssistantResponseLength]
+		}
+	}
+}
+
+// resolveToolResult finds the matching toolUse in the timeline by ToolUseID
+// and computes duration and error status.
+func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
+	if r.ToolUseID == "" {
+		return
+	}
+	// Find matching toolUse by ToolUseID in timeline (reverse search for efficiency).
+	matchIdx := -1
+	for i := len(s.timeline) - 1; i >= 0; i-- {
+		if s.timeline[i].Event == apmconfig.EventPreToolUse && s.timeline[i].toolUseID == r.ToolUseID {
+			matchIdx = i
+			break
 		}
 	}
 
-	switch r.Event {
-	case apmconfig.EventStop:
-		s.isStopped = true
-		s.assistantResponse = parseAssistantResponse(r.AssistantResponse)
-	case apmconfig.EventUserPromptSubmit:
-		s.prompts = append(s.prompts, r.Prompt)
-	case apmconfig.EventPreToolUse:
-		recordPreToolUse(st, s, r, idx)
-	case apmconfig.EventPostToolUse:
-		resolvePostToolUse(st, s, r)
+	if matchIdx < 0 {
+		return // no matching toolUse found
+	}
+
+	preTs := s.timeline[matchIdx].Ts
+	postTs := r.PostToolTs
+	if !postTs.IsZero() && !preTs.IsZero() {
+		s.timeline[matchIdx].Duration = JSONDuration(postTs.Sub(preTs))
+	}
+
+	td := toolEntry(st.tools, s.timeline[matchIdx].Tool)
+	call := ToolCall{
+		Ts: preTs, Session: r.SessionID, Agent: s.agent, Tool: s.timeline[matchIdx].Tool,
+		Duration: s.timeline[matchIdx].Duration, InputSummary: s.timeline[matchIdx].InputSummary,
+	}
+
+	if r.ToolStatus == "error" {
+		s.timeline[matchIdx].IsError = true
+		s.timeline[matchIdx].ErrorDetail = r.ErrorDetail
+		if len(s.timeline[matchIdx].ErrorDetail) > maxErrorDetailLength {
+			s.timeline[matchIdx].ErrorDetail = s.timeline[matchIdx].ErrorDetail[:maxErrorDetailLength]
+		}
+		call.IsError = true
+		td.ErrorCount++
+		td.Errors = append(td.Errors, call)
+	} else {
+		s.timeline[matchIdx].matched = true
+		td.RecentCalls = append(td.RecentCalls, call)
 	}
 }
 
@@ -109,7 +202,7 @@ func finalizeSessionStats(st *aggState) {
 
 // newSessionMetric builds the SessionMetric summary for a session.
 func newSessionMetric(s *sessionState, now time.Time) SessionMetric {
-	active := !s.isStopped && now.Sub(s.end) <= activeSessionTimeout
+	active := now.Sub(s.end) <= activeSessionTimeout
 	var title string
 	switch {
 	case s.sumTitle != "":
@@ -125,19 +218,25 @@ func newSessionMetric(s *sessionState, now time.Time) SessionMetric {
 	}
 }
 
-// markUnmatchedToolCalls walks pending buckets and marks residual pre-events as errors.
+// markUnmatchedToolCalls walks timelines and marks unresolved preToolUse entries as errors.
 func markUnmatchedToolCalls(st *aggState) {
 	for _, s := range st.sessions {
-		for _, q := range s.pending {
-			for _, p := range q {
-				s.timeline[p.index].IsError = true
-				td := toolEntry(st.tools, p.tool)
-				td.ErrorCount++
-				td.Errors = append(td.Errors, ToolCall{
-					Ts: p.ts, Session: s.id, Agent: s.agent, Tool: p.tool, IsError: true,
-					InputSummary: p.summary,
-				})
+		for i := range s.timeline {
+			ev := &s.timeline[i]
+			if ev.Event != apmconfig.EventPreToolUse {
+				continue
 			}
+			if ev.matched || ev.IsError {
+				continue
+			}
+			// Unmatched toolUse → error
+			ev.IsError = true
+			td := toolEntry(st.tools, ev.Tool)
+			td.ErrorCount++
+			td.Errors = append(td.Errors, ToolCall{
+				Ts: ev.Ts, Session: s.id, Agent: s.agent, Tool: ev.Tool, IsError: true,
+				InputSummary: ev.InputSummary,
+			})
 		}
 	}
 }

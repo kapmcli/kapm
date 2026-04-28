@@ -1,378 +1,264 @@
 package monitor
 
 import (
-	"slices"
-	"strings"
+	"encoding/json"
 	"testing"
 	"time"
 )
 
-func ts(min int) time.Time {
-	return time.Date(2026, 4, 22, 10, min, 0, 0, time.UTC)
+func mustJSON(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
-func TestMergeSessionDetails(t *testing.T) {
-	t.Parallel()
-	type want struct {
-		id, agent, agentKey, title, cwd string
-		start, end                      time.Time
-		active                          bool
-		toolCalls, prompts              int
-		timelineTs                      []time.Time
-		promptOrder                     []string
-		refs                            []AgentRef
-	}
-	tests := []struct {
-		name  string
-		input []SessionDetail
-		want  want
-	}{
-		{
-			name:  "empty input",
-			input: nil,
-			want:  want{},
+func makeSession(id string, msgs []SessionMessage) ParsedSession {
+	return ParsedSession{
+		Meta: SessionMeta{
+			SessionID: id,
+			Title:     "test",
+			Cwd:       "/tmp",
+			CreatedAt: "2026-04-27T10:00:00Z",
+			UpdatedAt: "2026-04-27T10:01:00Z",
 		},
-		{
-			name: "two agents same sid",
-			input: []SessionDetail{
-				{
-					SessionMetric: SessionMetric{
-						ID: "sid1", AgentKey: "sid1|orchestrator", Agent: "orchestrator",
-						Title: "first prompt from orch", Cwd: "/old",
-						StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10),
-						Active: false, ToolCalls: 2, Prompts: 1,
-					},
-					PromptHistory: []string{"first prompt from orch"},
-					Timeline: []EventEntry{
-						{Ts: ts(0), Event: "userPromptSubmit"},
-						{Ts: ts(5), Event: "preToolUse", Tool: "read"},
-						{Ts: ts(6), Event: "postToolUse", Tool: "read"},
-						{Ts: ts(10), Event: "stop"},
-					},
-				},
-				{
-					SessionMetric: SessionMetric{
-						ID: "sid1", AgentKey: "sid1|lead", Agent: "lead",
-						Title: "lead prompt", Cwd: "/new",
-						StartTime: ts(20), EndTime: ts(30), LastActivity: ts(30),
-						Active: true, ToolCalls: 3, Prompts: 2,
-					},
-					PromptHistory: []string{"lead prompt 2", "lead prompt 1"},
-					Timeline: []EventEntry{
-						{Ts: ts(20), Event: "userPromptSubmit"},
-						{Ts: ts(25), Event: "userPromptSubmit"},
-						{Ts: ts(28), Event: "preToolUse", Tool: "bash"},
-					},
-				},
-			},
-			want: want{
-				id: "sid1", agent: "(all)", agentKey: "sid1|(all)",
-				title: "lead prompt", cwd: "/new",
-				start: ts(0), end: ts(30), active: true,
-				toolCalls: 5, prompts: 3,
-				timelineTs: []time.Time{ts(0), ts(5), ts(6), ts(10), ts(20), ts(25), ts(28)},
-				// Newest first by event ts: ts(25) lead-2 → ts(20) lead-1 → ts(0) orch
-				promptOrder: []string{"lead prompt 2", "lead prompt 1", "first prompt from orch"},
-				refs: []AgentRef{
-					{Agent: "orchestrator", AgentKey: "sid1|orchestrator"},
-					{Agent: "lead", AgentKey: "sid1|lead"},
-				},
-			},
-		},
-		{
-			name: "ignores mismatched IDs",
-			input: []SessionDetail{
-				{SessionMetric: SessionMetric{ID: "sid1", Agent: "a", AgentKey: "sid1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)}},
-				{SessionMetric: SessionMetric{ID: "other", Agent: "b", AgentKey: "other|b", StartTime: ts(0), EndTime: ts(100), LastActivity: ts(100)}},
-			},
-			want: want{
-				id: "sid1", agent: "(all)", agentKey: "sid1|(all)",
-				start: ts(0), end: ts(5),
-				refs: []AgentRef{{Agent: "a", AgentKey: "sid1|a"}},
-			},
-		},
-		{
-			name: "title falls back to most recent non-empty",
-			input: []SessionDetail{
-				{SessionMetric: SessionMetric{ID: "sid", Agent: "a", AgentKey: "sid|a", Title: "", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)}},
-				{SessionMetric: SessionMetric{ID: "sid", Agent: "b", AgentKey: "sid|b", Title: "earlier title", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)}},
-			},
-			want: want{
-				id: "sid", agent: "(all)", agentKey: "sid|(all)",
-				title: "earlier title",
-				start: ts(0), end: ts(10),
-				refs: []AgentRef{
-					{Agent: "a", AgentKey: "sid|a"},
-					{Agent: "b", AgentKey: "sid|b"},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			merged, refs := MergeSessionDetails(tc.input)
-			if tc.want.id == "" && len(tc.input) == 0 {
-				if merged.ID != "" || len(refs) != 0 {
-					t.Fatalf("empty input: want zero, got %+v refs=%v", merged, refs)
-				}
-				return
-			}
-			if merged.ID != tc.want.id {
-				t.Errorf("ID = %q, want %q", merged.ID, tc.want.id)
-			}
-			if merged.Agent != tc.want.agent {
-				t.Errorf("Agent = %q, want %q", merged.Agent, tc.want.agent)
-			}
-			if merged.AgentKey != tc.want.agentKey {
-				t.Errorf("AgentKey = %q, want %q", merged.AgentKey, tc.want.agentKey)
-			}
-			if merged.Title != tc.want.title {
-				t.Errorf("Title = %q, want %q", merged.Title, tc.want.title)
-			}
-			if tc.want.cwd != "" && merged.Cwd != tc.want.cwd {
-				t.Errorf("Cwd = %q, want %q", merged.Cwd, tc.want.cwd)
-			}
-			if !merged.StartTime.Equal(tc.want.start) {
-				t.Errorf("StartTime = %v, want %v", merged.StartTime, tc.want.start)
-			}
-			if !merged.EndTime.Equal(tc.want.end) {
-				t.Errorf("EndTime = %v, want %v", merged.EndTime, tc.want.end)
-			}
-			if merged.Active != tc.want.active {
-				t.Errorf("Active = %v, want %v", merged.Active, tc.want.active)
-			}
-			if tc.want.toolCalls > 0 && merged.ToolCalls != tc.want.toolCalls {
-				t.Errorf("ToolCalls = %d, want %d", merged.ToolCalls, tc.want.toolCalls)
-			}
-			if tc.want.prompts > 0 && merged.Prompts != tc.want.prompts {
-				t.Errorf("Prompts = %d, want %d", merged.Prompts, tc.want.prompts)
-			}
-			wantDur := JSONDuration(tc.want.end.Sub(tc.want.start))
-			if merged.Duration != wantDur {
-				t.Errorf("Duration = %v, want %v", merged.Duration, wantDur)
-			}
-			if len(tc.want.timelineTs) > 0 {
-				if len(merged.Timeline) != len(tc.want.timelineTs) {
-					t.Fatalf("Timeline len = %d, want %d", len(merged.Timeline), len(tc.want.timelineTs))
-				}
-				for i, want := range tc.want.timelineTs {
-					if !merged.Timeline[i].Ts.Equal(want) {
-						t.Errorf("Timeline[%d].Ts = %v, want %v", i, merged.Timeline[i].Ts, want)
-					}
-				}
-				if !slices.IsSortedFunc(merged.Timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) }) {
-					t.Errorf("Timeline not sorted ascending")
-				}
-			}
-			if len(tc.want.promptOrder) > 0 {
-				if !slices.Equal(merged.PromptHistory, tc.want.promptOrder) {
-					t.Errorf("PromptHistory = %v, want %v", merged.PromptHistory, tc.want.promptOrder)
-				}
-			}
-			if !slices.Equal(refs, tc.want.refs) {
-				t.Errorf("refs = %v, want %v", refs, tc.want.refs)
-			}
-		})
+		Messages: msgs,
 	}
 }
 
-func TestMergeToolSummary(t *testing.T) {
-	t.Parallel()
-	// Agent A: bash 3 calls (1 error, avg 2s), read 2 calls (0 errors, avg 1s)
-	// Agent B: bash 2 calls (0 errors, avg 4s), write 1 call (1 error, avg 0)
-	// Merged bash: 5 calls, 1 error, successRate=0.8, avgDuration weighted by successCount
-	//   successCount_A=2, successCount_B=2 → total=4
-	//   avgDur = (2s*2 + 4s*2) / 4 = 3s
-	// Merged read: 2 calls, 0 errors, successRate=1.0, avgDur=1s
-	// Merged write: 1 call, 1 error, successRate=0.0, avgDur=0
-	// Sort by CallCount desc: bash(5), read(2), write(1)
-	dur := func(d time.Duration) JSONDuration { return JSONDuration(d) }
-	details := []SessionDetail{
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
-			ToolSummary: []SessionToolSummary{
-				{Tool: "bash", CallCount: 3, ErrorCount: 1, SuccessRate: 2.0 / 3.0, AvgDuration: dur(2 * time.Second)},
-				{Tool: "read", CallCount: 2, ErrorCount: 0, SuccessRate: 1.0, AvgDuration: dur(time.Second)},
-			},
-		},
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
-			ToolSummary: []SessionToolSummary{
-				{Tool: "bash", CallCount: 2, ErrorCount: 0, SuccessRate: 1.0, AvgDuration: dur(4 * time.Second)},
-				{Tool: "write", CallCount: 1, ErrorCount: 1, SuccessRate: 0.0, AvgDuration: 0},
-			},
-		},
+func promptMsg(text string, ts int64) SessionMessage {
+	pd := PromptData{
+		MessageID: "msg-1",
+		Content:   []ContentItem{{Kind: "text", Data: mustJSON(text)}},
+		Meta:      PromptMeta{Timestamp: ts},
 	}
-	merged, _ := MergeSessionDetails(details)
-	ts_ := merged.ToolSummary
-	if len(ts_) != 3 {
-		t.Fatalf("ToolSummary len = %d, want 3", len(ts_))
+	return SessionMessage{Kind: "Prompt", Data: mustJSON(pd)}
+}
+
+func toolUseMsg(id, name string, input any) SessionMessage {
+	tu := ToolUseData{ToolUseID: id, Name: name, Input: mustJSON(input)}
+	ad := AssistantData{
+		MessageID: "msg-2",
+		Content:   []ContentItem{{Kind: "toolUse", Data: mustJSON(tu)}},
 	}
-	// Sorted by CallCount desc: bash, read, write
-	if ts_[0].Tool != "bash" || ts_[1].Tool != "read" || ts_[2].Tool != "write" {
-		t.Errorf("order = %v/%v/%v, want bash/read/write", ts_[0].Tool, ts_[1].Tool, ts_[2].Tool)
+	return SessionMessage{Kind: "AssistantMessage", Data: mustJSON(ad)}
+}
+
+func toolResultMsg(id, status string) SessionMessage {
+	tr := ToolResultData{
+		ToolUseID: id,
+		Status:    status,
+		Content:   []ContentItem{{Kind: "text", Data: mustJSON("ok")}},
 	}
-	bash := ts_[0]
-	if bash.CallCount != 5 {
-		t.Errorf("bash CallCount = %d, want 5", bash.CallCount)
+	trs := struct {
+		Content []ContentItem `json:"content"`
+	}{Content: []ContentItem{{Kind: "toolResult", Data: mustJSON(tr)}}}
+	return SessionMessage{Kind: "ToolResults", Data: mustJSON(trs)}
+}
+
+func toolResultErrMsg(id, errText string) SessionMessage {
+	tr := ToolResultData{
+		ToolUseID: id,
+		Status:    "error",
+		Content:   []ContentItem{{Kind: "text", Data: mustJSON(errText)}},
 	}
-	if bash.ErrorCount != 1 {
-		t.Errorf("bash ErrorCount = %d, want 1", bash.ErrorCount)
+	trs := struct {
+		Content []ContentItem `json:"content"`
+	}{Content: []ContentItem{{Kind: "toolResult", Data: mustJSON(tr)}}}
+	return SessionMessage{Kind: "ToolResults", Data: mustJSON(trs)}
+}
+
+// TestMergeSessions_SessionsOnly verifies sessions-only mode: no hook data,
+// all hook fields are zero values.
+func TestMergeSessions_SessionsOnly(t *testing.T) {
+	session := makeSession("sess-1", []SessionMessage{
+		promptMsg("hello", 1745744400),
+		toolUseMsg("tu-1", "read", map[string]string{"path": "/tmp/f"}),
+		toolResultMsg("tu-1", "success"),
+	})
+
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(recs))
 	}
-	wantRate := 4.0 / 5.0
-	if bash.SuccessRate < wantRate-0.001 || bash.SuccessRate > wantRate+0.001 {
-		t.Errorf("bash SuccessRate = %f, want %f", bash.SuccessRate, wantRate)
+
+	prompt := recs[0]
+	if prompt.Kind != "prompt" {
+		t.Errorf("recs[0].Kind = %q, want prompt", prompt.Kind)
 	}
-	wantAvg := JSONDuration(3 * time.Second)
-	if bash.AvgDuration != wantAvg {
-		t.Errorf("bash AvgDuration = %v, want %v", bash.AvgDuration, wantAvg)
+	if prompt.PromptText != "hello" {
+		t.Errorf("PromptText = %q, want hello", prompt.PromptText)
 	}
-	read := ts_[1]
-	if read.CallCount != 2 || read.ErrorCount != 0 {
-		t.Errorf("read counts = %d/%d, want 2/0", read.CallCount, read.ErrorCount)
+	if !prompt.PreToolTs.IsZero() || !prompt.PostToolTs.IsZero() || prompt.Agent != "" {
+		t.Error("hook fields should be zero for sessions-only")
 	}
-	write := ts_[2]
-	if write.CallCount != 1 || write.ErrorCount != 1 {
-		t.Errorf("write counts = %d/%d, want 1/1", write.CallCount, write.ErrorCount)
+
+	tu := recs[1]
+	if tu.Kind != "toolUse" {
+		t.Errorf("recs[1].Kind = %q, want toolUse", tu.Kind)
 	}
-	if write.SuccessRate != 0.0 {
-		t.Errorf("write SuccessRate = %f, want 0", write.SuccessRate)
+	if tu.ToolName != "read" {
+		t.Errorf("ToolName = %q, want read", tu.ToolName)
+	}
+	if !tu.PreToolTs.IsZero() || tu.Agent != "" {
+		t.Error("hook fields should be zero for sessions-only toolUse")
+	}
+
+	tr := recs[2]
+	if tr.Kind != "toolResult" {
+		t.Errorf("recs[2].Kind = %q, want toolResult", tr.Kind)
+	}
+	if tr.ToolStatus != "success" {
+		t.Errorf("ToolStatus = %q, want success", tr.ToolStatus)
+	}
+	if !tr.PostToolTs.IsZero() || tr.ShellExitStatus != "" {
+		t.Error("hook fields should be zero for sessions-only toolResult")
 	}
 }
 
-func TestMergeAssistantResponse(t *testing.T) {
-	t.Parallel()
-	details := []SessionDetail{
-		{
-			SessionMetric:     SessionMetric{ID: "s1", Agent: "alpha", AgentKey: "s1|alpha", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)},
-			AssistantResponse: "hello from alpha",
-		},
-		{
-			SessionMetric:     SessionMetric{ID: "s1", Agent: "beta", AgentKey: "s1|beta", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)},
-			AssistantResponse: "hello from beta",
-		},
+// TestMergeSessions_WithHook verifies position-based matching: hook ts/agent/
+// shell_exit_status are reflected in MergedRecord.
+func TestMergeSessions_WithHook(t *testing.T) {
+	session := makeSession("sess-2", []SessionMessage{
+		toolUseMsg("tu-1", "bash", map[string]string{"cmd": "ls"}),
+		toolResultMsg("tu-1", "success"),
+	})
+
+	preTs := time.Date(2026, 4, 27, 10, 19, 42, 0, time.UTC)
+	postTs := time.Date(2026, 4, 27, 10, 19, 43, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "sess-2", Event: "preToolUse", Agent: "orchestrator", Tool: "bash"},
+		{Ts: postTs, Session: "sess-2", Event: "postToolUse", Agent: "orchestrator", Tool: "bash", ShellExitStatus: "0"},
 	}
-	merged, _ := MergeSessionDetails(details)
-	got := merged.AssistantResponse
-	if !strings.Contains(got, "[alpha]\nhello from alpha") {
-		t.Errorf("missing alpha prefix in %q", got)
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(recs))
 	}
-	if !strings.Contains(got, "[beta]\nhello from beta") {
-		t.Errorf("missing beta prefix in %q", got)
+
+	tu := recs[0]
+	if tu.Kind != "toolUse" {
+		t.Errorf("recs[0].Kind = %q, want toolUse", tu.Kind)
 	}
-	if !strings.Contains(got, "\n\n---\n\n") {
-		t.Errorf("missing separator in %q", got)
+	if !tu.PreToolTs.Equal(preTs) {
+		t.Errorf("PreToolTs = %v, want %v", tu.PreToolTs, preTs)
 	}
-	if len(got) > 2048 {
-		t.Errorf("response length %d exceeds 2048", len(got))
+	if tu.Agent != "orchestrator" {
+		t.Errorf("Agent = %q, want orchestrator", tu.Agent)
+	}
+
+	tr := recs[1]
+	if tr.Kind != "toolResult" {
+		t.Errorf("recs[1].Kind = %q, want toolResult", tr.Kind)
+	}
+	if !tr.PostToolTs.Equal(postTs) {
+		t.Errorf("PostToolTs = %v, want %v", tr.PostToolTs, postTs)
+	}
+	if tr.ShellExitStatus != "0" {
+		t.Errorf("ShellExitStatus = %q, want 0", tr.ShellExitStatus)
 	}
 }
 
-func TestMergeAssistantResponseSingle(t *testing.T) {
-	t.Parallel()
-	details := []SessionDetail{
-		{
-			SessionMetric:     SessionMetric{ID: "s1", Agent: "solo", AgentKey: "s1|solo", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5)},
-			AssistantResponse: "only response",
-		},
+// TestMergeSessions_FewerHooksThanToolUse verifies position-based matching with fewer hooks than toolUse records.
+func TestMergeSessions_FewerHooksThanToolUse(t *testing.T) {
+	// Position-based matching: 2 toolUse, 1 hook pair → hook[0] matches toolUse[0], toolUse[1] has no hook.
+	session := makeSession("sess-3", []SessionMessage{
+		toolUseMsg("tu-1", "read", map[string]string{"path": "/a"}),
+		toolResultMsg("tu-1", "success"),
+		toolUseMsg("tu-2", "bash", map[string]string{"cmd": "ls"}),
+		toolResultMsg("tu-2", "success"),
+	})
+
+	preTs := time.Date(2026, 4, 27, 11, 0, 0, 0, time.UTC)
+	postTs := time.Date(2026, 4, 27, 11, 0, 1, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "sess-3", Event: "preToolUse", Agent: "agent", Tool: "read"},
+		{Ts: postTs, Session: "sess-3", Event: "postToolUse", Agent: "agent", Tool: "read", ShellExitStatus: "1"},
 	}
-	merged, _ := MergeSessionDetails(details)
-	if merged.AssistantResponse != "only response" {
-		t.Errorf("single agent: got %q, want %q", merged.AssistantResponse, "only response")
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	if len(recs) != 4 {
+		t.Fatalf("expected 4 records, got %d", len(recs))
+	}
+
+	tu1 := recs[0]
+	if tu1.Kind != "toolUse" {
+		t.Errorf("recs[0].Kind = %q, want toolUse", tu1.Kind)
+	}
+	if !tu1.PreToolTs.Equal(preTs) {
+		t.Errorf("recs[0].PreToolTs = %v, want %v (first toolUse gets hook[0])", tu1.PreToolTs, preTs)
+	}
+
+	tu2 := recs[2]
+	if tu2.Kind != "toolUse" {
+		t.Errorf("recs[2].Kind = %q, want toolUse", tu2.Kind)
+	}
+	if !tu2.PreToolTs.IsZero() {
+		t.Errorf("recs[2].PreToolTs should be zero (no hook for second toolUse), got %v", tu2.PreToolTs)
+	}
+
+	tr2 := recs[3]
+	if tr2.Kind != "toolResult" {
+		t.Errorf("recs[3].Kind = %q, want toolResult", tr2.Kind)
+	}
+	if !tr2.PostToolTs.IsZero() {
+		t.Errorf("recs[3].PostToolTs should be zero, got %v", tr2.PostToolTs)
 	}
 }
 
-// --- Task 4: MergeSessionDetails FileChange integration ---------------------
-
-func TestMergeFilesChangedSameFile(t *testing.T) {
-	t.Parallel()
-	// 2 agents both write foo.txt → merged.FilesChanged == 1
-	details := []SessionDetail{
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
-		},
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(2), Command: "strReplace"}},
-		},
-	}
-	merged, _ := MergeSessionDetails(details)
-	if merged.FilesChanged != 1 {
-		t.Errorf("FilesChanged: want 1, got %d", merged.FilesChanged)
-	}
-	if len(merged.Changes) != 2 {
-		t.Errorf("Changes len: want 2, got %d", len(merged.Changes))
+func TestMergeSessions_EmptySessions(t *testing.T) {
+	recs := MergeSessions([]ParsedSession{}, nil)
+	if len(recs) != 0 {
+		t.Fatalf("expected 0 records, got %d", len(recs))
 	}
 }
 
-func TestMergeFilesChangedDifferentFiles(t *testing.T) {
-	t.Parallel()
-	// 2 agents write different files → merged.FilesChanged == 2
-	details := []SessionDetail{
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
-		},
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			Changes:       []FileChange{{Path: "/tmp/bar.txt", Ts: ts(2), Command: "create"}},
-		},
-	}
-	merged, _ := MergeSessionDetails(details)
-	if merged.FilesChanged != 2 {
-		t.Errorf("FilesChanged: want 2, got %d", merged.FilesChanged)
+func TestMergeSessions_NoMessages(t *testing.T) {
+	session := makeSession("sess-empty", []SessionMessage{})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+	if len(recs) != 0 {
+		t.Fatalf("expected 0 records, got %d", len(recs))
 	}
 }
 
-func TestMergeChangesChronological(t *testing.T) {
-	t.Parallel()
-	// Changes from both agents must be sorted by Ts ascending
-	details := []SessionDetail{
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
-			Changes: []FileChange{
-				{Path: "/tmp/a.go", Ts: ts(5), Command: "create"},
-				{Path: "/tmp/c.go", Ts: ts(9), Command: "strReplace"},
-			},
-		},
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(10), LastActivity: ts(10)},
-			Changes: []FileChange{
-				{Path: "/tmp/b.go", Ts: ts(7), Command: "create"},
-			},
-		},
+func TestMergeSessions_OrphanHooks(t *testing.T) {
+	session := makeSession("sess-real", []SessionMessage{
+		toolUseMsg("tu-1", "read", map[string]string{"path": "/a"}),
+		toolResultMsg("tu-1", "success"),
+	})
+	hooks := []HookRecord{
+		{Ts: time.Now(), Session: "sess-nonexistent", Event: "preToolUse", Agent: "agent", Tool: "read"},
 	}
-	merged, _ := MergeSessionDetails(details)
-	if len(merged.Changes) != 3 {
-		t.Fatalf("Changes len: want 3, got %d", len(merged.Changes))
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(recs))
 	}
-	for i := 1; i < len(merged.Changes); i++ {
-		if merged.Changes[i].Ts.Before(merged.Changes[i-1].Ts) {
-			t.Errorf("Changes not sorted: [%d].Ts=%v before [%d].Ts=%v", i, merged.Changes[i].Ts, i-1, merged.Changes[i-1].Ts)
-		}
+	if !recs[0].PreToolTs.IsZero() {
+		t.Errorf("orphan hook should not match: PreToolTs = %v", recs[0].PreToolTs)
 	}
 }
 
-func TestMergeFilesChangedNormalized(t *testing.T) {
-	t.Parallel()
-	// agent A writes /tmp/foo.txt (absolute), agent B writes foo.txt with cwd=/tmp
-	// Both normalize to /tmp/foo.txt → merged.FilesChanged == 1
-	details := []SessionDetail{
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "a", AgentKey: "s1|a", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			Changes:       []FileChange{{Path: "/tmp/foo.txt", Ts: ts(1), Command: "create"}},
-		},
-		{
-			SessionMetric: SessionMetric{ID: "s1", Agent: "b", AgentKey: "s1|b", StartTime: ts(0), EndTime: ts(5), LastActivity: ts(5), FilesChanged: 1},
-			// normalizeChangePath("foo.txt", "/tmp") = "/tmp/foo.txt"
-			Changes: []FileChange{{Path: "/tmp/foo.txt", Ts: ts(2), Command: "strReplace"}},
-		},
+// TestMergeSessions_ErrorDetail verifies ErrorDetail extraction from toolResult.
+func TestMergeSessions_ErrorDetail(t *testing.T) {
+	session := makeSession("sess-4", []SessionMessage{
+		toolUseMsg("tu-1", "bash", map[string]string{"cmd": "fail"}),
+		toolResultErrMsg("tu-1", "command not found"),
+	})
+
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(recs))
 	}
-	merged, _ := MergeSessionDetails(details)
-	if merged.FilesChanged != 1 {
-		t.Errorf("FilesChanged: want 1 (normalized dedup), got %d", merged.FilesChanged)
+	tr := recs[1]
+	if tr.ToolStatus != "error" {
+		t.Errorf("ToolStatus = %q, want error", tr.ToolStatus)
+	}
+	if tr.ErrorDetail != "command not found" {
+		t.Errorf("ErrorDetail = %q, want 'command not found'", tr.ErrorDetail)
 	}
 }

@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 func TestParseErrorDetail(t *testing.T) {
@@ -115,18 +113,16 @@ func TestParseAssistantResponse(t *testing.T) {
 func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
-	exitStatus1WithStderr := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 1","stderr":"permission denied","stdout":""}}]}`)
-	exitStatus0 := json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)
 
-	records := []Record{
-		{Ts: baseTime, Session: "s1", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "bash",
-			ToolInput: []byte(`{"command":"fail"}`)},
-		{Ts: baseTime.Add(1 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "bash",
-			ToolInput: []byte(`{"command":"fail"}`), ToolResponse: exitStatus1WithStderr},
-		{Ts: baseTime.Add(2 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "bash",
-			ToolInput: []byte(`{"command":"ok"}`)},
-		{Ts: baseTime.Add(3 * time.Second), Session: "s1", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "bash",
-			ToolInput: []byte(`{"command":"ok"}`), ToolResponse: exitStatus0},
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-fail", ToolName: "bash",
+			PreToolTs: baseTime, ToolInput: []byte(`{"command":"fail"}`)},
+		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-fail", ToolName: "bash",
+			PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "error", ErrorDetail: "exit 1: permission denied"},
+		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-ok", ToolName: "bash",
+			PreToolTs: baseTime.Add(2 * time.Second), ToolInput: []byte(`{"command":"ok"}`)},
+		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-ok", ToolName: "bash",
+			PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: "success"},
 	}
 	d := mustAggregate(t, records, now)
 	tl := d.Sessions[0].Timeline
@@ -134,8 +130,8 @@ func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
 	if tl[0].ErrorDetail != "exit 1: permission denied" {
 		t.Errorf("timeline[0].ErrorDetail = %q; want %q", tl[0].ErrorDetail, "exit 1: permission denied")
 	}
-	// timeline[2] = preToolUse for "ok" — should have empty ErrorDetail
-	if tl[2].ErrorDetail != "" {
-		t.Errorf("timeline[2].ErrorDetail = %q; want empty", tl[2].ErrorDetail)
+	// timeline[1] = preToolUse for "ok" — should have empty ErrorDetail
+	if tl[1].ErrorDetail != "" {
+		t.Errorf("timeline[1].ErrorDetail = %q; want empty", tl[1].ErrorDetail)
 	}
 }

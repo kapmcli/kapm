@@ -22,7 +22,7 @@
 
 kapm helps you understand and maintain Kiro agent workspaces.
 
-- **Monitor Kiro sessions**: record hook events to `.kapm/logs` and inspect sessions, tool calls, failures, durations, spawned agents, prompts, responses, file changes, and skill reads in a terminal UI or WebUI.
+- **Monitor Kiro sessions**: read `~/.kiro/sessions/cli/` as the primary data source, supplemented by optional hook logs under `.kapm/logs/` for tool-call timestamps, agent attribution, and shell exit status. Inspect sessions, tool calls, failures, durations, agents, prompts, responses, file changes, and skill reads in a terminal UI or WebUI.
 - **Manage Kiro agents**: create and update `.kiro/agents/*.json` and `.kiro/agent-prompts/*.md` interactively.
 - **Bridge package formats**: sync APM packages and Kiro Powers into project-local `.kiro/` files.
 
@@ -66,9 +66,9 @@ kapm serve
 
 ## Monitoring
 
-`kapm init-hook` adds kapm-managed hook entries to selected `.kiro/agents/*.json` files. Those entries run `kapm hook-handler --agent <name>` whenever Kiro emits a hook event.
+kapm reads Kiro's session files (`~/.kiro/sessions/cli/{uuid}.jsonl` and `{uuid}.json`) as its primary data source. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata (tokens, credits, duration).
 
-Hook events are written as JSONL under `.kapm/logs/{session_id}.jsonl`. `kapm monitor` reads those logs in the terminal, and `kapm serve` exposes the same data through a local WebUI.
+`kapm init-hook` optionally adds hook entries to `.kiro/agents/*.json` for supplementary data. Hooks record `preToolUse` and `postToolUse` events as minimal JSONL under `.kapm/logs/{session_id}.jsonl`, providing per-tool-call timestamps (for duration calculation), agent names (for delegation tracking), and shell exit status.
 
 ```bash
 kapm init-hook             # select agents interactively
@@ -87,6 +87,7 @@ Both `monitor` and `serve` support:
 
 ```bash
 --since 24h
+--global                   # show sessions from all projects (default: current directory only)
 --logs-dir <path>
 --target-dir <path>
 ```
@@ -176,11 +177,9 @@ Use `--force` to overwrite an existing kapm-managed Power directory.
 
 ## Log format and retention
 
-Each JSONL record may contain `ts`, `agent`, `session`, `event`, `tool`, `tool_input`, `tool_response`, `assistant_response`, `prompt`, and `cwd`.
+Hook logs use a minimal format: each JSONL record contains only `ts`, `session`, `event`, `agent`, `tool`, and optionally `shell_exit_status`. Prompts, tool input/output, and assistant responses are read from Kiro's session files, not from hook logs.
 
-Logs can contain file paths, source code, prompts, model responses, or credentials captured from tool input and output. `.kapm/` is gitignored, directories are created with `0700`, and log files are created with `0600`.
-
-On `agentSpawn`, idle session logs older than 24 hours are compressed to `.jsonl.gz`. Active sessions remain as `.jsonl`.
+`.kapm/` is gitignored, directories are created with `0700`, and log files are created with `0600`.
 
 ## Development
 

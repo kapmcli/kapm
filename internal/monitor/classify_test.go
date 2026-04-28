@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 func TestClassifyShell(t *testing.T) {
@@ -46,27 +44,24 @@ func TestClassifyShell(t *testing.T) {
 func TestAggregateShellSplitsIntoDerivedBuckets(t *testing.T) {
 	t.Parallel()
 	baseTime := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
-	records := []Record{
+	records := []MergedRecord{
 		// ls: success
-		{Ts: baseTime, Session: "s", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "shell", Cwd: "/w",
-			ToolInput: json.RawMessage(`{"command":"ls -la"}`)},
-		{Ts: baseTime.Add(1 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "shell",
-			ToolInput:    json.RawMessage(`{"command":"ls -la"}`),
-			ToolResponse: json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)},
+		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+			ToolUseID: "tu-ls", PreToolTs: baseTime, ToolInput: json.RawMessage(`{"command":"ls -la"}`)},
+		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
+			ToolUseID: "tu-ls", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "success"},
 
-		// git push: failure (exit 1)
-		{Ts: baseTime.Add(2 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "shell", Cwd: "/w",
-			ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
-		{Ts: baseTime.Add(3 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "shell",
-			ToolInput:    json.RawMessage(`{"command":"git push -u origin main"}`),
-			ToolResponse: json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 1"}}]}`)},
+		// git push: failure
+		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+			ToolUseID: "tu-gp1", PreToolTs: baseTime.Add(2 * time.Second), ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
+		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
+			ToolUseID: "tu-gp1", PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: "error", ErrorDetail: "exit 1"},
 
 		// git push: success
-		{Ts: baseTime.Add(4 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPreToolUse, Tool: "shell", Cwd: "/w",
-			ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
-		{Ts: baseTime.Add(5 * time.Second), Session: "s", Agent: "a", Event: apmconfig.EventPostToolUse, Tool: "shell",
-			ToolInput:    json.RawMessage(`{"command":"git push -u origin main"}`),
-			ToolResponse: json.RawMessage(`{"items":[{"Json":{"exit_status":"exit status: 0"}}]}`)},
+		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+			ToolUseID: "tu-gp2", PreToolTs: baseTime.Add(4 * time.Second), ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
+		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
+			ToolUseID: "tu-gp2", PostToolTs: baseTime.Add(5 * time.Second), ToolStatus: "success"},
 	}
 
 	d := mustAggregate(t, records, baseTime.Add(time.Hour))
