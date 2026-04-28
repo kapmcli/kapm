@@ -48,7 +48,9 @@ nix profile add github:kapmcli/kapm#kapm
 
 ```bash
 # Run Kiro, then inspect the recorded sessions.
+# Terminal UI
 kapm monitor
+# Web UI
 kapm serve
 
 # Create or update a Kiro agent.
@@ -60,7 +62,7 @@ kapm init-hook
 
 ## Monitoring
 
-kapm reads Kiro's session files (`~/.kiro/sessions/cli/{uuid}.jsonl` and `{uuid}.json`) as its primary data source. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata (tokens, credits, duration).
+kapm reads Kiro's session files (`~/.kiro/sessions/cli/{uuid}.jsonl` and `{uuid}.json`) as its primary data source. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata ( credits).
 
 `kapm init-hook` optionally adds hook entries to `.kiro/agents/*.json` for supplementary data. Hooks record `preToolUse` and `postToolUse` events as minimal JSONL under `.kapm/logs/{session_id}.jsonl`, providing per-tool-call timestamps (for duration calculation), agent names (for delegation tracking), and shell exit status.
 
