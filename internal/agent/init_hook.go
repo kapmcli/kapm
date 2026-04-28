@@ -38,7 +38,7 @@ func InitHook(opts InitHookOptions) error {
 	}
 	executablePath, err := resolveHookExecutablePath(opts.Executable)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve hook executable: %w", err)
 	}
 	opts.Executable = executablePath
 	return initHook(opts)
@@ -73,7 +73,7 @@ func resolveHookExecutablePath(executable string) (string, error) {
 func initHook(opts InitHookOptions) error {
 	names, err := loadAgentNames(opts.Root)
 	if err != nil {
-		return err
+		return fmt.Errorf("load agent names: %w", err)
 	}
 	if len(names) == 0 {
 		printNoAgentsFound(opts.Out)
@@ -88,7 +88,7 @@ func initHook(opts InitHookOptions) error {
 		return nil
 	}
 	if err := cleanupLegacyHookArtifacts(opts.Root); err != nil {
-		return err
+		return fmt.Errorf("cleanup legacy artifacts: %w", err)
 	}
 	return processSelectedAgents(opts, selected)
 }
@@ -182,7 +182,7 @@ func cleanupLegacyHookArtifacts(root string) error {
 func processAgent(agentPath, executablePath, name string, remove bool) error {
 	rawMap, _, err := readAgentRawJSON(agentPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("read agent json: %w", err)
 	}
 	return updateAgentHooks(rawMap, executablePath, name, remove, agentPath)
 }
@@ -190,14 +190,14 @@ func processAgent(agentPath, executablePath, name string, remove bool) error {
 func updateAgentHooks(rawMap map[string]json.RawMessage, executablePath, name string, remove bool, agentPath string) error {
 	hooksMap, err := decodeHooksMap(rawMap)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode hooks map: %w", err)
 	}
 	if err := applyHookChanges(hooksMap, executablePath, name, remove); err != nil {
-		return err
+		return fmt.Errorf("apply hook changes: %w", err)
 	}
 	compactHooksMap(hooksMap)
 	if err := storeHooksMap(rawMap, hooksMap); err != nil {
-		return err
+		return fmt.Errorf("store hooks map: %w", err)
 	}
 	return writeAgentRawJSON(agentPath, rawMap)
 }
@@ -206,7 +206,7 @@ func decodeHooksMap(rawMap map[string]json.RawMessage) (map[string][]json.RawMes
 	hooksMap := make(map[string][]json.RawMessage)
 	if raw, ok := rawMap["hooks"]; ok {
 		if err := json.Unmarshal(raw, &hooksMap); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unmarshal hooks: %w", err)
 		}
 	}
 	return hooksMap, nil

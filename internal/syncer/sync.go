@@ -54,7 +54,7 @@ func (d *apmDependency) UnmarshalYAML(node *yaml.Node) error {
 		type rawDependency apmDependency
 		var raw rawDependency
 		if err := node.Decode(&raw); err != nil {
-			return err
+			return fmt.Errorf("decode dependency: %w", err)
 		}
 		*d = apmDependency(raw)
 		return nil
@@ -77,7 +77,7 @@ func Run(opts Options) error {
 
 	sources, err := sourceAPMDirs(root, opts.Force, manifest)
 	if err != nil {
-		return err
+		return fmt.Errorf("source apm dirs: %w", err)
 	}
 
 	destination := filepath.Join(root, paths.KiroDir)
@@ -86,7 +86,7 @@ func Run(opts Options) error {
 	for _, src := range sources {
 		report, err := runConverters(src, destination, opts.Force, manifest)
 		if err != nil {
-			return err
+			return fmt.Errorf("run converters: %w", err)
 		}
 		total.Add(report)
 	}
@@ -185,7 +185,7 @@ func moduleAPMDirs(root string, manifest projectManifest) ([]string, error) {
 
 	packageRoots, err := discoverPackageRoots(modulesRoot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("discover package roots: %w", err)
 	}
 	if len(packageRoots) == 0 {
 		return nil, nil

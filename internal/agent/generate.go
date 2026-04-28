@@ -55,18 +55,18 @@ func generate(opts GenerateOptions) error {
 
 	name, err := promptGenerateName(p)
 	if err != nil {
-		return err
+		return fmt.Errorf("prompt agent name: %w", err)
 	}
 
 	agentPath := AgentFile(root, name)
 	promptPath := AgentPromptFile(root, name)
 	if err := ensureAgentPaths(root, name, agentPath, promptPath, opts.Force); err != nil {
-		return err
+		return fmt.Errorf("ensure agent paths: %w", err)
 	}
 
 	details, err := promptGenerateDetails(p, opts.Out)
 	if err != nil {
-		return err
+		return fmt.Errorf("prompt generate details: %w", err)
 	}
 
 	config := buildGenerateConfig(name, details)
@@ -76,7 +76,7 @@ func generate(opts GenerateOptions) error {
 		return fmt.Errorf("marshal agent json: %w", err)
 	}
 	if _, err := writeValidatedPair(root, agentPath, jsonData, promptPath, []byte("# "+name+"\n"), opts.Force); err != nil {
-		return err
+		return fmt.Errorf("write agent files: %w", err)
 	}
 
 	return nil
@@ -85,7 +85,7 @@ func generate(opts GenerateOptions) error {
 func promptGenerateName(p *cli.Prompter) (string, error) {
 	name, err := p.Ask("name", "")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("prompt agent name input: %w", err)
 	}
 	return validateAndNormalizeName(name)
 }
@@ -182,7 +182,7 @@ func ensureAgentPaths(root, name, agentPath, promptPath string, force bool) erro
 		filepath.Join(root, paths.KiroDir, paths.AgentPromptsDir),
 	} {
 		if err := validatePath(root, dir); err != nil {
-			return err
+			return fmt.Errorf("validate agent path: %w", err)
 		}
 	}
 

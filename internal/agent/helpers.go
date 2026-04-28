@@ -76,7 +76,7 @@ func promptAgentCoreFields(p *cli.Prompter, out io.Writer, d agentFieldDefaults)
 func readAgentRawJSON(path string) (map[string]json.RawMessage, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("read agent file %q: %w", path, err)
 	}
 	rawMap := make(map[string]json.RawMessage)
 	if err := json.Unmarshal(data, &rawMap); err != nil {
@@ -91,7 +91,7 @@ func writeAgentRawJSON(path string, rawMap map[string]json.RawMessage) error {
 		return fmt.Errorf("marshal agent json: %w", err)
 	}
 	if _, err := fileutil.WriteFileAtomic(path, data, true); err != nil {
-		return err
+		return fmt.Errorf("write agent file %q: %w", path, err)
 	}
 	return nil
 }
@@ -137,7 +137,7 @@ func defaultToolIndices(options, selected []string) []int {
 func writeValidatedPair(root, pathA string, dataA []byte, pathB string, dataB []byte, force bool) (bool, error) {
 	for _, dir := range []string{filepath.Dir(pathA), filepath.Dir(pathB)} {
 		if err := validatePath(root, dir); err != nil {
-			return false, err
+			return false, fmt.Errorf("validate path: %w", err)
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return false, fmt.Errorf("mkdir %q: %w", dir, err)
@@ -165,7 +165,7 @@ func validatePath(root, path string) error {
 
 	current := absRoot
 	if err := validatePathEntry(current, true); err != nil {
-		return err
+		return fmt.Errorf("validate root entry: %w", err)
 	}
 	if rel == "." {
 		return nil
@@ -174,7 +174,7 @@ func validatePath(root, path string) error {
 	for part := range strings.SplitSeq(rel, string(os.PathSeparator)) {
 		current = filepath.Join(current, part)
 		if err := validatePathEntry(current, false); err != nil {
-			return err
+			return fmt.Errorf("validate path segment: %w", err)
 		}
 	}
 

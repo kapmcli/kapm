@@ -50,18 +50,18 @@ func update(opts UpdateOptions) error {
 
 	name, err := validateAndNormalizeName(opts.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("validate agent name: %w", err)
 	}
 
 	agentPath := AgentFile(root, name)
 	if err := validatePath(root, filepath.Join(root, paths.KiroDir)); err != nil {
-		return err
+		return fmt.Errorf("validate .kiro dir: %w", err)
 	}
 	if err := validatePath(root, filepath.Join(root, paths.KiroDir, paths.AgentsSubdir)); err != nil {
-		return err
+		return fmt.Errorf("validate agents subdir: %w", err)
 	}
 	if err := validatePath(root, agentPath); err != nil {
-		return err
+		return fmt.Errorf("validate agent path: %w", err)
 	}
 	rawMap, existingData, err := readAgentRawJSON(agentPath)
 	if err != nil {
@@ -79,36 +79,36 @@ func update(opts UpdateOptions) error {
 	p := cli.NewPrompter(opts.In, opts.Out)
 	details, err := promptUpdateDetails(p, opts.Out, known)
 	if err != nil {
-		return err
+		return fmt.Errorf("prompt update details: %w", err)
 	}
 
 	if details.Model == known.Model && slices.Equal(details.Tools, known.Tools) && slices.Equal(details.AllowedTools, known.AllowedTools) && slices.Equal(details.Resources, known.Resources) {
 		if _, err := fmt.Fprintln(opts.Out, "No changes."); err != nil {
-			return err
+			return fmt.Errorf("write no changes: %w", err)
 		}
 		return nil
 	}
 
 	if details.Model != known.Model {
 		if err := setRawJSONField(rawMap, "model", details.Model); err != nil {
-			return err
+			return fmt.Errorf("set model field: %w", err)
 		}
 	}
 	if !slices.Equal(details.Tools, known.Tools) {
 		if err := setRawJSONField(rawMap, "tools", ensureNonNil(details.Tools)); err != nil {
-			return err
+			return fmt.Errorf("set tools field: %w", err)
 		}
 	}
 	if !slices.Equal(details.AllowedTools, known.AllowedTools) {
 		if err := setRawJSONField(rawMap, "allowedTools", ensureNonNil(details.AllowedTools)); err != nil {
-			return err
+			return fmt.Errorf("set allowedTools field: %w", err)
 		}
 	}
 	if !slices.Equal(details.Resources, known.Resources) {
 		if len(details.Resources) == 0 {
 			delete(rawMap, "resources")
 		} else if err := setRawJSONField(rawMap, "resources", details.Resources); err != nil {
-			return err
+			return fmt.Errorf("set resources field: %w", err)
 		}
 	}
 

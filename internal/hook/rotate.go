@@ -61,7 +61,7 @@ func compressWithRetry(src, dst string) error {
 		return nil
 	}
 	if !shouldRetryCompress(src, dst) {
-		return err
+		return fmt.Errorf("compress file: %w", err)
 	}
 	if retryErr := compressFile(src, dst); retryErr != nil {
 		return errors.Join(err, fmt.Errorf("retry: %w", retryErr))
@@ -91,7 +91,7 @@ func compressFile(src, dst string) error {
 		if errors.Is(err, fs.ErrNotExist) || isShareViolation(err) {
 			return nil // already rotated or being rotated by another process
 		}
-		return err
+		return fmt.Errorf("rename to claim: %w", err)
 	}
 	if testHookAfterClaim != nil {
 		testHookAfterClaim()
@@ -103,7 +103,7 @@ func compressFile(src, dst string) error {
 		if rerr := os.Rename(rotating, src); rerr != nil {
 			return errors.Join(err, fmt.Errorf("restore: %w", rerr))
 		}
-		return err
+		return fmt.Errorf("open rotating file: %w", err)
 	}
 
 	locked := false
@@ -148,14 +148,14 @@ func compressFile(src, dst string) error {
 		if rerr := os.Rename(rotating, src); rerr != nil {
 			return errors.Join(err, fmt.Errorf("restore: %w", rerr))
 		}
-		return err
+		return fmt.Errorf("close rotating file: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp) // best-effort; tmp may not exist
 		if rerr := os.Rename(rotating, src); rerr != nil {
 			return errors.Join(err, fmt.Errorf("restore: %w", rerr))
 		}
-		return err
+		return fmt.Errorf("rename compressed file: %w", err)
 	}
 	// best-effort; file may have been removed by another process
 	_ = os.Remove(rotating)
@@ -165,7 +165,7 @@ func compressFile(src, dst string) error {
 func writeGzip(r io.Reader, dst string) error {
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		return err
+		return fmt.Errorf("create gzip file %q: %w", dst, err)
 	}
 	return writeGzipTo(r, out)
 }
