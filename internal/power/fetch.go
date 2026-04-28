@@ -154,17 +154,21 @@ func fetchFullClone(ctx context.Context, repoDir string, src PowerSource) (strin
 	return localDir, nil
 }
 
+func gitError(args []string, err error, stderr string) error {
+	msg := strings.TrimSpace(stderr)
+	if msg == "" {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, msg)
+}
+
 func gitRun(ctx context.Context, dir string, args ...string) error {
 	cmd := newGitCommand(ctx, dir, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &bytes.Buffer{}
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-		}
-		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, msg)
+		return gitError(args, err, stderr.String())
 	}
 	return nil
 }
@@ -176,11 +180,7 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-		}
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, msg)
+		return "", gitError(args, err, stderr.String())
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
