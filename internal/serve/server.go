@@ -872,6 +872,23 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error, 
 		"status", status,
 		"err", err,
 	)
+	// Attempt styled error page. Fall back to plain text if template
+	// rendering itself fails (avoids infinite recursion since renderPage
+	// calls handleError on template errors).
+	var buf bytes.Buffer
+	data := map[string]any{
+		"Title":   http.StatusText(status),
+		"Active":  "",
+		"Status":  status,
+		"Heading": http.StatusText(status),
+		"Message": http.StatusText(status),
+	}
+	if tmplErr := errorTmpl.ExecuteTemplate(&buf, "layout", data); tmplErr == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		_, _ = buf.WriteTo(w)
+		return
+	}
 	http.Error(w, http.StatusText(status), status)
 }
 

@@ -23,8 +23,8 @@ func TestHandleDesignPreview_ParseError(t *testing.T) {
 		t.Fatalf("status = %d, want 500", rr.Code)
 	}
 	body := rr.Body.String()
-	if body != "Internal Server Error\n" {
-		t.Fatalf("body = %q, want %q", body, "Internal Server Error\n")
+	if !strings.Contains(body, "Internal Server Error") {
+		t.Fatalf("body = %q, want it to contain %q", body, "Internal Server Error")
 	}
 	if strings.Contains(body, "design parse") || strings.Contains(body, "DESIGN.md") {
 		t.Fatalf("body leaks internal detail: %s", body)
