@@ -190,6 +190,7 @@ type sessionState struct {
 	assistantResponse  string               // from stop event
 	changes            []FileChange         // write preToolUse events, chronological
 	filesChangedCached int                  // countUniqueFiles(changes), populated in finalizeSessionStats
+	pendingToolUse     map[string]int       // toolUseID → timeline index
 }
 
 // aggState holds the mutable accumulators shared by the three

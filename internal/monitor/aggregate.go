@@ -108,6 +108,13 @@ func processRecord(st *aggState, r MergedRecord) {
 		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, toolUseID: r.ToolUseID}
 		s.timeline = append(s.timeline, entry)
 
+		if r.ToolUseID != "" {
+			if s.pendingToolUse == nil {
+				s.pendingToolUse = make(map[string]int)
+			}
+			s.pendingToolUse[r.ToolUseID] = len(s.timeline) - 1
+		}
+
 		if toolName == "summary" {
 			if td := extractSummaryTitle(r.ToolInput); td != "" {
 				s.sumTitle = td
@@ -144,18 +151,11 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	if r.ToolUseID == "" {
 		return
 	}
-	// Find matching toolUse by ToolUseID in timeline (reverse search for efficiency).
-	matchIdx := -1
-	for i := len(s.timeline) - 1; i >= 0; i-- {
-		if s.timeline[i].Event == apmconfig.EventPreToolUse && s.timeline[i].toolUseID == r.ToolUseID {
-			matchIdx = i
-			break
-		}
+	matchIdx, ok := s.pendingToolUse[r.ToolUseID]
+	if !ok {
+		return
 	}
-
-	if matchIdx < 0 {
-		return // no matching toolUse found
-	}
+	delete(s.pendingToolUse, r.ToolUseID)
 
 	preTs := s.timeline[matchIdx].Ts
 	postTs := r.PostToolTs
