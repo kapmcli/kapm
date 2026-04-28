@@ -237,17 +237,10 @@ type Options struct {
 }
 
 // metricsCacheEntry holds a cached DetailedMetrics result with its generation time.
-// summaryHTMLFrame and overviewJSONFrame are lazily computed on first SSE send
-// and reused by subsequent clients on the same tick.
 type metricsCacheEntry struct {
 	dm                monitor.DetailedMetrics
 	dashboardSessions []monitor.SessionMetric
 	storedAt          time.Time
-
-	sseOnce           sync.Once
-	summaryHTMLFrame  []byte
-	overviewJSONFrame []byte
-	sseErr            error
 }
 
 // Server serves the kapm WebUI.
@@ -483,46 +476,32 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// sseFrames lazily computes and caches the SSE payload bytes for this entry.
-// Safe to call concurrently; sync.Once ensures compute-once semantics.
-func (e *metricsCacheEntry) sseFrames() (summaryHTML, overviewJSON []byte, err error) {
-	e.sseOnce.Do(func() {
-		var htmlBuf bytes.Buffer
-		if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", e.dm.Overview); err != nil {
-			e.sseErr = fmt.Errorf("serve sse render summary: %w", err)
-			return
-		}
-		e.summaryHTMLFrame = bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
-		b, err := json.Marshal(e.dm.Overview)
-		if err != nil {
-			e.sseErr = fmt.Errorf("serve sse marshal overview: %w", err)
-			return
-		}
-		e.overviewJSONFrame = b
-	})
-	return e.summaryHTMLFrame, e.overviewJSONFrame, e.sseErr
+// buildSSEFrames computes SSE payload bytes from loaded metrics.
+func buildSSEFrames(lm loadedMetrics) (summaryHTML, overviewJSON []byte, err error) {
+	var htmlBuf bytes.Buffer
+	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", lm.dm.Overview); err != nil {
+		return nil, nil, fmt.Errorf("serve sse render summary: %w", err)
+	}
+	summaryHTML = bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
+
+	overviewJSON, err = json.Marshal(lm.dm.Overview)
+	if err != nil {
+		return nil, nil, fmt.Errorf("serve sse marshal overview: %w", err)
+	}
+	return summaryHTML, overviewJSON, nil
 }
 
 // sendOverview writes SSE frames with the current overview snapshot:
 //   - `event: summary` with rendered summary-cards HTML (for htmx sse-swap)
 //   - `event: overview` with Overview JSON (for ECharts update in client JS)
 func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request) bool {
-	// loadMetrics ensures the cache is fresh (handles TTL and singleflight).
-	if _, err := s.loadMetrics(r.Context()); err != nil {
+	lm, err := s.loadMetrics(r.Context())
+	if err != nil {
 		slog.Warn("serve sse load metrics", "err", err)
 		return false
 	}
 
-	s.metricsMu.Lock()
-	entry := s.metricsCache
-	s.metricsMu.Unlock()
-
-	if entry == nil {
-		slog.Warn("serve sse load metrics", "err", errors.New("cache empty after load"))
-		return false
-	}
-
-	htmlFrame, jsonFrame, err := entry.sseFrames()
+	htmlFrame, jsonFrame, err := buildSSEFrames(lm)
 	if err != nil {
 		slog.Warn("serve sse build frames", "err", err)
 		return false
