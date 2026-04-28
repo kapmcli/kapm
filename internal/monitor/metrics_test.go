@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1724,16 +1725,16 @@ func TestSessionAssistantResponse(t *testing.T) {
 
 // --- Task 4: FileChange pipeline integration --------------------------------
 
-var writeRecCounter int
+var writeRecCounter atomic.Int32
 
 func writeRec(session, agent, path, command string, offset time.Duration) MergedRecord {
-	writeRecCounter++
+	id := writeRecCounter.Add(1)
 	input, _ := json.Marshal(map[string]string{"command": command, "path": path, "content": "x"})
 	return MergedRecord{
 		SessionID: session,
 		Agent:     agent,
 		Kind:      "toolUse",
-		ToolUseID: fmt.Sprintf("tu-write-%d", writeRecCounter),
+		ToolUseID: fmt.Sprintf("tu-write-%d", id),
 		ToolName:  "write",
 		ToolInput: input,
 		PreToolTs: baseTime.Add(offset),
