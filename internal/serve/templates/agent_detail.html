@@ -10,6 +10,12 @@
       <tr><th>Files changed</th><td>{{$a.FilesChanged}}</td></tr>
       <tr><th>Errors</th><td>{{if $a.ToolErrorCnt}}<span class="badge badge-error">{{$a.ToolErrorCnt}}</span>{{else}}0{{end}}</td></tr>
       <tr><th>Error rate</th><td>{{if $a.ToolCalls}}{{printf "%.1f%%" (mul (div (itof $a.ToolErrorCnt) (itof $a.ToolCalls)) 100)}}{{else}}—{{end}}</td></tr>
+      {{- if or $a.TotalInputTokens $a.TotalOutputTokens}}
+      <tr><th>Tokens</th><td>{{fmtTokens $a.TotalInputTokens}} in / {{fmtTokens $a.TotalOutputTokens}} out</td></tr>
+      {{- end}}
+      {{- if $a.TotalCredits}}
+      <tr><th>Credits</th><td>{{fmtCredits $a.TotalCredits}}</td></tr>
+      {{- end}}
     </tbody>
   </table>
 </section>

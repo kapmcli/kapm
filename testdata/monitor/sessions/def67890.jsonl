@@ -1,0 +1,7 @@
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776679201}, "content": [{"kind": "text", "data": "\"find files\""}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-0", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_def67890_0", "name": "grep", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_def67890_0", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-1", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_def67890_1", "name": "read_file", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_def67890_1", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-2", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_def67890_2", "name": "grep", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_def67890_2", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}

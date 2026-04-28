@@ -180,7 +180,6 @@ func repoTestdataRoot() string {
 	return filepath.Join("..", "..", "testdata")
 }
 
-
 func writeFileForTest(t *testing.T, path string, data []byte) {
 	t.Helper()
 

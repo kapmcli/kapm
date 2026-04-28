@@ -1822,6 +1822,102 @@ func TestSessionDetailChangesChronological(t *testing.T) {
 	}
 }
 
+// --- Task 4 (token/credit): AggregateDetail populates token/credit fields ---
+
+// TestAggregateDetail_TokenCredits verifies that a "sessionMeta" record is
+// consumed by AggregateDetail and its values appear in SessionMetric and
+// AgentMetric.
+func TestAggregateDetail_TokenCredits(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "coder", Kind: "sessionMeta",
+			TotalInputTokens: 400, TotalOutputTokens: 600, TotalCredits: 2.0},
+		rec("s1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
+	}
+	d := mustAggregate(t, records, now)
+
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	sm := d.Sessions[0].SessionMetric
+	if sm.TotalInputTokens != 400 {
+		t.Errorf("SessionMetric.TotalInputTokens: want 400, got %d", sm.TotalInputTokens)
+	}
+	if sm.TotalOutputTokens != 600 {
+		t.Errorf("SessionMetric.TotalOutputTokens: want 600, got %d", sm.TotalOutputTokens)
+	}
+	if sm.TotalCredits != 2.0 {
+		t.Errorf("SessionMetric.TotalCredits: want 2.0, got %f", sm.TotalCredits)
+	}
+
+	byName := map[string]AgentMetric{}
+	for _, a := range d.Overview.Agents {
+		byName[a.Name] = a
+	}
+	am := byName["coder"]
+	if am.TotalInputTokens != 400 {
+		t.Errorf("AgentMetric.TotalInputTokens: want 400, got %d", am.TotalInputTokens)
+	}
+	if am.TotalOutputTokens != 600 {
+		t.Errorf("AgentMetric.TotalOutputTokens: want 600, got %d", am.TotalOutputTokens)
+	}
+	if am.TotalCredits != 2.0 {
+		t.Errorf("AgentMetric.TotalCredits: want 2.0, got %f", am.TotalCredits)
+	}
+}
+
+// TestAggregateDetail_TokenCredits_MultiSession verifies that AgentMetric
+// accumulates token/credit totals across multiple sessions.
+func TestAggregateDetail_TokenCredits_MultiSession(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "coder", Kind: "sessionMeta",
+			TotalInputTokens: 100, TotalOutputTokens: 200, TotalCredits: 1.0},
+		rec("s1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
+		{SessionID: "s2", Agent: "coder", Kind: "sessionMeta",
+			TotalInputTokens: 300, TotalOutputTokens: 400, TotalCredits: 1.5},
+		rec("s2", "coder", apmconfig.EventUserPromptSubmit, "", 30*time.Minute),
+	}
+	d := mustAggregate(t, records, now)
+
+	byName := map[string]AgentMetric{}
+	for _, a := range d.Overview.Agents {
+		byName[a.Name] = a
+	}
+	am := byName["coder"]
+	if am.TotalInputTokens != 400 {
+		t.Errorf("AgentMetric.TotalInputTokens: want 400, got %d", am.TotalInputTokens)
+	}
+	if am.TotalOutputTokens != 600 {
+		t.Errorf("AgentMetric.TotalOutputTokens: want 600, got %d", am.TotalOutputTokens)
+	}
+	if am.TotalCredits != 2.5 {
+		t.Errorf("AgentMetric.TotalCredits: want 2.5, got %f", am.TotalCredits)
+	}
+}
+
+// TestAggregateDetail_TokenCredits_Zero verifies that sessions with no
+// sessionMeta record have zero token/credit fields.
+func TestAggregateDetail_TokenCredits_Zero(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		rec("s1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
+	}
+	d := mustAggregate(t, records, now)
+
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	sm := d.Sessions[0].SessionMetric
+	if sm.TotalInputTokens != 0 || sm.TotalOutputTokens != 0 || sm.TotalCredits != 0 {
+		t.Errorf("expected zero token/credit fields, got in=%d out=%d credits=%f",
+			sm.TotalInputTokens, sm.TotalOutputTokens, sm.TotalCredits)
+	}
+}
+
 func TestAggregateDetail_CancelledCtx(t *testing.T) {
 	t.Parallel()
 	records := []MergedRecord{

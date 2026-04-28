@@ -1,0 +1,14 @@
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776765601}, "content": [{"kind": "text", "data": "\"orchestrate the build pipeline\""}]}}
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776765660}, "content": [{"kind": "text", "data": "\"implement the assigned subtask\""}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-0", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_0", "name": "shell", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_0", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-1", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_1", "name": "read", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_1", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-2", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_2", "name": "shell", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_2", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-3", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_3", "name": "grep", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_3", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-4", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_4", "name": "read", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_4", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-5", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_mixed-ag_5", "name": "shell", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_mixed-ag_5", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}

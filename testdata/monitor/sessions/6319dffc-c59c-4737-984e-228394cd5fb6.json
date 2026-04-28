@@ -1,0 +1,27 @@
+{
+  "session_id": "6319dffc-c59c-4737-984e-228394cd5fb6",
+  "cwd": "/home/dev/myproject",
+  "created_at": "2026-04-24T02:24:01.450174Z",
+  "updated_at": "2026-04-24T02:29:07.536078Z",
+  "title": "## Delegation Brief: T7 \u2014 Final Verification\n\n### TASK\nRead the full task file a",
+  "session_state": {
+    "version": "v1",
+    "agent_name": "qa",
+    "conversation_metadata": {
+      "user_turn_metadatas": [
+        {
+          "turn_duration": {
+            "secs": 300,
+            "nanos": 0
+          },
+          "end_timestamp": "2026-04-24T02:29:07.536078Z",
+          "end_reason": "UserTurnEnd",
+          "input_token_count": 0,
+          "output_token_count": 0,
+          "context_usage_percentage": 0.3,
+          "metering_usage": []
+        }
+      ]
+    }
+  }
+}

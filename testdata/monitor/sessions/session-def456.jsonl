@@ -1,0 +1,12 @@
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776707710}, "content": [{"kind": "text", "data": "\"explore the codebase\""}]}}
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776707880}, "content": [{"kind": "text", "data": "\"find all usages\""}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-0", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_session-_0", "name": "grep", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_session-_0", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-1", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_session-_1", "name": "read_file", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_session-_1", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-2", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_session-_2", "name": "bash", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_session-_2", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-3", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_session-_3", "name": "grep", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_session-_3", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-4", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_session-_4", "name": "bash", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_session-_4", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}

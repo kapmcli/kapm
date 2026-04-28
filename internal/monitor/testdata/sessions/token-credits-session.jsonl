@@ -1,0 +1,2 @@
+{"version":"v1","kind":"Prompt","data":{"message_id":"eeee0001-0000-0000-0000-000000000001","content":[{"kind":"text","data":"implement the feature"}],"meta":{"timestamp":1745834400,"additionalContext":""}}}
+{"version":"v1","kind":"AssistantMessage","data":{"message_id":"eeee0002-0000-0000-0000-000000000002","content":[{"kind":"text","data":"Done."}]}}

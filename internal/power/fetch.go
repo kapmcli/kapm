@@ -224,4 +224,3 @@ func directorySize(root string) (int64, error) {
 	})
 	return total, err
 }
-

@@ -174,7 +174,24 @@ var templateFuncs = template.FuncMap{
 		}
 		return a / b
 	},
-	"itof":               func(a int) float64 { return float64(a) },
+	"itof": func(a int) float64 { return float64(a) },
+	"addf": func(a, b float64) float64 { return a + b },
+	"fmtTokens": func(n int) string {
+		switch {
+		case n >= 1_000_000:
+			return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+		case n >= 1_000:
+			return fmt.Sprintf("%.1fK", float64(n)/1_000)
+		default:
+			return strconv.Itoa(n)
+		}
+	},
+	"fmtCredits": func(v float64) string {
+		if v == 0 {
+			return "—"
+		}
+		return fmt.Sprintf("%.2f", v)
+	},
 	"dur":                func(d monitor.JSONDuration) string { return monitor.FormatDuration(time.Duration(d)) },
 	"renderMarkdown":     renderMarkdown,
 	"renderDiff":         renderDiff,

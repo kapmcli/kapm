@@ -142,6 +142,11 @@ func processRecord(st *aggState, r MergedRecord) {
 	case "assistantText":
 		s.assistantResponse = r.AssistantText
 		s.assistantResponse = truncateUTF8(s.assistantResponse, maxAssistantResponseLength)
+
+	case "sessionMeta":
+		s.totalInputTokens += r.TotalInputTokens
+		s.totalOutputTokens += r.TotalOutputTokens
+		s.totalCredits += r.TotalCredits
 	}
 }
 
@@ -210,7 +215,8 @@ func newSessionMetric(s *sessionState, now time.Time) SessionMetric {
 		ID: s.id, AgentKey: compositeKey(s.id, s.agent), Agent: s.agent, Title: title, Cwd: s.cwd,
 		StartTime: s.start, EndTime: s.end, LastActivity: s.end, Duration: JSONDuration(s.end.Sub(s.start)),
 		Active: active, ToolCalls: s.toolCalls, Prompts: len(s.prompts),
-		FilesChanged: s.filesChangedCached,
+		FilesChanged:     s.filesChangedCached,
+		TotalInputTokens: s.totalInputTokens, TotalOutputTokens: s.totalOutputTokens, TotalCredits: s.totalCredits,
 	}
 }
 
@@ -311,6 +317,9 @@ func foldSessionIntoAgents(st *aggState) {
 		a.ToolCalls += s.toolCalls
 		a.Prompts += len(s.prompts)
 		a.FilesChanged += s.filesChangedCached
+		a.TotalInputTokens += s.totalInputTokens
+		a.TotalOutputTokens += s.totalOutputTokens
+		a.TotalCredits += s.totalCredits
 		a.Sessions = append(a.Sessions, newSessionMetric(s, st.now))
 
 		tm := agentTools[s.agent]

@@ -53,15 +53,15 @@ just build
 ## Quick start
 
 ```bash
+# Run Kiro, then inspect the recorded sessions.
+kapm monitor
+kapm serve
+
 # Create or update a Kiro agent.
 kapm agent generate
 
 # Install kapm hook entries for selected agents.
 kapm init-hook
-
-# Run Kiro, then inspect the recorded sessions.
-kapm monitor
-kapm serve
 ```
 
 ## Monitoring

@@ -12,7 +12,7 @@ Enter
 Sleep 200ms
 Show
 
-Type "KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/monitor/logs"
+Type "KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/monitor/logs --sessions-dir testdata/monitor/sessions --global"
 Enter
 Wait+Screen /Overview/
 Wait+Screen /Summary/

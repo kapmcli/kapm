@@ -245,6 +245,157 @@ func TestMergeSessions_OrphanHooks(t *testing.T) {
 }
 
 // TestMergeSessions_ErrorDetail verifies ErrorDetail extraction from toolResult.
+// TestMergeSessions_SessionMeta verifies that MergeSessions emits a
+// "sessionMeta" record with correct token/credit totals when UserTurnMetadatas
+// are present.
+func TestMergeSessions_SessionMeta(t *testing.T) {
+	turns := []UserTurnMetadata{
+		{InputTokenCount: 100, OutputTokenCount: 200, MeteringUsage: []MeteringEntry{{Value: 0.5, Unit: "credits"}}},
+		{InputTokenCount: 300, OutputTokenCount: 400, MeteringUsage: []MeteringEntry{{Value: 1.5, Unit: "credits"}}},
+	}
+	session := ParsedSession{
+		Meta: SessionMeta{
+			SessionID: "sess-tok",
+			Title:     "token test",
+			Cwd:       "/tmp",
+			CreatedAt: "2026-04-28T10:00:00Z",
+			UpdatedAt: "2026-04-28T10:01:00Z",
+			SessionState: SessionState{
+				AgentName:            "coder",
+				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},
+			},
+		},
+		Messages: []SessionMessage{promptMsg("hello", 1745744400)},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	var meta *MergedRecord
+	for i := range recs {
+		if recs[i].Kind == "sessionMeta" {
+			meta = &recs[i]
+			break
+		}
+	}
+	if meta == nil {
+		t.Fatal("expected a sessionMeta record, got none")
+	}
+	if meta.TotalInputTokens != 400 {
+		t.Errorf("TotalInputTokens: want 400, got %d", meta.TotalInputTokens)
+	}
+	if meta.TotalOutputTokens != 600 {
+		t.Errorf("TotalOutputTokens: want 600, got %d", meta.TotalOutputTokens)
+	}
+	if meta.TotalCredits != 2.0 {
+		t.Errorf("TotalCredits: want 2.0, got %f", meta.TotalCredits)
+	}
+	if meta.Agent != "coder" {
+		t.Errorf("Agent: want coder, got %q", meta.Agent)
+	}
+}
+
+// TestMergeSessions_SessionMeta_Zero verifies that no "sessionMeta" record is
+// emitted when UserTurnMetadatas is empty (all token/credit fields are zero).
+func TestMergeSessions_SessionMeta_Zero(t *testing.T) {
+	session := makeSession("sess-zero", []SessionMessage{promptMsg("hi", 1745744400)})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+	for _, r := range recs {
+		if r.Kind == "sessionMeta" {
+			t.Errorf("unexpected sessionMeta record for session with no UserTurnMetadatas")
+		}
+	}
+}
+
+// TestMergeSessions_SessionMeta_SingleTurn verifies that a session with exactly
+// one UserTurnMetadata emits a correct sessionMeta record.
+func TestMergeSessions_SessionMeta_SingleTurn(t *testing.T) {
+	turns := []UserTurnMetadata{
+		{InputTokenCount: 50, OutputTokenCount: 75, MeteringUsage: []MeteringEntry{{Value: 0.25, Unit: "credits"}}},
+	}
+	session := ParsedSession{
+		Meta: SessionMeta{
+			SessionID: "sess-single",
+			Title:     "single turn",
+			Cwd:       "/tmp",
+			CreatedAt: "2026-04-28T10:00:00Z",
+			UpdatedAt: "2026-04-28T10:01:00Z",
+			SessionState: SessionState{
+				AgentName:            "lead",
+				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},
+			},
+		},
+		Messages: []SessionMessage{promptMsg("hi", 1745744400)},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	var meta *MergedRecord
+	for i := range recs {
+		if recs[i].Kind == "sessionMeta" {
+			meta = &recs[i]
+			break
+		}
+	}
+	if meta == nil {
+		t.Fatal("expected a sessionMeta record, got none")
+	}
+	if meta.TotalInputTokens != 50 {
+		t.Errorf("TotalInputTokens: want 50, got %d", meta.TotalInputTokens)
+	}
+	if meta.TotalOutputTokens != 75 {
+		t.Errorf("TotalOutputTokens: want 75, got %d", meta.TotalOutputTokens)
+	}
+	if meta.TotalCredits != 0.25 {
+		t.Errorf("TotalCredits: want 0.25, got %f", meta.TotalCredits)
+	}
+}
+
+// TestMergeSessions_SessionMeta_ZeroCreditsWithTokens verifies that a session
+// with token counts but empty MeteringUsage slices emits a sessionMeta record
+// with TotalCredits=0 but non-zero token counts.
+func TestMergeSessions_SessionMeta_ZeroCreditsWithTokens(t *testing.T) {
+	turns := []UserTurnMetadata{
+		{InputTokenCount: 120, OutputTokenCount: 180, MeteringUsage: []MeteringEntry{}},
+		{InputTokenCount: 80, OutputTokenCount: 60, MeteringUsage: nil},
+	}
+	session := ParsedSession{
+		Meta: SessionMeta{
+			SessionID: "sess-nocredits",
+			Title:     "no credits",
+			Cwd:       "/tmp",
+			CreatedAt: "2026-04-28T10:00:00Z",
+			UpdatedAt: "2026-04-28T10:01:00Z",
+			SessionState: SessionState{
+				AgentName:            "coder",
+				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},
+			},
+		},
+		Messages: []SessionMessage{promptMsg("hi", 1745744400)},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	var meta *MergedRecord
+	for i := range recs {
+		if recs[i].Kind == "sessionMeta" {
+			meta = &recs[i]
+			break
+		}
+	}
+	if meta == nil {
+		t.Fatal("expected a sessionMeta record, got none")
+	}
+	if meta.TotalInputTokens != 200 {
+		t.Errorf("TotalInputTokens: want 200, got %d", meta.TotalInputTokens)
+	}
+	if meta.TotalOutputTokens != 240 {
+		t.Errorf("TotalOutputTokens: want 240, got %d", meta.TotalOutputTokens)
+	}
+	if meta.TotalCredits != 0.0 {
+		t.Errorf("TotalCredits: want 0.0, got %f", meta.TotalCredits)
+	}
+}
+
 func TestMergeSessions_ErrorDetail(t *testing.T) {
 	session := makeSession("sess-4", []SessionMessage{
 		toolUseMsg("tu-1", "bash", map[string]string{"cmd": "fail"}),

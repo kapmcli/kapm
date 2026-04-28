@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,12 +100,14 @@ func (m *model) renderSummaryBox(width int) string {
 	active := 0
 	totalTools := 0
 	totalPrompts := 0
+	var totalCredits float64
 	for _, s := range ov.Sessions {
 		if s.Active {
 			active++
 		}
 		totalTools += s.ToolCalls
 		totalPrompts += s.Prompts
+		totalCredits += s.TotalCredits
 	}
 	totalErrors := 0
 	for _, t := range ov.Tools {
@@ -127,6 +130,9 @@ func (m *model) renderSummaryBox(width int) string {
 		len(ov.Agents), errorCountText(totalErrors))
 	fmt.Fprintf(&b, "  tool calls: %-5d  prompts: %d",
 		totalTools, totalPrompts)
+	if totalCredits > 0 {
+		fmt.Fprintf(&b, "\n  credits:    %.2f", totalCredits)
+	}
 	return borderStyle.Width(width).Render(b.String())
 }
 
@@ -287,8 +293,8 @@ func (m *model) renderRecentSessionsBox(width int) string {
 		return borderStyle.Width(width).Render(b.String())
 	}
 
-	// Fixed chars: 2(indent) + 12(ID) + 2 + 8(Dur) + 2 + 9(Status) + 2 + 5(Tools) + 2 + 7(Prompts) + 2 + 11(Last act) = 64
-	fixed := 2 + 12 + 2 + 8 + 2 + 9 + 2 + 5 + 2 + 7 + 2 + 11
+	// Fixed chars: 2(indent) + 12(ID) + 2 + 8(Dur) + 2 + 9(Status) + 2 + 5(Tools) + 2 + 7(Prompts) + 2 + 7(Credits) + 2 + 11(Last act) = 73
+	fixed := 2 + 12 + 2 + 8 + 2 + 9 + 2 + 5 + 2 + 7 + 2 + 7 + 2 + 11
 	remaining := interior - fixed - 2 // 2 spaces between ID and Agent
 	titleW := 40
 	agentW := remaining - 2 - titleW // 2 spaces between Agent and Title
@@ -299,8 +305,8 @@ func (m *model) renderRecentSessionsBox(width int) string {
 		agentW = 16
 	}
 
-	fmt.Fprintf(&b, "  %-12s  %-*s  %-*s  %-8s  %-9s  %5s  %7s  %-11s\n",
-		"ID", agentW, "Agent", titleW, "Title", "Duration", "Status", "Tools", "Prompts", "Last act")
+	fmt.Fprintf(&b, "  %-12s  %-*s  %-*s  %-8s  %-9s  %5s  %7s  %7s  %-11s\n",
+		"ID", agentW, "Agent", titleW, "Title", "Duration", "Status", "Tools", "Prompts", "Credits", "Last act")
 	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
 	b.WriteString("\n")
 	now := time.Now()
@@ -313,13 +319,14 @@ func (m *model) renderRecentSessionsBox(width int) string {
 		}
 		prevID = s.ID
 		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
-		fmt.Fprintf(&b, "  %-12s  %-*s  %s  %-8s  %s  %5d  %7d  %-11s\n",
+		fmt.Fprintf(&b, "  %-12s  %-*s  %s  %-8s  %s  %5d  %7d  %7s  %-11s\n",
 			idCell,
 			agentW, agentCell,
 			padRightVisible(titleCell, titleW),
 			formatDur(time.Duration(s.Duration)),
 			padRightVisible(statusBadge(s.Active), 9),
 			s.ToolCalls, s.Prompts,
+			formatCredits(s.TotalCredits),
 			formatLastActivity(s.LastActivity, now),
 		)
 	}
@@ -387,9 +394,9 @@ func (m *model) renderSessionsList() string {
 	sessions := m.metrics.Sessions
 	interior := m.interiorWidth()
 
-	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 5(Files) + 1 + 11(Last act)
+	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 5(Files) + 1 + 7(Credits) + 1 + 11(Last act)
 	titleW := 40
-	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 11
+	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 7 + 1 + 11
 	agentW := interior - fixed
 	if agentW < 10 {
 		agentW = 10
@@ -399,8 +406,8 @@ func (m *model) renderSessionsList() string {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %5s %-11s\n",
-		"ID", agentW, "Agent", titleW, "Title", "Dur", "Status", "Tool", "Prompt", "Files", "Last act")
+	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %5s %7s %-11s\n",
+		"ID", agentW, "Agent", titleW, "Title", "Dur", "Status", "Tool", "Prompt", "Files", "Credits", "Last act")
 	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
 	b.WriteString("\n")
 
@@ -422,13 +429,14 @@ func (m *model) renderSessionsList() string {
 		prevID = s.ID
 		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
 		status := statusBadge(s.Active)
-		row := fmt.Sprintf("  %-12s %-*s %s %-8s %s %4d %5d %5d %-11s",
+		row := fmt.Sprintf("  %-12s %-*s %s %-8s %s %4d %5d %5d %7s %-11s",
 			idCell,
 			agentW, agentCell,
 			padRightVisible(titleCell, titleW),
 			formatDur(time.Duration(s.Duration)),
 			padRightVisible(status, 9),
 			s.ToolCalls, s.Prompts, s.FilesChanged,
+			formatCredits(s.TotalCredits),
 			formatLastActivity(s.LastActivity, now),
 		)
 		if i == m.cursor[tabSessions] {
@@ -440,6 +448,24 @@ func (m *model) renderSessionsList() string {
 	}
 	fmt.Fprintf(&b, "\n%s  %d/%d", mutedStyle.Render("showing"), end-start, len(sessions))
 	return borderStyle.Width(m.contentWidth()).Render(b.String())
+}
+
+func formatCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	default:
+		return strconv.Itoa(n)
+	}
+}
+
+func formatCredits(v float64) string {
+	if v == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.2f", v)
 }
 
 // formatLastActivity renders t as HH:MM:SS when same local day as now, otherwise MM-DD HH:MM.
@@ -485,7 +511,15 @@ func (m *model) renderSessionHeader(s *SessionDetail) string {
 	fmt.Fprintf(&b, "  ended:    %s\n", s.EndTime.Local().Format(tsLayout))
 	fmt.Fprintf(&b, "  duration: %s\n", formatDur(time.Duration(s.Duration)))
 	fmt.Fprintf(&b, "  status:   %s\n", statusBadge(s.Active))
-	fmt.Fprintf(&b, "  tools:    %d    prompts: %d    files: %d\n\n", s.ToolCalls, s.Prompts, s.FilesChanged)
+	fmt.Fprintf(&b, "  tools:    %d    prompts: %d    files: %d", s.ToolCalls, s.Prompts, s.FilesChanged)
+	if s.TotalCredits > 0 {
+		fmt.Fprintf(&b, "    credits: %.2f", s.TotalCredits)
+	}
+	b.WriteByte('\n')
+	if s.TotalInputTokens > 0 || s.TotalOutputTokens > 0 {
+		fmt.Fprintf(&b, "  tokens:   %s in / %s out\n", formatCount(s.TotalInputTokens), formatCount(s.TotalOutputTokens))
+	}
+	b.WriteByte('\n')
 	return b.String()
 }
 

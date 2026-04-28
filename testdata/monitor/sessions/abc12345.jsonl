@@ -1,0 +1,9 @@
+{"version": "1.0", "kind": "Prompt", "data": {"meta": {"timestamp": 1776675601}, "content": [{"kind": "text", "data": "\"implement feature\""}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-0", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_abc12345_0", "name": "read_file", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_abc12345_0", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-1", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_abc12345_1", "name": "bash", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_abc12345_1", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-2", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_abc12345_2", "name": "write_file", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_abc12345_2", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}
+{"version": "1.0", "kind": "AssistantMessage", "data": {"id": "msg-3", "role": "assistant", "content": [{"kind": "toolUse", "data": {"toolUseId": "tooluse_abc12345_3", "name": "bash", "input": {}}}]}}
+{"version": "1.0", "kind": "ToolResults", "data": {"content": [{"kind": "toolResult", "data": {"toolUseId": "tooluse_abc12345_3", "status": "success", "content": [{"kind": "text", "data": "\"ok\""}]}}]}}

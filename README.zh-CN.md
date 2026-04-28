@@ -53,15 +53,15 @@ just build
 ## 快速开始
 
 ```bash
+# 正常运行 Kiro，然后查看记录的会话。
+kapm monitor
+kapm serve
+
 # 创建或更新 Kiro Agent。
 kapm agent generate
 
 # 为选中的 Agent 安装 kapm hook。
 kapm init-hook
-
-# 正常运行 Kiro，然后查看记录的会话。
-kapm monitor
-kapm serve
 ```
 
 ## 监控

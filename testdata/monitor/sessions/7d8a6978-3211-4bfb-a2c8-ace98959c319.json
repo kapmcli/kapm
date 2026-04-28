@@ -1,0 +1,27 @@
+{
+  "session_id": "7d8a6978-3211-4bfb-a2c8-ace98959c319",
+  "cwd": "/home/dev/myproject",
+  "created_at": "2026-04-24T06:24:54.456696Z",
+  "updated_at": "2026-04-24T06:26:59.258872Z",
+  "title": "NAMING & CONVENTION PASS: Analyze the kapm Go codebase for naming and convention",
+  "session_state": {
+    "version": "v1",
+    "agent_name": "explorer",
+    "conversation_metadata": {
+      "user_turn_metadatas": [
+        {
+          "turn_duration": {
+            "secs": 300,
+            "nanos": 0
+          },
+          "end_timestamp": "2026-04-24T06:26:59.258872Z",
+          "end_reason": "UserTurnEnd",
+          "input_token_count": 0,
+          "output_token_count": 0,
+          "context_usage_percentage": 0.3,
+          "metering_usage": []
+        }
+      ]
+    }
+  }
+}

@@ -71,6 +71,9 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 		refs = append(refs, AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
 		merged.ToolCalls += sd.ToolCalls
 		merged.Prompts += sd.Prompts
+		merged.TotalInputTokens += sd.TotalInputTokens
+		merged.TotalOutputTokens += sd.TotalOutputTokens
+		merged.TotalCredits += sd.TotalCredits
 		if sd.Active {
 			merged.Active = true
 		}
@@ -254,8 +257,8 @@ type HookRecord struct {
 type MergedRecord struct {
 	// sessions-derived
 	SessionID     string
-	Kind          string          // "prompt", "toolUse", "toolResult", "assistantText"
-	ToolUseID     string          // toolUse/toolResult pairing
+	Kind          string // "prompt", "toolUse", "toolResult", "assistantText"
+	ToolUseID     string // toolUse/toolResult pairing
 	ToolName      string
 	ToolInput     json.RawMessage // raw JSON from toolUse.input
 	ToolStatus    string          // toolResult status ("success"/"error")
@@ -275,6 +278,11 @@ type MergedRecord struct {
 	Cwd       string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	// sessions meta-derived (token/credit totals, emitted once per session as Kind=="sessionMeta")
+	TotalInputTokens  int
+	TotalOutputTokens int
+	TotalCredits      float64
 }
 
 // parseHookRecords reads hook JSONL in the new minimal format.
@@ -354,6 +362,31 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					break
 				}
 			}
+		}
+
+		// Aggregate token/credit totals from per-turn metadata.
+		var inputTok, outputTok int
+		var credits float64
+		for _, utm := range meta.SessionState.ConversationMetadata.UserTurnMetadatas {
+			inputTok += utm.InputTokenCount
+			outputTok += utm.OutputTokenCount
+			for _, mu := range utm.MeteringUsage {
+				credits += mu.Value
+			}
+		}
+		if inputTok > 0 || outputTok > 0 || credits > 0 {
+			out = append(out, MergedRecord{
+				SessionID:         meta.SessionID,
+				Kind:              "sessionMeta",
+				Agent:             currentAgent,
+				Title:             meta.Title,
+				Cwd:               meta.Cwd,
+				CreatedAt:         createdAt,
+				UpdatedAt:         updatedAt,
+				TotalInputTokens:  inputTok,
+				TotalOutputTokens: outputTok,
+				TotalCredits:      credits,
+			})
 		}
 
 		// Count toolUse positions for position-based matching.

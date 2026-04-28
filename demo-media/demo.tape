@@ -14,7 +14,7 @@ Show
 
 Sleep 1s
 
-Type "./kapm monitor --since 8760h --logs-dir testdata/monitor/logs"
+Type "./kapm monitor --since 8760h --logs-dir testdata/monitor/logs --sessions-dir testdata/monitor/sessions --global"
 Enter
 Wait+Screen /Overview/
 Sleep 2.5s

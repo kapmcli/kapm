@@ -1,0 +1,333 @@
+{
+  "session_id": "8d0e225e-4b67-4f00-8ea0-31313cd09385",
+  "cwd": "/home/dev/myproject",
+  "created_at": "2026-04-23T15:56:02.669876Z",
+  "updated_at": "2026-04-23T16:53:32.351106Z",
+  "title": "run .kiro/plans/2026-04-24-refactor-topimpact/",
+  "session_state": {
+    "version": "v1",
+    "agent_name": "orchestrator",
+    "conversation_metadata": {
+      "user_turn_metadatas": [
+        {
+          "turn_duration": {
+            "secs": 300,
+            "nanos": 0
+          },
+          "end_timestamp": "2026-04-23T16:53:32.351106Z",
+          "end_reason": "UserTurnEnd",
+          "input_token_count": 0,
+          "output_token_count": 0,
+          "context_usage_percentage": 0.3,
+          "metering_usage": [
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            },
+            {
+              "value": 0.15,
+              "unit": "credit",
+              "unitPlural": "credits"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

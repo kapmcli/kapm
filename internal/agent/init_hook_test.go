@@ -56,12 +56,12 @@ func runInitHook(t *testing.T, root string, remove bool, input string) (string, 
 	t.Helper()
 	var outBuf, errBuf bytes.Buffer
 	err := InitHook(InitHookOptions{
-		Root:   root,
-		Remove: remove,
+		Root:       root,
+		Remove:     remove,
 		Executable: testKapmExecutable(t),
-		In:     strings.NewReader(input),
-		Out:    &outBuf,
-		Err:    &errBuf,
+		In:         strings.NewReader(input),
+		Out:        &outBuf,
+		Err:        &errBuf,
 	})
 	return outBuf.String(), errBuf.String(), err
 }
@@ -240,11 +240,11 @@ func TestInitHookNoopOnEmptyAgentsDir(t *testing.T) {
 
 	var out bytes.Buffer
 	err := InitHook(InitHookOptions{
-		Root: root,
+		Root:       root,
 		Executable: testKapmExecutable(t),
-		In:   strings.NewReader(""),
-		Out:  &out,
-		Err:  &bytes.Buffer{},
+		In:         strings.NewReader(""),
+		Out:        &out,
+		Err:        &bytes.Buffer{},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

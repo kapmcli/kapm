@@ -76,12 +76,12 @@ type ConversationMetadata struct {
 
 // UserTurnMetadata holds metrics for one user turn.
 type UserTurnMetadata struct {
-	TurnDuration     TurnDuration   `json:"turn_duration"`
-	EndTimestamp     string         `json:"end_timestamp,omitempty"`
-	EndReason        string         `json:"end_reason,omitempty"`
-	InputTokenCount  int            `json:"input_token_count"`
-	OutputTokenCount int            `json:"output_token_count"`
-	ContextUsagePct  float64        `json:"context_usage_percentage"`
+	TurnDuration     TurnDuration    `json:"turn_duration"`
+	EndTimestamp     string          `json:"end_timestamp,omitempty"`
+	EndReason        string          `json:"end_reason,omitempty"`
+	InputTokenCount  int             `json:"input_token_count"`
+	OutputTokenCount int             `json:"output_token_count"`
+	ContextUsagePct  float64         `json:"context_usage_percentage"`
 	MeteringUsage    []MeteringEntry `json:"metering_usage"`
 }
 

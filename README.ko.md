@@ -53,15 +53,15 @@ just build
 ## 빠른 시작
 
 ```bash
+# Kiro를 실행한 뒤 기록된 세션을 확인합니다.
+kapm monitor
+kapm serve
+
 # Kiro 에이전트를 만들거나 업데이트합니다.
 kapm agent generate
 
 # 선택한 에이전트에 kapm hook을 설치합니다.
 kapm init-hook
-
-# Kiro를 실행한 뒤 기록된 세션을 확인합니다.
-kapm monitor
-kapm serve
 ```
 
 ## 모니터링

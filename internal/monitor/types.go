@@ -80,11 +80,14 @@ type ToolMetric struct {
 
 // AgentMetric is an overview-level agent activity summary retained for backwards compatibility.
 type AgentMetric struct {
-	Name         string
-	SessionCount int
-	ToolCalls    int
-	Prompts      int
-	FilesChanged int
+	Name              string
+	SessionCount      int
+	ToolCalls         int
+	Prompts           int
+	FilesChanged      int
+	TotalInputTokens  int
+	TotalOutputTokens int
+	TotalCredits      float64
 }
 
 // HourlyMetric is an hourly event count for activity chart display.
@@ -186,11 +189,14 @@ type sessionState struct {
 	toolCalls          int
 	prompts            []string
 	timeline           []EventEntry
-	sumTitle           string               // latest summary-tool taskDescription (if any)
-	assistantResponse  string               // from stop event
-	changes            []FileChange         // write preToolUse events, chronological
-	filesChangedCached int                  // countUniqueFiles(changes), populated in finalizeSessionStats
-	pendingToolUse     map[string]int       // toolUseID → timeline index
+	sumTitle           string         // latest summary-tool taskDescription (if any)
+	assistantResponse  string         // from stop event
+	changes            []FileChange   // write preToolUse events, chronological
+	filesChangedCached int            // countUniqueFiles(changes), populated in finalizeSessionStats
+	pendingToolUse     map[string]int // toolUseID → timeline index
+	totalInputTokens   int
+	totalOutputTokens  int
+	totalCredits       float64
 }
 
 // aggState holds the mutable accumulators shared by the three

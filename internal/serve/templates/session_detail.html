@@ -21,6 +21,12 @@
       <tr><th>Tool calls</th><td>{{$s.ToolCalls}}</td></tr>
       <tr><th>Prompts</th><td>{{$s.Prompts}}</td></tr>
       <tr><th>Files changed</th><td>{{$s.FilesChanged}}</td></tr>
+      {{- if or $s.TotalInputTokens $s.TotalOutputTokens}}
+      <tr><th>Tokens</th><td>{{fmtTokens $s.TotalInputTokens}} in / {{fmtTokens $s.TotalOutputTokens}} out</td></tr>
+      {{- end}}
+      {{- if $s.TotalCredits}}
+      <tr><th>Credits</th><td>{{fmtCredits $s.TotalCredits}}</td></tr>
+      {{- end}}
     </tbody></table>
   </div>
 </section>

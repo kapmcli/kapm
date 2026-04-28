@@ -40,16 +40,17 @@ func parseLogsCommand(fs *flag.FlagSet, args []string, command string) (bool, er
 
 // addLogsFlags registers the common flags on fs and returns pointers to the flag values.
 // Call resolveLogsFlags after fs.Parse(args) succeeds.
-func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir *string, global *bool) {
+func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir, sessionsDir *string, global *bool) {
 	since = fs.String("since", "24h", "time window (e.g. 1h, 3d, 1w)")
 	logsDir = fs.String("logs-dir", "", "path to logs directory (default: <target-dir>/.kapm/logs)")
 	targetDir = fs.String("target-dir", ".", "target directory (default: current directory)")
+	sessionsDir = fs.String("sessions-dir", "", "path to sessions directory (default: ~/.kiro/sessions/cli)")
 	global = fs.Bool("global", false, "show sessions from all projects (default: current directory only)")
 	return
 }
 
 // resolveLogsFlags validates and resolves the common flags into a logsFlags.
-func resolveLogsFlags(since, logsDir, targetDir string, global bool) (logsFlags, error) {
+func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag string, global bool) (logsFlags, error) {
 	td, err := expandTarget(targetDir)
 	if err != nil {
 		return logsFlags{}, err
@@ -64,8 +65,8 @@ func resolveLogsFlags(since, logsDir, targetDir string, global bool) (logsFlags,
 		return logsFlags{}, fmt.Errorf("--since: %w", err)
 	}
 	home, _ := os.UserHomeDir()
-	sessionsDir := ""
-	if home != "" {
+	sessionsDir := sessionsDirFlag
+	if sessionsDir == "" && home != "" {
 		sessionsDir = filepath.Join(home, ".kiro", "sessions", "cli")
 	}
 	var cwdFilter string
@@ -89,7 +90,7 @@ func runLogsCommand(
 	return func(args []string) error {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
 		fs.SetOutput(os.Stderr)
-		since, logsDir, targetDir, global := addLogsFlags(fs)
+		since, logsDir, targetDir, sessionsDir, global := addLogsFlags(fs)
 		if registerExtras != nil {
 			registerExtras(fs)
 		}
@@ -107,7 +108,7 @@ func runLogsCommand(
 			return nil
 		}
 
-		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir, *global)
+		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir, *sessionsDir, *global)
 		if err != nil {
 			return err
 		}

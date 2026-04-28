@@ -53,15 +53,15 @@ just build
 ## クイックスタート
 
 ```bash
+# Kiro を実行したあと、記録されたセッションを確認
+kapm monitor
+kapm serve
+
 # Kiro エージェントを作成または更新
 kapm agent generate
 
 # 選択したエージェントに kapm hook を追加
 kapm init-hook
-
-# Kiro を実行したあと、記録されたセッションを確認
-kapm monitor
-kapm serve
 ```
 
 ## 監視
