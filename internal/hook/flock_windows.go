@@ -15,8 +15,14 @@ func flockExclusive(f *os.File) error {
 }
 
 func flockUnlock(f *os.File) {
-	var overlapped windows.Overlapped
-	_ = windows.UnlockFileEx(windows.Handle(f.Fd()), 0, lockLength, 0, &overlapped)
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return
+	}
+	_ = conn.Control(func(fd uintptr) {
+		var overlapped windows.Overlapped
+		_ = windows.UnlockFileEx(windows.Handle(fd), 0, lockLength, 0, &overlapped)
+	})
 }
 
 func flockRotate(f *os.File) error {
@@ -24,6 +30,16 @@ func flockRotate(f *os.File) error {
 }
 
 func lockFile(f *os.File, flags uint32) error {
-	var overlapped windows.Overlapped
-	return windows.LockFileEx(windows.Handle(f.Fd()), flags, 0, lockLength, 0, &overlapped)
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var lockErr error
+	if err := conn.Control(func(fd uintptr) {
+		var overlapped windows.Overlapped
+		lockErr = windows.LockFileEx(windows.Handle(fd), flags, 0, lockLength, 0, &overlapped)
+	}); err != nil {
+		return err
+	}
+	return lockErr
 }

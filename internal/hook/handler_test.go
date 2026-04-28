@@ -30,6 +30,9 @@ func readLines(t *testing.T, path string) []string {
 			lines = append(lines, l)
 		}
 	}
+	if len(lines) == 0 {
+		t.Fatalf("no log lines in %q", path)
+	}
 	return lines
 }
 
@@ -347,9 +350,6 @@ func TestHandleMinimalRecord(t *testing.T) {
 		t.Fatalf("Handle wrote to stderr: %s", stderr.String())
 	}
 	lines := readLines(t, logFile(dir, "s-min"))
-	if len(lines) == 0 {
-		t.Fatal("expected at least one log line")
-	}
 	var rec map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
 		t.Fatalf("unmarshal: %v", err)
