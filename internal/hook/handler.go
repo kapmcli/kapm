@@ -158,7 +158,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	}
 
 	logPath := filepath.Join(logDir, sessionID+".jsonl")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "hook-handler: open %q: %v\n", logPath, err)
 		return 0
@@ -174,11 +174,6 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		return 0
 	}
 	defer flockUnlock(f)
-
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: seek %q: %v\n", logPath, err)
-		return 0
-	}
 
 	if _, err := f.Write(line); err != nil {
 		_, _ = fmt.Fprintf(stderr, "hook-handler: write %q: %v\n", logPath, err)
