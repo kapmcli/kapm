@@ -216,9 +216,7 @@ func mergeAssistantResponse(src []SessionDetail) string {
 	}
 	if len(parts) == 1 {
 		r := parts[0].resp
-		if len(r) > maxAssistantResponseLength {
-			r = r[:maxAssistantResponseLength]
-		}
+		r = truncateUTF8(r, maxAssistantResponseLength)
 		return r
 	}
 	var sb strings.Builder
@@ -232,9 +230,7 @@ func mergeAssistantResponse(src []SessionDetail) string {
 		sb.WriteString(p.resp)
 	}
 	out := sb.String()
-	if len(out) > maxAssistantResponseLength {
-		out = out[:maxAssistantResponseLength]
-	}
+	out = truncateUTF8(out, maxAssistantResponseLength)
 	return out
 }
 

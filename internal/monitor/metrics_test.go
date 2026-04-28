@@ -435,7 +435,7 @@ func TestInputSummaryExtraction(t *testing.T) {
 		{"path field", `{"path":"/tmp/foo"}`, "/tmp/foo"},
 		{"pattern field", `{"pattern":"foo.*bar"}`, "foo.*bar"},
 		{"newlines replaced", `{"__tool_use_purpose":"a\nb\tc"}`, "a b c"},
-		{"truncates", `{"__tool_use_purpose":"` + strings.Repeat("x", 200) + `"}`, strings.Repeat("x", 119) + "…"},
+		{"truncates", `{"__tool_use_purpose":"` + strings.Repeat("x", 200) + `"}`, strings.Repeat("x", 117) + "…"},
 		{"fallback first string", `{"zzz":"last","aaa":"first"}`, "first"},
 		{"unparseable", `not-json`, "not-json"},
 	}

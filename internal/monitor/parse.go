@@ -131,7 +131,7 @@ func cleanSummary(s string) string {
 	}
 	out := strings.Join(strings.Fields(sb.String()), " ")
 	if len(out) > maxSummaryLength {
-		out = out[:maxSummaryLength-1] + "…"
+		out = truncateUTF8(out, maxSummaryLength-len("…")) + "…"
 	}
 	return out
 }
@@ -210,16 +210,11 @@ func parseErrorDetail(raw json.RawMessage) string {
 			return ""
 		}
 		stderr := item.JSON.Stderr
-		if len(stderr) > maxErrorDetailLength {
-			stderr = stderr[:maxErrorDetailLength]
-		}
+		stderr = truncateUTF8(stderr, maxErrorDetailLength)
 		return "exit " + strconv.Itoa(n) + ": " + stderr
 	}
 	if item.Text != "" {
-		if len(item.Text) > maxErrorDetailLength {
-			return item.Text[:maxErrorDetailLength]
-		}
-		return item.Text
+		return truncateUTF8(item.Text, maxErrorDetailLength)
 	}
 	return ""
 }
@@ -236,7 +231,7 @@ func parseAssistantResponse(raw json.RawMessage) string {
 		s = string(raw)
 	}
 	if len(s) > maxAssistantResponseLength {
-		s = s[:maxAssistantResponseLength]
+		s = truncateUTF8(s, maxAssistantResponseLength)
 	}
 	return s
 }

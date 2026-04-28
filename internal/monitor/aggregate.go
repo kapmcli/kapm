@@ -134,9 +134,7 @@ func processRecord(st *aggState, r MergedRecord) {
 
 	case "assistantText":
 		s.assistantResponse = r.AssistantText
-		if len(s.assistantResponse) > maxAssistantResponseLength {
-			s.assistantResponse = s.assistantResponse[:maxAssistantResponseLength]
-		}
+		s.assistantResponse = truncateUTF8(s.assistantResponse, maxAssistantResponseLength)
 	}
 }
 
@@ -174,9 +172,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	if r.ToolStatus == "error" {
 		s.timeline[matchIdx].IsError = true
 		s.timeline[matchIdx].ErrorDetail = r.ErrorDetail
-		if len(s.timeline[matchIdx].ErrorDetail) > maxErrorDetailLength {
-			s.timeline[matchIdx].ErrorDetail = s.timeline[matchIdx].ErrorDetail[:maxErrorDetailLength]
-		}
+		s.timeline[matchIdx].ErrorDetail = truncateUTF8(s.timeline[matchIdx].ErrorDetail, maxErrorDetailLength)
 		call.IsError = true
 		td.ErrorCount++
 		td.Errors = append(td.Errors, call)
