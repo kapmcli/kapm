@@ -414,7 +414,11 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 	if err != nil {
 		return loadedMetrics{}, err
 	}
-	return v.(loadedMetrics), nil
+	lm, ok := v.(loadedMetrics)
+	if !ok {
+		return loadedMetrics{}, fmt.Errorf("unexpected metrics type %T", v)
+	}
+	return lm, nil
 }
 
 // handleAPIMetrics returns the full DetailedMetrics (optionally filtered) as JSON.
