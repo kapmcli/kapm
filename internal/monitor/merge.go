@@ -66,12 +66,6 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 
 	refs := make([]AgentRef, 0, len(src))
 	var timeline []EventEntry
-	type tsPrompt struct {
-		ts  int64 // unix nanos for stable sort
-		seq int   // tiebreak on equal ts
-		p   string
-	}
-	var prompts []tsPrompt
 
 	for _, sd := range src {
 		refs = append(refs, AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
@@ -90,32 +84,6 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 			merged.LastActivity = sd.LastActivity
 		}
 		timeline = append(timeline, sd.Timeline...)
-
-		// Pair each prompt with its timestamp by walking this agent's timeline
-		// in chronological order and this agent's PromptHistory in reversed
-		// order (PromptHistory is newest-first; Timeline is oldest-first).
-		ph := sd.PromptHistory
-		if len(ph) > 0 {
-			chronological := make([]string, len(ph))
-			for i, s := range ph {
-				chronological[len(ph)-1-i] = s
-			}
-			i := 0
-			for _, ev := range sd.Timeline {
-				if ev.Event != apmconfig.EventUserPromptSubmit {
-					continue
-				}
-				if i >= len(chronological) {
-					break
-				}
-				prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: chronological[i]})
-				i++
-			}
-			// Any unmapped prompts: append with zero ts so they sort oldest.
-			for ; i < len(chronological); i++ {
-				prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: chronological[i]})
-			}
-		}
 	}
 
 	// Title: first non-empty by LastActivity desc.
@@ -139,30 +107,7 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	slices.SortStableFunc(timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) })
 	merged.Timeline = timeline
 
-	// Sort prompts newest-first by paired ts (tiebreak: later seq first to
-	// preserve relative input order for equal ts).
-	slices.SortStableFunc(prompts, func(a, b tsPrompt) int {
-		if a.ts != b.ts {
-			if a.ts > b.ts {
-				return -1
-			}
-			return 1
-		}
-		if a.seq > b.seq {
-			return -1
-		}
-		if a.seq < b.seq {
-			return 1
-		}
-		return 0
-	})
-	merged.PromptHistory = make([]string, len(prompts))
-	for i, p := range prompts {
-		merged.PromptHistory[i] = p.p
-	}
-	if merged.PromptHistory == nil {
-		merged.PromptHistory = []string{}
-	}
+	merged.PromptHistory = pairPromptsWithTimeline(src)
 
 	merged.ToolSummary = mergeToolSummary(src)
 	merged.AssistantResponse = mergeAssistantResponse(src)
@@ -178,6 +123,66 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	merged.FilesChanged = countUniqueFiles(changes)
 
 	return merged, refs
+}
+
+// pairPromptsWithTimeline pairs each prompt in history (newest-first) with
+// its timestamp from the timeline (oldest-first) by matching
+// EventUserPromptSubmit entries positionally. Unmapped prompts get zero ts.
+// Returns prompts sorted newest-first by paired timestamp.
+func pairPromptsWithTimeline(details []SessionDetail) []string {
+	type tsPrompt struct {
+		ts  int64
+		seq int
+		p   string
+	}
+	var prompts []tsPrompt
+
+	for _, sd := range details {
+		ph := sd.PromptHistory
+		if len(ph) == 0 {
+			continue
+		}
+		chronological := make([]string, len(ph))
+		for i, s := range ph {
+			chronological[len(ph)-1-i] = s
+		}
+		i := 0
+		for _, ev := range sd.Timeline {
+			if ev.Event != apmconfig.EventUserPromptSubmit {
+				continue
+			}
+			if i >= len(chronological) {
+				break
+			}
+			prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: chronological[i]})
+			i++
+		}
+		for ; i < len(chronological); i++ {
+			prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: chronological[i]})
+		}
+	}
+
+	slices.SortStableFunc(prompts, func(a, b tsPrompt) int {
+		if a.ts != b.ts {
+			if a.ts > b.ts {
+				return -1
+			}
+			return 1
+		}
+		if a.seq > b.seq {
+			return -1
+		}
+		if a.seq < b.seq {
+			return 1
+		}
+		return 0
+	})
+
+	out := make([]string, len(prompts))
+	for i, p := range prompts {
+		out[i] = p.p
+	}
+	return out
 }
 
 // mergeToolSummary groups ToolSummary entries by Tool across all agents,
@@ -216,9 +221,7 @@ func mergeAssistantResponse(src []SessionDetail) string {
 	}
 	if len(parts) == 1 {
 		r := parts[0].resp
-		if len(r) > maxAssistantResponseLength {
-			r = r[:maxAssistantResponseLength]
-		}
+		r = truncateUTF8(r, maxAssistantResponseLength)
 		return r
 	}
 	var sb strings.Builder
@@ -232,9 +235,7 @@ func mergeAssistantResponse(src []SessionDetail) string {
 		sb.WriteString(p.resp)
 	}
 	out := sb.String()
-	if len(out) > maxAssistantResponseLength {
-		out = out[:maxAssistantResponseLength]
-	}
+	out = truncateUTF8(out, maxAssistantResponseLength)
 	return out
 }
 

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 func mustJSON(v any) json.RawMessage {
@@ -260,5 +262,89 @@ func TestMergeSessions_ErrorDetail(t *testing.T) {
 	}
 	if tr.ErrorDetail != "command not found" {
 		t.Errorf("ErrorDetail = %q, want 'command not found'", tr.ErrorDetail)
+	}
+}
+
+func promptEvent(ts time.Time) EventEntry {
+	return EventEntry{Ts: ts, Event: apmconfig.EventUserPromptSubmit}
+}
+
+func TestPairPromptsWithTimeline(t *testing.T) {
+	t1 := time.Unix(1000, 0).UTC()
+	t2 := time.Unix(2000, 0).UTC()
+	t3 := time.Unix(3000, 0).UTC()
+
+	tests := []struct {
+		name    string
+		details []SessionDetail
+		want    []string
+	}{
+		{
+			name:    "empty",
+			details: nil,
+			want:    []string{},
+		},
+		{
+			name: "1:1 match",
+			details: []SessionDetail{
+				{
+					SessionMetric: SessionMetric{},
+					PromptHistory: []string{"p2", "p1"}, // newest-first
+					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t2)},
+				},
+			},
+			want: []string{"p2", "p1"}, // p2 paired with t2 (newer), p1 with t1
+		},
+		{
+			name: "more prompts than events",
+			details: []SessionDetail{
+				{
+					PromptHistory: []string{"p3", "p2", "p1"}, // newest-first
+					Timeline:      []EventEntry{promptEvent(t1)},
+				},
+			},
+			// p1 paired with t1, p2 and p3 get zero ts → sort after p1
+			want: []string{"p1", "p3", "p2"},
+		},
+		{
+			name: "multiple agents interleaved by timestamp",
+			details: []SessionDetail{
+				{
+					PromptHistory: []string{"a2", "a1"},
+					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t3)},
+				},
+				{
+					PromptHistory: []string{"b1"},
+					Timeline:      []EventEntry{promptEvent(t2)},
+				},
+			},
+			// a1→t1, a2→t3, b1→t2 → sorted newest-first: a2(t3), b1(t2), a1(t1)
+			want: []string{"a2", "b1", "a1"},
+		},
+		{
+			name: "equal timestamps preserve input order",
+			details: []SessionDetail{
+				{
+					PromptHistory: []string{"p2", "p1"},
+					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t1)},
+				},
+			},
+			// both get t1; tiebreak by seq desc → p2(seq=1) before p1(seq=0)
+			want: []string{"p2", "p1"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pairPromptsWithTimeline(tc.details)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len=%d, want %d: got %v", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("[%d] got %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
 	}
 }

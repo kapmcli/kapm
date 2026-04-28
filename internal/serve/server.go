@@ -291,10 +291,11 @@ func (s *Server) Run(ctx context.Context) error {
 		return fmt.Errorf("serve listen %q: %w", s.Addr(), err)
 	}
 	srv := &http.Server{
-		Handler:      s.handler,
-		ReadTimeout:  httpReadTimeout,
-		WriteTimeout: 0, // SSE streams: no write deadline
-		IdleTimeout:  httpIdleTimeout,
+		Handler:           s.handler,
+		ReadTimeout:       httpReadTimeout,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		WriteTimeout:      0, // SSE streams: no write deadline
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -414,7 +415,11 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 	if err != nil {
 		return loadedMetrics{}, err
 	}
-	return v.(loadedMetrics), nil
+	lm, ok := v.(loadedMetrics)
+	if !ok {
+		return loadedMetrics{}, fmt.Errorf("unexpected metrics type %T", v)
+	}
+	return lm, nil
 }
 
 // handleAPIMetrics returns the full DetailedMetrics (optionally filtered) as JSON.
@@ -867,6 +872,23 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error, 
 		"status", status,
 		"err", err,
 	)
+	// Attempt styled error page. Fall back to plain text if template
+	// rendering itself fails (avoids infinite recursion since renderPage
+	// calls handleError on template errors).
+	var buf bytes.Buffer
+	data := map[string]any{
+		"Title":   http.StatusText(status),
+		"Active":  "",
+		"Status":  status,
+		"Heading": http.StatusText(status),
+		"Message": http.StatusText(status),
+	}
+	if tmplErr := errorTmpl.ExecuteTemplate(&buf, "layout", data); tmplErr == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		_, _ = buf.WriteTo(w)
+		return
+	}
 	http.Error(w, http.StatusText(status), status)
 }
 
@@ -974,9 +996,10 @@ func toolDetailByName(tools []monitor.ToolDetail, name string) (monitor.ToolDeta
 const defaultMaxSSE int32 = 64
 
 const (
-	sseStreamInterval = 5 * time.Second
-	httpReadTimeout   = 10 * time.Second
-	httpIdleTimeout   = 60 * time.Second
+	sseStreamInterval     = 5 * time.Second
+	httpReadTimeout       = 10 * time.Second
+	httpReadHeaderTimeout = 5 * time.Second
+	httpIdleTimeout       = 60 * time.Second
 )
 
 const (

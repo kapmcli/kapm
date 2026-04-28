@@ -22,7 +22,7 @@
 
 kapm은 Kiro 에이전트 워크스페이스를 이해하고 관리하기 쉽게 만드는 CLI입니다.
 
-- **Kiro 세션 모니터링**: hook 이벤트를 `.kapm/logs`에 기록하고, 세션, 도구 호출, 실패, 소요 시간, 생성된 에이전트, 프롬프트, 응답, 파일 변경, Skill 읽기 정보를 TUI와 WebUI에서 확인합니다.
+- **Kiro 세션 모니터링**: `~/.kiro/sessions/cli/`를 기본 데이터 소스로 읽고, 도구 호출 타임스탬프·에이전트 귀속·셸 종료 상태를 위해 `.kapm/logs/`의 선택적 hook 로그를 보조로 활용합니다. 세션, 도구 호출, 실패, 소요 시간, 에이전트, 프롬프트, 응답, 파일 변경, Skill 읽기 정보를 TUI와 WebUI에서 확인합니다.
 - **Kiro 에이전트 관리**: `.kiro/agents/*.json`과 `.kiro/agent-prompts/*.md`를 대화형으로 만들고 업데이트합니다.
 - **패키지 형식 연결**: APM 패키지와 Kiro Power를 프로젝트 로컬 `.kiro/` 파일로 동기화합니다.
 
@@ -66,9 +66,9 @@ kapm serve
 
 ## 모니터링
 
-`kapm init-hook`은 선택한 `.kiro/agents/*.json` 파일에 kapm이 관리하는 hook 항목을 추가합니다. Kiro가 hook 이벤트를 내보내면 이 항목이 `kapm hook-handler --agent <name>`을 실행합니다.
+kapm은 Kiro의 세션 파일(`~/.kiro/sessions/cli/{uuid}.jsonl` 및 `{uuid}.json`)을 기본 데이터 소스로 읽습니다. 기본 모니터링에는 hook 설치가 필요 없으며, 세션 파일에는 프롬프트, 어시스턴트 응답, 도구 호출, 도구 결과, 턴별 메타데이터(토큰, 크레딧, 소요 시간)가 포함됩니다.
 
-hook 이벤트는 `.kapm/logs/{session_id}.jsonl`에 JSONL로 저장됩니다. `kapm monitor`는 터미널에서, `kapm serve`는 로컬 WebUI에서 같은 로그를 보여줍니다.
+`kapm init-hook`은 선택적으로 `.kiro/agents/*.json`에 hook 항목을 추가해 보조 데이터를 수집합니다. hook은 `preToolUse`·`postToolUse` 이벤트를 `.kapm/logs/{session_id}.jsonl`에 최소한의 JSONL로 기록하며, 도구 호출별 타임스탬프(소요 시간 계산용), 에이전트 이름(위임 추적용), 셸 종료 상태를 제공합니다.
 
 ```bash
 kapm init-hook             # 에이전트를 대화형으로 선택
@@ -87,6 +87,7 @@ kapm serve --port 9097 --open
 
 ```bash
 --since 24h
+--global                   # 모든 프로젝트의 세션 표시 (기본값: 현재 디렉터리만)
 --logs-dir <path>
 --target-dir <path>
 ```
@@ -176,11 +177,9 @@ kapm power install https://github.com/owner/repo/tree/main/path/to/power
 
 ## 로그 형식과 보관
 
-각 JSONL 레코드는 필요에 따라 `ts`, `agent`, `session`, `event`, `tool`, `tool_input`, `tool_response`, `assistant_response`, `prompt`, `cwd`를 포함합니다.
+hook 로그는 최소한의 형식을 사용합니다. 각 JSONL 레코드에는 `ts`, `session`, `event`, `agent`, `tool`, 그리고 선택적으로 `shell_exit_status`만 포함됩니다. 프롬프트, 도구 입출력, 어시스턴트 응답은 hook 로그가 아닌 Kiro의 세션 파일에서 읽습니다.
 
-로그에는 파일 경로, 소스 코드, 프롬프트, 모델 응답, 도구 입출력에 포함된 인증 정보가 기록될 수 있습니다. `.kapm/`은 gitignore 처리되며, 디렉터리는 `0700`, 로그 파일은 `0600` 권한으로 생성됩니다.
-
-`agentSpawn` 시점에 24시간 넘게 쓰이지 않은 idle 세션 로그는 `.jsonl.gz`로 압축됩니다. 활성 세션은 `.jsonl`로 유지됩니다.
+`.kapm/`은 gitignore 처리되며, 디렉터리는 `0700`, 로그 파일은 `0600` 권한으로 생성됩니다.
 
 ## 개발
 

@@ -3,6 +3,7 @@ package monitor
 import (
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 var skillPathRe = regexp.MustCompile(`([a-zA-Z0-9_-]+)/SKILL\.md`)
@@ -15,6 +16,23 @@ const (
 	maxErrorDetailLength       = 256
 	maxAssistantResponseLength = 2048
 )
+
+// truncateUTF8 truncates s to at most maxBytes bytes without splitting
+// a multi-byte UTF-8 sequence. If truncation occurs the result is always
+// valid UTF-8 and ≤ maxBytes.
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	if maxBytes <= 0 {
+		return ""
+	}
+	// Walk backwards from maxBytes to find a valid rune boundary.
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
 
 // FileChange captures a single file modification via the write tool.
 // Diff is NOT stored — rendered on demand by template helper to avoid
@@ -172,6 +190,7 @@ type sessionState struct {
 	assistantResponse  string               // from stop event
 	changes            []FileChange         // write preToolUse events, chronological
 	filesChangedCached int                  // countUniqueFiles(changes), populated in finalizeSessionStats
+	pendingToolUse     map[string]int       // toolUseID → timeline index
 }
 
 // aggState holds the mutable accumulators shared by the three

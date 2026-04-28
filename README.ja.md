@@ -22,7 +22,7 @@
 
 kapm は、Kiro エージェントの作業内容を把握し、ワークスペースを保守しやすくするための CLI です。
 
-- **Kiro セッションの監視**: hook イベントを `.kapm/logs` に記録し、セッション、ツール呼び出し、失敗、所要時間、起動されたエージェント、プロンプト、応答、ファイル変更、Skill の参照を TUI / WebUI で確認できます。
+- **Kiro セッションの監視**: `~/.kiro/sessions/cli/` をメインのデータソースとして読み込み、ツール呼び出しのタイムスタンプ・エージェント帰属・シェル終了ステータスを補完するオプションの hook ログ (`.kapm/logs/`) と組み合わせて、セッション、ツール呼び出し、失敗、所要時間、起動されたエージェント、プロンプト、応答、ファイル変更、Skill の参照を TUI / WebUI で確認できます。
 - **Kiro エージェント設定の管理**: `.kiro/agents/*.json` と `.kiro/agent-prompts/*.md` を対話的に作成・更新できます。
 - **パッケージ形式の橋渡し**: APM パッケージと Kiro Power を、プロジェクトローカルの `.kiro/` ファイルとして同期します。
 
@@ -66,9 +66,9 @@ kapm serve
 
 ## 監視
 
-`kapm init-hook` は、選択した `.kiro/agents/*.json` に kapm 管理の hook エントリを追加します。Kiro が hook イベントを発行すると、そのエントリが `kapm hook-handler --agent <name>` を実行します。
+kapm は Kiro のセッションファイル (`~/.kiro/sessions/cli/{uuid}.jsonl` および `{uuid}.json`) をメインのデータソースとして読み込みます。基本的な監視には hook のインストールは不要で、セッションファイルにはプロンプト、アシスタント応答、ツール呼び出し、ツール結果、ターンごとのメタデータ (トークン数、クレジット、所要時間) が含まれています。
 
-hook イベントは `.kapm/logs/{session_id}.jsonl` に JSONL として保存されます。`kapm monitor` はターミナルで、`kapm serve` はローカル WebUI で同じログを表示します。
+`kapm init-hook` は補足データのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。hook は `preToolUse` / `postToolUse` イベントを最小限の JSONL として `.kapm/logs/{session_id}.jsonl` に記録し、ツール呼び出しごとのタイムスタンプ (所要時間の計算用)、エージェント名 (委譲の追跡用)、シェル終了ステータスを提供します。
 
 ```bash
 kapm init-hook             # エージェントを対話的に選択
@@ -87,6 +87,7 @@ kapm serve --port 9097 --open
 
 ```bash
 --since 24h
+--global                   # 全プロジェクトのセッションを表示（デフォルト: カレントディレクトリのみ）
 --logs-dir <path>
 --target-dir <path>
 ```
@@ -176,11 +177,9 @@ kapm power install https://github.com/owner/repo/tree/main/path/to/power
 
 ## ログ形式と保存
 
-JSONL レコードには、必要に応じて `ts`, `agent`, `session`, `event`, `tool`, `tool_input`, `tool_response`, `assistant_response`, `prompt`, `cwd` が含まれます。
+hook ログは最小限の形式を使用します。各 JSONL レコードには `ts`, `session`, `event`, `agent`, `tool`、およびオプションで `shell_exit_status` のみが含まれます。プロンプト、ツール入出力、アシスタント応答は hook ログではなく Kiro のセッションファイルから読み込まれます。
 
-ログには、ファイルパス、ソースコード、プロンプト、モデル応答、ツール入出力に含まれる認証情報などが記録される可能性があります。`.kapm/` は gitignore され、ディレクトリは `0700`、ログファイルは `0600` で作成されます。
-
-`agentSpawn` 時に、24 時間以上書き込みのないアイドルセッションログは `.jsonl.gz` に圧縮されます。アクティブなセッションは `.jsonl` のまま残ります。
+`.kapm/` は gitignore され、ディレクトリは `0700`、ログファイルは `0600` で作成されます。
 
 ## 開発
 
