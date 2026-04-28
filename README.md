@@ -44,12 +44,6 @@ Download the archive for your platform from [GitHub Releases](https://github.com
 nix profile add github:kapmcli/kapm#kapm
 ```
 
-### From source
-
-```bash
-just build
-```
-
 ## Quick start
 
 ```bash
