@@ -341,8 +341,15 @@ func TestHandleJSONLRoundTrip(t *testing.T) {
 func TestHandleMinimalRecord(t *testing.T) {
 	dir := t.TempDir()
 	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-min","tool_name":"fs_read","tool_input":{"path":"/x"},"cwd":"/proj","prompt":"hi","assistant_response":{"text":"ok"}}`)
-	Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+	var stderr bytes.Buffer
+	Handle(in, &bytes.Buffer{}, &stderr, fixedNow, dir, "a")
+	if stderr.Len() > 0 {
+		t.Fatalf("Handle wrote to stderr: %s", stderr.String())
+	}
 	lines := readLines(t, logFile(dir, "s-min"))
+	if len(lines) == 0 {
+		t.Fatal("expected at least one log line")
+	}
 	var rec map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
 		t.Fatalf("unmarshal: %v", err)

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 // runKapm invokes kapm with args in root, feeding stdin and capturing output.
@@ -104,7 +106,7 @@ func TestInitHookAddAndRemoveIsIdempotent(t *testing.T) {
 	if len(hooks1) == 0 {
 		t.Fatal("expected hooks after init-hook add")
 	}
-	for _, event := range []string{"agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"} {
+	for _, event := range apmconfig.HookEvents {
 		if len(hooks1[event]) != 1 {
 			t.Fatalf("event %q: expected 1 entry, got %d", event, len(hooks1[event]))
 		}

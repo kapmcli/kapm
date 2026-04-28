@@ -503,14 +503,7 @@ func TestRunInitHookUnknownFlag(t *testing.T) {
 
 func TestRunHookHandlerWritesJSONLAndUsesEnvFallback(t *testing.T) {
 	dir := t.TempDir()
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Chdir(dir)
 	t.Setenv("AGENT", "env-agent")
 
 	origStdin := os.Stdin
@@ -558,14 +551,7 @@ func TestRunHookHandlerWritesJSONLAndUsesEnvFallback(t *testing.T) {
 
 func TestRunHookHandlerFlagOverridesEnv(t *testing.T) {
 	dir := t.TempDir()
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Chdir(dir)
 	t.Setenv("AGENT", "env-agent")
 
 	origStdin := os.Stdin
