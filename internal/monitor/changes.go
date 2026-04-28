@@ -1,8 +1,10 @@
 package monitor
 
 import (
+	"cmp"
 	"encoding/json"
 	"path"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -97,6 +99,63 @@ func countUniqueFiles(changes []FileChange) int {
 		seen[fc.Path] = struct{}{}
 	}
 	return len(seen)
+}
+
+// PathGroup holds aggregated change data for a single file path,
+// ready for rendering.
+type PathGroup struct {
+	Path           string
+	Edits          []FileChange
+	LastTs         time.Time
+	TotalAdds      int
+	TotalDels      int
+	OversizedCount int
+}
+
+// prepareSessionChanges groups changes by path, sorts by LastTs desc (ties by
+// path asc), and pre-computes TotalAdds, TotalDels, OversizedCount per group.
+func prepareSessionChanges(changes []FileChange) []PathGroup {
+	if len(changes) == 0 {
+		return nil
+	}
+	paths := make([]string, 0)
+	grouped := map[string][]FileChange{}
+	for _, fc := range changes {
+		if _, ok := grouped[fc.Path]; !ok {
+			paths = append(paths, fc.Path)
+		}
+		grouped[fc.Path] = append(grouped[fc.Path], fc)
+	}
+	slices.SortFunc(paths, func(a, b string) int {
+		lastA := grouped[a][len(grouped[a])-1].Ts
+		lastB := grouped[b][len(grouped[b])-1].Ts
+		if c := lastB.Compare(lastA); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
+	groups := make([]PathGroup, len(paths))
+	for i, p := range paths {
+		edits := grouped[p]
+		var totalAdds, totalDels, oversizedCount int
+		for _, fc := range edits {
+			if a, d, ok := DiffLineCounts(fc); ok {
+				totalAdds += a
+				totalDels += d
+			} else if fc.Oversized {
+				oversizedCount++
+			}
+		}
+		groups[i] = PathGroup{
+			Path:           p,
+			Edits:          edits,
+			LastTs:         edits[len(edits)-1].Ts,
+			TotalAdds:      totalAdds,
+			TotalDels:      totalDels,
+			OversizedCount: oversizedCount,
+		}
+	}
+	return groups
 }
 
 // DiffLineCounts returns the number of added and deleted lines for a FileChange.

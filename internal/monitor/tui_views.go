@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -586,27 +585,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		return ""
 	}
 
-	// Group changes by path, preserving insertion order for sort.
-	paths := make([]string, 0, s.FilesChanged)
-	seen := map[string][]FileChange{}
-	for _, fc := range s.Changes {
-		if _, ok := seen[fc.Path]; !ok {
-			paths = append(paths, fc.Path)
-		}
-		seen[fc.Path] = append(seen[fc.Path], fc)
-	}
-
-	// Sort by lastTs desc, ties by path asc.
-	lastTs := map[string]time.Time{}
-	for p, edits := range seen {
-		lastTs[p] = edits[len(edits)-1].Ts
-	}
-	slices.SortFunc(paths, func(a, b string) int {
-		if c := lastTs[b].Compare(lastTs[a]); c != 0 {
-			return c
-		}
-		return cmp.Compare(a, b)
-	})
+	groups := prepareSessionChanges(s.Changes)
 
 	nFiles := s.FilesChanged
 	nEdits := len(s.Changes)
@@ -626,38 +605,26 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		fmt.Fprintf(&b, "%s\n", mutedStyle.Render("  ⚠ also ran shell — file changes via shell not shown"))
 	}
 
-	for _, p := range paths {
-		edits := seen[p]
-		shortPath := shortenPath(m.homeDir, p, s.Cwd)
-		editCount := len(edits)
+	for _, g := range groups {
+		shortPath := shortenPath(m.homeDir, g.Path, s.Cwd)
+		editCount := len(g.Edits)
 		editCountStr := fmt.Sprintf("%d edits", editCount)
 		if editCount == 1 {
 			editCountStr = "1 edit"
 		}
-		fileLastTs := lastTs[p].Local().Format("15:04:05")
-
-		// Aggregate +/- counts across non-oversized edits.
-		var totalAdds, totalDels, oversizedCount int
-		for _, fc := range edits {
-			if a, d, ok := DiffLineCounts(fc); ok {
-				totalAdds += a
-				totalDels += d
-			} else if fc.Oversized {
-				oversizedCount++
-			}
-		}
+		fileLastTs := g.LastTs.Local().Format("15:04:05")
 
 		// Build file line: path  +N/-M  K edits  last HH:MM:SS
 		var fileCounts string
-		if oversizedCount == len(edits) {
+		if g.OversizedCount == len(g.Edits) {
 			// All oversized — no +/- badge.
 			fileCounts = mutedStyle.Render("—")
 		} else {
-			fileCounts = addStyle.Render(fmt.Sprintf("+%d", totalAdds)) + "/" + delStyle.Render(fmt.Sprintf("-%d", totalDels))
+			fileCounts = addStyle.Render(fmt.Sprintf("+%d", g.TotalAdds)) + "/" + delStyle.Render(fmt.Sprintf("-%d", g.TotalDels))
 		}
 		metaStr := editCountStr + "  last " + fileLastTs
-		if oversizedCount > 0 && oversizedCount < len(edits) {
-			metaStr += "  " + mutedStyle.Render(fmt.Sprintf("(%d oversized)", oversizedCount))
+		if g.OversizedCount > 0 && g.OversizedCount < len(g.Edits) {
+			metaStr += "  " + mutedStyle.Render(fmt.Sprintf("(%d oversized)", g.OversizedCount))
 		}
 
 		lineWidth := 2 + len(shortPath) + 2 + len(editCountStr) + 2 + len("last 00:00:00")
@@ -667,7 +634,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 			fmt.Fprintf(&b, "  %s  %s  %s\n", shortPath, fileCounts, metaStr)
 		}
 
-		for _, fc := range edits {
+		for _, fc := range g.Edits {
 			var purpose string
 			if fc.Purpose != "" {
 				purpose = `"` + fc.Purpose + `"`

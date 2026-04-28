@@ -368,3 +368,118 @@ func TestDiffLineCounts(t *testing.T) {
 		})
 	}
 }
+
+func TestPrepareSessionChanges(t *testing.T) {
+	t.Parallel()
+
+	t0 := time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	t.Run("empty input returns empty output", func(t *testing.T) {
+		t.Parallel()
+		got := prepareSessionChanges(nil)
+		if len(got) != 0 {
+			t.Fatalf("len = %d; want 0", len(got))
+		}
+	})
+
+	t.Run("single file single edit aggregates correctly", func(t *testing.T) {
+		t.Parallel()
+		fc := FileChange{Path: "/a.go", Ts: t0, Command: "create", Content: "line1\nline2\n"}
+		got := prepareSessionChanges([]FileChange{fc})
+		if len(got) != 1 {
+			t.Fatalf("len = %d; want 1", len(got))
+		}
+		g := got[0]
+		if g.Path != "/a.go" {
+			t.Errorf("Path = %q; want /a.go", g.Path)
+		}
+		if len(g.Edits) != 1 {
+			t.Errorf("Edits len = %d; want 1", len(g.Edits))
+		}
+		if !g.LastTs.Equal(t0) {
+			t.Errorf("LastTs = %v; want %v", g.LastTs, t0)
+		}
+		if g.TotalAdds != 2 {
+			t.Errorf("TotalAdds = %d; want 2", g.TotalAdds)
+		}
+		if g.TotalDels != 0 {
+			t.Errorf("TotalDels = %d; want 0", g.TotalDels)
+		}
+		if g.OversizedCount != 0 {
+			t.Errorf("OversizedCount = %d; want 0", g.OversizedCount)
+		}
+	})
+
+	t.Run("multiple files sorted by LastTs desc ties by path asc", func(t *testing.T) {
+		t.Parallel()
+		changes := []FileChange{
+			{Path: "/b.go", Ts: t0, Command: "create", Content: "x\n"},
+			{Path: "/a.go", Ts: t1, Command: "create", Content: "x\n"},
+			{Path: "/c.go", Ts: t0, Command: "create", Content: "x\n"},
+		}
+		got := prepareSessionChanges(changes)
+		if len(got) != 3 {
+			t.Fatalf("len = %d; want 3", len(got))
+		}
+		// /a.go has latest ts (t1), then /b.go and /c.go tie at t0 → sorted by path asc
+		if got[0].Path != "/a.go" {
+			t.Errorf("got[0].Path = %q; want /a.go", got[0].Path)
+		}
+		if got[1].Path != "/b.go" {
+			t.Errorf("got[1].Path = %q; want /b.go", got[1].Path)
+		}
+		if got[2].Path != "/c.go" {
+			t.Errorf("got[2].Path = %q; want /c.go", got[2].Path)
+		}
+	})
+
+	t.Run("mixed oversized and normal edits", func(t *testing.T) {
+		t.Parallel()
+		changes := []FileChange{
+			{Path: "/a.go", Ts: t0, Command: "create", Content: "line1\n", Oversized: false},
+			{Path: "/a.go", Ts: t1, Command: "create", Oversized: true},
+		}
+		got := prepareSessionChanges(changes)
+		if len(got) != 1 {
+			t.Fatalf("len = %d; want 1", len(got))
+		}
+		g := got[0]
+		if g.TotalAdds != 1 {
+			t.Errorf("TotalAdds = %d; want 1", g.TotalAdds)
+		}
+		if g.TotalDels != 0 {
+			t.Errorf("TotalDels = %d; want 0", g.TotalDels)
+		}
+		if g.OversizedCount != 1 {
+			t.Errorf("OversizedCount = %d; want 1", g.OversizedCount)
+		}
+	})
+
+	t.Run("multiple edits same file grouped with latest LastTs", func(t *testing.T) {
+		t.Parallel()
+		changes := []FileChange{
+			{Path: "/a.go", Ts: t0, Command: "create", Content: "x\n"},
+			{Path: "/a.go", Ts: t2, Command: "strReplace", OldStr: "x\n", NewStr: "y\nz\n"},
+		}
+		got := prepareSessionChanges(changes)
+		if len(got) != 1 {
+			t.Fatalf("len = %d; want 1", len(got))
+		}
+		g := got[0]
+		if len(g.Edits) != 2 {
+			t.Errorf("Edits len = %d; want 2", len(g.Edits))
+		}
+		if !g.LastTs.Equal(t2) {
+			t.Errorf("LastTs = %v; want %v", g.LastTs, t2)
+		}
+		// create: +1, strReplace old=1 new=2: +2/-1 → total +3/-1
+		if g.TotalAdds != 3 {
+			t.Errorf("TotalAdds = %d; want 3", g.TotalAdds)
+		}
+		if g.TotalDels != 1 {
+			t.Errorf("TotalDels = %d; want 1", g.TotalDels)
+		}
+	})
+}
