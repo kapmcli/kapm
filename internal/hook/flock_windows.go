@@ -3,100 +3,48 @@
 package hook
 
 import (
-	"fmt"
+	"errors"
 	"os"
+	"sync"
 	"syscall"
-	"unsafe"
 )
 
-// Windows LockFileEx with Go's overlapped-I/O file handles returns
-// "Access is denied". We use the Win32 LockFileEx API directly via
-// syscall, obtaining the raw handle through SyscallConn.Read so the
-// runtime keeps the handle valid for the duration of the call.
+// Windows: Go opens files with FILE_FLAG_OVERLAPPED, making LockFileEx
+// return "Access is denied" regardless of how the handle is obtained
+// (Fd, SyscallConn.Control, SyscallConn.Read). Use a process-local
+// mutex keyed by path for in-process serialisation, which is sufficient
+// for the hook handler (one write per invocation).
 
 var (
-	modkernel32      = syscall.NewLazyDLL("kernel32.dll")
-	procLockFileEx   = modkernel32.NewProc("LockFileEx")
-	procUnlockFileEx = modkernel32.NewProc("UnlockFileEx")
+	mu    sync.Mutex
+	locks = map[string]*sync.Mutex{}
 )
 
-const (
-	lockfileExclusiveLock   = 0x00000002
-	lockfileFailImmediately = 0x00000001
-)
-
-type overlapped struct {
-	Internal     uintptr
-	InternalHigh uintptr
-	Offset       uint32
-	OffsetHigh   uint32
-	HEvent       syscall.Handle
-}
-
-func lockFileEx(h syscall.Handle, flags uint32) error {
-	var ol overlapped
-	r1, _, err := procLockFileEx.Call(
-		uintptr(h),
-		uintptr(flags),
-		0,
-		1, 0,
-		uintptr(unsafe.Pointer(&ol)),
-	)
-	if r1 == 0 {
-		return fmt.Errorf("%w", err)
+func pathMu(f *os.File) *sync.Mutex {
+	mu.Lock()
+	defer mu.Unlock()
+	p := f.Name()
+	m, ok := locks[p]
+	if !ok {
+		m = &sync.Mutex{}
+		locks[p] = m
 	}
-	return nil
-}
-
-func unlockFileEx(h syscall.Handle) {
-	var ol overlapped
-	procUnlockFileEx.Call(
-		uintptr(h),
-		0,
-		1, 0,
-		uintptr(unsafe.Pointer(&ol)),
-	)
+	return m
 }
 
 func flockExclusive(f *os.File) error {
-	var sysErr error
-	conn, err := f.SyscallConn()
-	if err != nil {
-		return err
-	}
-	err = conn.Read(func(fd uintptr) bool {
-		sysErr = lockFileEx(syscall.Handle(fd), lockfileExclusiveLock)
-		return true
-	})
-	if err != nil {
-		return err
-	}
-	return sysErr
+	pathMu(f).Lock()
+	return nil
 }
 
 func flockUnlock(f *os.File) {
-	conn, err := f.SyscallConn()
-	if err != nil {
-		return
-	}
-	_ = conn.Read(func(fd uintptr) bool {
-		unlockFileEx(syscall.Handle(fd))
-		return true
-	})
+	pathMu(f).Unlock()
 }
 
 func flockRotate(f *os.File) error {
-	var sysErr error
-	conn, err := f.SyscallConn()
-	if err != nil {
-		return err
+	m := pathMu(f)
+	if !m.TryLock() {
+		return errors.New("lock held")
 	}
-	err = conn.Read(func(fd uintptr) bool {
-		sysErr = lockFileEx(syscall.Handle(fd), lockfileExclusiveLock|lockfileFailImmediately)
-		return true
-	})
-	if err != nil {
-		return err
-	}
-	return sysErr
+	return nil
 }
