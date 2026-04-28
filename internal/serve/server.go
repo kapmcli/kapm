@@ -291,10 +291,11 @@ func (s *Server) Run(ctx context.Context) error {
 		return fmt.Errorf("serve listen %q: %w", s.Addr(), err)
 	}
 	srv := &http.Server{
-		Handler:      s.handler,
-		ReadTimeout:  httpReadTimeout,
-		WriteTimeout: 0, // SSE streams: no write deadline
-		IdleTimeout:  httpIdleTimeout,
+		Handler:           s.handler,
+		ReadTimeout:       httpReadTimeout,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		WriteTimeout:      0, // SSE streams: no write deadline
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -978,9 +979,10 @@ func toolDetailByName(tools []monitor.ToolDetail, name string) (monitor.ToolDeta
 const defaultMaxSSE int32 = 64
 
 const (
-	sseStreamInterval = 5 * time.Second
-	httpReadTimeout   = 10 * time.Second
-	httpIdleTimeout   = 60 * time.Second
+	sseStreamInterval     = 5 * time.Second
+	httpReadTimeout       = 10 * time.Second
+	httpReadHeaderTimeout = 5 * time.Second
+	httpIdleTimeout       = 60 * time.Second
 )
 
 const (
