@@ -218,3 +218,47 @@ func TestParsePowerSource(t *testing.T) {
 		})
 	}
 }
+
+func TestParseGitHubURL_PathTraversal(t *testing.T) {
+	cases := []string{
+		"https://github.com/o/r/tree/main/../secret",
+		"https://github.com/o/r/tree/main/sub/../etc",
+		"https://github.com/o/r/tree/main/./sub",
+	}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			_, ok := parseGitHubSubdirSource(input)
+			if ok {
+				t.Fatalf("parseGitHubSubdirSource(%q) = ok, want false", input)
+			}
+		})
+	}
+}
+
+func TestParseGitHubShorthand_PathTraversal(t *testing.T) {
+	cases := []string{
+		"o/r/../secret",
+		"o/r/sub/../etc",
+		"o/r/./sub",
+		"o/r/tree/main/../secret",
+		"o/r/tree/main/sub/../etc",
+	}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			_, ok := parseGitHubShorthandSource(input)
+			if ok {
+				t.Fatalf("parseGitHubShorthandSource(%q) = ok, want false", input)
+			}
+		})
+	}
+}
+
+func TestParseGitHubURL_ValidSubdir(t *testing.T) {
+	got, ok := parseGitHubSubdirSource("https://github.com/o/r/tree/main/sub/dir")
+	if !ok {
+		t.Fatal("parseGitHubSubdirSource valid subdir = false, want true")
+	}
+	if got.PathInRepo != "sub/dir" {
+		t.Fatalf("PathInRepo = %q, want %q", got.PathInRepo, "sub/dir")
+	}
+}

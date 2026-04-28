@@ -112,6 +112,10 @@ func parseGitHubSubdirSource(raw string) (PowerSource, bool) {
 	}
 
 	ref, pathInRepo, _ := strings.Cut(afterTree, "/")
+	pathInRepo = strings.TrimRight(pathInRepo, "/")
+	if !validPathInRepo(pathInRepo) {
+		return PowerSource{}, false
+	}
 	rootURL := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: "/" + owner + "/" + repo}).String()
 
 	return PowerSource{
@@ -120,7 +124,7 @@ func parseGitHubSubdirSource(raw string) (PowerSource, bool) {
 		Owner:      owner,
 		Repo:       repo,
 		Ref:        ref,
-		PathInRepo: strings.TrimRight(pathInRepo, "/"),
+		PathInRepo: pathInRepo,
 	}, true
 }
 
@@ -152,23 +156,43 @@ func parseGitHubShorthandSource(raw string) (PowerSource, bool) {
 		if len(parts) < 4 || parts[3] == "" {
 			return PowerSource{}, false
 		}
+		pathInRepo := strings.Join(parts[4:], "/")
+		if !validPathInRepo(pathInRepo) {
+			return PowerSource{}, false
+		}
 		return PowerSource{
 			Kind:       SourceGitHubSubdir,
 			URL:        rootURL,
 			Owner:      parts[0],
 			Repo:       parts[1],
 			Ref:        parts[3],
-			PathInRepo: strings.Join(parts[4:], "/"),
+			PathInRepo: pathInRepo,
 		}, true
 	}
 
+	pathInRepo := strings.Join(parts[2:], "/")
+	if !validPathInRepo(pathInRepo) {
+		return PowerSource{}, false
+	}
 	return PowerSource{
 		Kind:       SourceGitHubSubdir,
 		URL:        rootURL,
 		Owner:      parts[0],
 		Repo:       parts[1],
-		PathInRepo: strings.Join(parts[2:], "/"),
+		PathInRepo: pathInRepo,
 	}, true
+}
+
+func validPathInRepo(p string) bool {
+	if p == "" {
+		return true
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." || seg == "." {
+			return false
+		}
+	}
+	return true
 }
 
 func splitOwnerRepo(repoPath string) (string, string, bool) {
