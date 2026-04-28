@@ -3,7 +3,6 @@
 package hook
 
 import (
-	"errors"
 	"os"
 )
 
@@ -12,4 +11,4 @@ import (
 
 func flockExclusive(_ *os.File) error { return nil }
 func flockUnlock(_ *os.File)          {}
-func flockRotate(_ *os.File) error    { return errors.New("not supported") }
+func flockRotate(_ *os.File) error    { return nil }
