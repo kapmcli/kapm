@@ -380,40 +380,12 @@ func finalizeToolDetails(td *ToolDetail) {
 			total += time.Duration(c.Duration)
 		}
 		td.AvgDuration = JSONDuration(total / time.Duration(len(td.RecentCalls)))
-		slices.SortFunc(td.RecentCalls, func(a, b ToolCall) int {
-			if c := b.Ts.Compare(a.Ts); c != 0 {
-				return c
-			}
-			if c := cmp.Compare(a.Session, b.Session); c != 0 {
-				return c
-			}
-			if c := cmp.Compare(a.Agent, b.Agent); c != 0 {
-				return c
-			}
-			if c := cmp.Compare(a.Tool, b.Tool); c != 0 {
-				return c
-			}
-			return cmp.Compare(a.InputSummary, b.InputSummary)
-		})
+		slices.SortFunc(td.RecentCalls, sortToolCallByTsDesc)
 		if len(td.RecentCalls) > maxRecentCalls {
 			td.RecentCalls = td.RecentCalls[:maxRecentCalls]
 		}
 	}
-	slices.SortFunc(td.Errors, func(a, b ToolCall) int {
-		if c := b.Ts.Compare(a.Ts); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.Session, b.Session); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.Agent, b.Agent); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.Tool, b.Tool); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.InputSummary, b.InputSummary)
-	})
+	slices.SortFunc(td.Errors, sortToolCallByTsDesc)
 	if len(td.Errors) > maxErrors {
 		td.Errors = td.Errors[:maxErrors]
 	}
@@ -458,12 +430,7 @@ func assembleDetails(st *aggState) DetailedMetrics {
 	slices.SortFunc(overview.HourlyActivity, func(a, b HourlyMetric) int { return a.Hour.Compare(b.Hour) })
 
 	// Pre-sort overview and detail slices by usage (descending) so render functions don't need to sort per frame.
-	slices.SortFunc(overview.Tools, func(a, b ToolMetric) int {
-		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Name, b.Name)
-	})
+	slices.SortFunc(overview.Tools, sortToolMetricByCallCountDescNameAsc)
 	slices.SortFunc(overview.Agents, func(a, b AgentMetric) int {
 		if c := cmp.Compare(b.ToolCalls, a.ToolCalls); c != 0 {
 			return c
@@ -476,12 +443,7 @@ func assembleDetails(st *aggState) DetailedMetrics {
 		}
 		return cmp.Compare(a.Name, b.Name)
 	})
-	slices.SortFunc(toolDetails, func(a, b ToolDetail) int {
-		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Name, b.Name)
-	})
+	slices.SortFunc(toolDetails, sortToolDetailByCallCountDescNameAsc)
 
 	return DetailedMetrics{
 		Overview: overview,
@@ -541,18 +503,8 @@ func AggregateToolsFromTimeline(sessions []SessionDetail) ([]ToolDetail, []ToolM
 		details = append(details, *td)
 		metrics = append(metrics, td.ToolMetric)
 	}
-	slices.SortFunc(details, func(a, b ToolDetail) int {
-		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Name, b.Name)
-	})
-	slices.SortFunc(metrics, func(a, b ToolMetric) int {
-		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Name, b.Name)
-	})
+	slices.SortFunc(details, sortToolDetailByCallCountDescNameAsc)
+	slices.SortFunc(metrics, sortToolMetricByCallCountDescNameAsc)
 	return details, metrics
 }
 
@@ -605,7 +557,7 @@ func AggregateToolTimeseries(calls []ToolCall, now time.Time) []TimeseriesPoint 
 	for k := range m {
 		keys = append(keys, k)
 	}
-	slices.SortFunc(keys, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortFunc(keys, sortTimeAsc)
 	pts := make([]TimeseriesPoint, len(keys))
 	for i, k := range keys {
 		a := m[k]
