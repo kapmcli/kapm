@@ -194,6 +194,28 @@ type toolAgg struct {
 	durCount   int
 }
 
+// addCall records a single tool invocation.
+func (a *toolAgg) addCall(isError bool, dur time.Duration) {
+	a.callCount++
+	if isError {
+		a.errorCount++
+	} else if dur > 0 {
+		a.durSum += dur
+		a.durCount++
+	}
+}
+
+// addSummary merges an existing SessionToolSummary (for cross-agent merging).
+func (a *toolAgg) addSummary(ts SessionToolSummary) {
+	a.callCount += ts.CallCount
+	a.errorCount += ts.ErrorCount
+	sc := ts.CallCount - ts.ErrorCount
+	if sc > 0 && ts.AvgDuration > 0 {
+		a.durSum += time.Duration(ts.AvgDuration) * time.Duration(sc)
+		a.durCount += sc
+	}
+}
+
 // toolInput is a lenient typed view of tool_input payloads. Fields absent in
 // the payload remain zero-valued; unknown fields are ignored (tool producers
 // may send extra fields).

@@ -269,55 +269,19 @@ func buildSessionDetails(st *aggState) {
 // sessionToolSummary computes per-tool stats from a session timeline.
 // Returns nil if there are no tool calls.
 func sessionToolSummary(timeline []EventEntry) []SessionToolSummary {
-	type agg struct {
-		callCount  int
-		errorCount int
-		durSum     time.Duration
-		durCount   int
-	}
-	m := map[string]*agg{}
+	m := map[string]*toolAgg{}
 	for _, ev := range timeline {
 		if ev.Event != apmconfig.EventPreToolUse {
 			continue
 		}
 		a := m[ev.Tool]
 		if a == nil {
-			a = &agg{}
+			a = &toolAgg{}
 			m[ev.Tool] = a
 		}
-		a.callCount++
-		if ev.IsError {
-			a.errorCount++
-		} else if ev.Duration > 0 {
-			a.durSum += time.Duration(ev.Duration)
-			a.durCount++
-		}
+		a.addCall(ev.IsError, time.Duration(ev.Duration))
 	}
-	if len(m) == 0 {
-		return nil
-	}
-	out := make([]SessionToolSummary, 0, len(m))
-	for tool, a := range m {
-		var avg JSONDuration
-		if a.durCount > 0 {
-			avg = JSONDuration(a.durSum / time.Duration(a.durCount))
-		}
-		var rate float64
-		if a.callCount > 0 {
-			rate = float64(a.callCount-a.errorCount) / float64(a.callCount)
-		}
-		out = append(out, SessionToolSummary{
-			Tool: tool, CallCount: a.callCount, ErrorCount: a.errorCount,
-			SuccessRate: rate, AvgDuration: avg,
-		})
-	}
-	slices.SortFunc(out, func(a, b SessionToolSummary) int {
-		if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Tool, b.Tool)
-	})
-	return out
+	return finalizeToolAgg(m)
 }
 
 // toolAggToSummary converts a *toolAgg into a SessionToolSummary.

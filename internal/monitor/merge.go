@@ -183,57 +183,18 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 // mergeToolSummary groups ToolSummary entries by Tool across all agents,
 // sums counts, recomputes SuccessRate and weighted AvgDuration, sorts by CallCount desc.
 func mergeToolSummary(src []SessionDetail) []SessionToolSummary {
-	type agg struct {
-		callCount    int
-		errorCount   int
-		durWeightSum time.Duration // sum(AvgDuration * successCount)
-		successCount int
-	}
-	m := map[string]*agg{}
+	m := map[string]*toolAgg{}
 	for _, sd := range src {
 		for _, ts := range sd.ToolSummary {
 			a := m[ts.Tool]
 			if a == nil {
-				a = &agg{}
+				a = &toolAgg{}
 				m[ts.Tool] = a
 			}
-			a.callCount += ts.CallCount
-			a.errorCount += ts.ErrorCount
-			sc := ts.CallCount - ts.ErrorCount
-			if sc > 0 && ts.AvgDuration > 0 {
-				a.durWeightSum += time.Duration(ts.AvgDuration) * time.Duration(sc)
-				a.successCount += sc
-			}
+			a.addSummary(ts)
 		}
 	}
-	if len(m) == 0 {
-		return nil
-	}
-	out := make([]SessionToolSummary, 0, len(m))
-	for tool, a := range m {
-		var rate float64
-		if a.callCount > 0 {
-			rate = float64(a.callCount-a.errorCount) / float64(a.callCount)
-		}
-		var avg JSONDuration
-		if a.successCount > 0 {
-			avg = JSONDuration(a.durWeightSum / time.Duration(a.successCount))
-		}
-		out = append(out, SessionToolSummary{
-			Tool: tool, CallCount: a.callCount, ErrorCount: a.errorCount,
-			SuccessRate: rate, AvgDuration: avg,
-		})
-	}
-	slices.SortFunc(out, func(a, b SessionToolSummary) int {
-		if a.CallCount != b.CallCount {
-			if a.CallCount > b.CallCount {
-				return -1
-			}
-			return 1
-		}
-		return strings.Compare(a.Tool, b.Tool)
-	})
-	return out
+	return finalizeToolAgg(m)
 }
 
 // mergeAssistantResponse concatenates non-empty AssistantResponse values.
