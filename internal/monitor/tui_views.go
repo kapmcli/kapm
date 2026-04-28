@@ -310,7 +310,6 @@ func (m *model) renderRecentSessionsBox(width int) string {
 		agentCell := truncate(s.Agent, agentW)
 		if s.ID == prevID {
 			idCell = strings.Repeat(" ", 12)
-			agentCell = "  " + truncate(s.Agent, agentW-2)
 		}
 		prevID = s.ID
 		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
@@ -419,7 +418,6 @@ func (m *model) renderSessionsList() string {
 		agentCell := truncate(s.Agent, agentW)
 		if s.ID == prevID {
 			idCell = strings.Repeat(" ", 12)
-			agentCell = "  " + truncate(s.Agent, agentW-2)
 		}
 		prevID = s.ID
 		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)

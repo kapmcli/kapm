@@ -782,9 +782,9 @@ func TestTUISessionsListGroupingIndent(t *testing.T) {
 	if strings.Contains(leadLine, "shared-sessi") {
 		t.Errorf("second row should not show ID, got: %q", leadLine)
 	}
-	// Second row: agent cell should be indented with 2 spaces before "lead".
-	if !strings.Contains(leadLine, "  lead") {
-		t.Errorf("second row agent should be indented with 2 spaces, got: %q", leadLine)
+	// Second row: agent cell should be vertically aligned (no extra indent).
+	if !strings.Contains(leadLine, "lead") {
+		t.Errorf("second row should contain agent name, got: %q", leadLine)
 	}
 }
 
@@ -839,8 +839,9 @@ func TestTUIRecentSessionsBoxGroupingIndent(t *testing.T) {
 	if strings.Contains(leadLine, "shared-sessi") {
 		t.Errorf("second row should not show ID, got: %q", leadLine)
 	}
-	if !strings.Contains(leadLine, "  lead") {
-		t.Errorf("second row agent should be indented with 2 spaces, got: %q", leadLine)
+	// Second row: agent cell should be vertically aligned (no extra indent).
+	if !strings.Contains(leadLine, "lead") {
+		t.Errorf("second row should contain agent name, got: %q", leadLine)
 	}
 }
 
