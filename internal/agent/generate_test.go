@@ -12,19 +12,10 @@ import (
 	"testing"
 
 	"github.com/kapmcli/kapm/internal/agent"
+	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
 var testKnownTools = []string{"fs_read", "fs_write", "execute_bash", "code", "grep", "glob", "thinking"}
-
-type generatedAgentConfig struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Prompt       string   `json:"prompt"`
-	Model        string   `json:"model,omitempty"`
-	Tools        []string `json:"tools"`
-	AllowedTools []string `json:"allowedTools"`
-	Resources    []string `json:"resources,omitempty"`
-}
 
 func TestGenerateBasic(t *testing.T) {
 	t.Parallel()
@@ -250,7 +241,7 @@ func buildInput(lines ...string) io.Reader {
 	return strings.NewReader(strings.Join(lines, "\n") + "\n")
 }
 
-func readGeneratedAgent(t *testing.T, root, name string) (generatedAgentConfig, map[string]any) {
+func readGeneratedAgent(t *testing.T, root, name string) (apmconfig.AgentConfig, map[string]any) {
 	t.Helper()
 
 	path := filepath.Join(root, ".kiro", "agents", name+".json")
@@ -259,7 +250,7 @@ func readGeneratedAgent(t *testing.T, root, name string) (generatedAgentConfig, 
 		t.Fatalf("ReadFile(%q): %v", path, err)
 	}
 
-	var config generatedAgentConfig
+	var config apmconfig.AgentConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		t.Fatalf("Unmarshal(%q): %v", path, err)
 	}
