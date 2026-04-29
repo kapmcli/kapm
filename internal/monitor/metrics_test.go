@@ -292,8 +292,8 @@ func TestAggregateDetail(t *testing.T) {
 	if sd.Cwd != "/tmp" {
 		t.Errorf("cwd: want /tmp, got %q", sd.Cwd)
 	}
-	if len(sd.PromptHistory) != 2 || sd.PromptHistory[0] != "second" {
-		t.Errorf("prompts newest-first expected, got %v", sd.PromptHistory)
+	if len(sd.PromptHistory) != 2 || sd.PromptHistory[0] != "first" {
+		t.Errorf("prompts oldest-first expected, got %v", sd.PromptHistory)
 	}
 	// Timeline: 4 events (2 prompts + 1 toolUse + 1 unmatched toolUse), last one is the unmatched preToolUse -> IsError true
 	if len(sd.Timeline) < 3 {
@@ -1935,5 +1935,118 @@ func TestAggregateDetail_CancelledCtx(t *testing.T) {
 	}
 	if len(dm.Sessions) != 0 {
 		t.Errorf("expected zero DetailedMetrics on cancel, got %d sessions", len(dm.Sessions))
+	}
+}
+
+// --- Task 6: IDE session display integration --------------------------------
+
+// TestTouchSessionState_UpdatedAt verifies that UpdatedAt advances s.end so
+// that Duration > 0 for IDE sessionMeta records.
+func TestTouchSessionState_UpdatedAt(t *testing.T) {
+	t.Parallel()
+	createdAt := baseTime
+	updatedAt := baseTime.Add(30 * time.Minute)
+	r := MergedRecord{
+		SessionID: "ide-1",
+		Agent:     "kiro-ide",
+		Kind:      "sessionMeta",
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}
+	st := newAggState(1, baseTime.Add(time.Hour))
+	s := touchSessionState(st, r)
+	if !s.end.Equal(updatedAt) {
+		t.Errorf("s.end = %v, want %v (UpdatedAt)", s.end, updatedAt)
+	}
+	dur := s.end.Sub(s.start)
+	if dur <= 0 {
+		t.Errorf("Duration = %v, want > 0", dur)
+	}
+}
+
+// TestAggregateDetail_IDESession verifies that an IDE sessionMeta MergedRecord
+// produces a SessionDetail with Agent="kiro-ide", TotalCredits > 0, Duration > 0.
+func TestAggregateDetail_IDESession(t *testing.T) {
+	t.Parallel()
+	createdAt := baseTime
+	updatedAt := baseTime.Add(28 * time.Minute)
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{
+			SessionID:    "ide-sess-1",
+			Kind:         "sessionMeta",
+			Agent:        "kiro-ide",
+			Title:        "Implement feature X",
+			Cwd:          "/home/user/project-alpha",
+			CreatedAt:    createdAt,
+			UpdatedAt:    updatedAt,
+			TotalCredits: 0.125,
+		},
+	}
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	sm := d.Sessions[0].SessionMetric
+	if sm.Agent != "kiro-ide" {
+		t.Errorf("Agent: want kiro-ide, got %q", sm.Agent)
+	}
+	if sm.TotalCredits != 0.125 {
+		t.Errorf("TotalCredits: want 0.125, got %f", sm.TotalCredits)
+	}
+	if sm.Duration <= 0 {
+		t.Errorf("Duration: want > 0, got %v", sm.Duration)
+	}
+	if sm.ToolCalls != 0 {
+		t.Errorf("ToolCalls: want 0, got %d", sm.ToolCalls)
+	}
+	if sm.Prompts != 0 {
+		t.Errorf("Prompts: want 0, got %d", sm.Prompts)
+	}
+	if sm.FilesChanged != 0 {
+		t.Errorf("FilesChanged: want 0, got %d", sm.FilesChanged)
+	}
+}
+
+// TestAggregateDetail_MixedSources verifies that CLI and IDE sessions coexist
+// correctly in the same aggregation.
+func TestAggregateDetail_MixedSources(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(2 * time.Hour)
+	records := []MergedRecord{
+		// CLI session
+		rec("cli-1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
+		{SessionID: "cli-1", Agent: "coder", Kind: "sessionMeta",
+			TotalInputTokens: 100, TotalOutputTokens: 200, TotalCredits: 1.0,
+			CreatedAt: baseTime, UpdatedAt: baseTime.Add(5 * time.Minute)},
+		// IDE session
+		{
+			SessionID:    "ide-1",
+			Kind:         "sessionMeta",
+			Agent:        "kiro-ide",
+			Cwd:          "/home/user/proj",
+			CreatedAt:    baseTime.Add(10 * time.Minute),
+			UpdatedAt:    baseTime.Add(40 * time.Minute),
+			TotalCredits: 0.5,
+		},
+	}
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 2 {
+		t.Fatalf("want 2 sessions, got %d", len(d.Sessions))
+	}
+	byAgent := map[string]SessionMetric{}
+	for _, sd := range d.Sessions {
+		byAgent[sd.Agent] = sd.SessionMetric
+	}
+	cli := byAgent["coder"]
+	if cli.TotalCredits != 1.0 {
+		t.Errorf("CLI TotalCredits: want 1.0, got %f", cli.TotalCredits)
+	}
+	ide := byAgent["kiro-ide"]
+	if ide.TotalCredits != 0.5 {
+		t.Errorf("IDE TotalCredits: want 0.5, got %f", ide.TotalCredits)
+	}
+	if ide.Duration <= 0 {
+		t.Errorf("IDE Duration: want > 0, got %v", ide.Duration)
 	}
 }

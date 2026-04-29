@@ -105,8 +105,12 @@ func processRecord(st *aggState, r MergedRecord) {
 	case "toolUse":
 		s.toolCalls++
 		summary := inputSummary(r.ToolInput, toolName, s.cwd)
-		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, toolUseID: r.ToolUseID}
+		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, ToolInput: formatToolInput(r.ToolInput), toolUseID: r.ToolUseID}
 		s.timeline = append(s.timeline, entry)
+
+		if r.SubAgent != nil {
+			s.subAgentCalls = append(s.subAgentCalls, *r.SubAgent)
+		}
 
 		if r.ToolUseID != "" {
 			if s.pendingToolUse == nil {
@@ -147,6 +151,11 @@ func processRecord(st *aggState, r MergedRecord) {
 		s.totalInputTokens += r.TotalInputTokens
 		s.totalOutputTokens += r.TotalOutputTokens
 		s.totalCredits += r.TotalCredits
+		if r.Title != "" && s.sumTitle == "" && len(s.prompts) == 0 {
+			s.sumTitle = r.Title
+		}
+		s.toolCalls += r.ToolCalls
+		s.prompts = append(s.prompts, r.PromptTexts...)
 	}
 }
 
@@ -172,6 +181,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	call := ToolCall{
 		Ts: preTs, Session: r.SessionID, Agent: s.agent, Tool: s.timeline[matchIdx].Tool,
 		Duration: s.timeline[matchIdx].Duration, InputSummary: s.timeline[matchIdx].InputSummary,
+		ToolInput: s.timeline[matchIdx].ToolInput,
 	}
 
 	if r.ToolStatus == "error" {
@@ -237,7 +247,7 @@ func markUnmatchedToolCalls(st *aggState) {
 			td.ErrorCount++
 			td.Errors = append(td.Errors, ToolCall{
 				Ts: ev.Ts, Session: s.id, Agent: s.agent, Tool: ev.Tool, IsError: true,
-				InputSummary: ev.InputSummary,
+				InputSummary: ev.InputSummary, ToolInput: ev.ToolInput,
 			})
 		}
 	}
@@ -247,11 +257,10 @@ func markUnmatchedToolCalls(st *aggState) {
 func buildSessionDetails(st *aggState) {
 	for _, s := range st.sessions {
 		base := newSessionMetric(s, st.now)
-		promptsRev := slices.Clone(s.prompts)
-		if promptsRev == nil {
-			promptsRev = []string{}
+		prompts := slices.Clone(s.prompts)
+		if prompts == nil {
+			prompts = []string{}
 		}
-		slices.Reverse(promptsRev)
 		var changes []FileChange
 		if len(s.changes) > 0 {
 			changes = slices.Clone(s.changes)
@@ -259,11 +268,12 @@ func buildSessionDetails(st *aggState) {
 		}
 		st.sessionDetails = append(st.sessionDetails, SessionDetail{
 			SessionMetric:     base,
-			PromptHistory:     promptsRev,
+			PromptHistory:     prompts,
 			Timeline:          s.timeline,
 			ToolSummary:       sessionToolSummary(s.timeline),
 			AssistantResponse: s.assistantResponse,
 			Changes:           changes,
+			SubAgentCalls:     s.subAgentCalls,
 		})
 	}
 }
@@ -482,6 +492,7 @@ func AggregateToolsFromTimeline(sessions []SessionDetail) ([]ToolDetail, []ToolM
 			call := ToolCall{
 				Ts: ev.Ts, Session: sd.ID, Agent: sd.Agent, Tool: ev.Tool,
 				Duration: ev.Duration, IsError: ev.IsError, InputSummary: ev.InputSummary,
+				ToolInput: ev.ToolInput,
 			}
 			if ev.IsError {
 				td.ErrorCount++

@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"slices"
@@ -11,6 +12,18 @@ import (
 // inputSummary extracts a short human-readable summary of a tool_input payload.
 // Returns "" for nil/empty/unparseable input. The tool name selects a
 // registered formatter; unknown tools fall through to genericSummary.
+
+// formatToolInput returns a human-readable representation of the raw tool input JSON.
+func formatToolInput(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, raw, "", "  "); err != nil {
+		return string(raw)
+	}
+	return pretty.String()
+}
 func inputSummary(raw json.RawMessage, tool, cwd string) string {
 	if len(raw) == 0 {
 		return ""

@@ -494,6 +494,7 @@ func (m *model) renderSessionDetail() string {
 	s := &sessions[idx]
 	return m.renderSessionHeader(s) +
 		m.renderSessionToolSummary(s) +
+		m.renderSessionSubAgentCalls(s) +
 		m.renderSessionAssistantResponse(s) +
 		m.renderSessionChanges(s) +
 		m.renderSessionPrompts(s) +
@@ -548,6 +549,37 @@ func (m *model) renderSessionToolSummary(s *SessionDetail) string {
 		fmt.Fprintf(&b, "  %-12s  %s %4d  %6d  %7.1f%%  %8s\n",
 			truncate(t.Tool, 12), barStyleOK.Render(bar), t.CallCount, t.ErrorCount,
 			t.SuccessRate*100, formatDur(time.Duration(t.AvgDuration)))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+
+func (m *model) renderSessionSubAgentCalls(s *SessionDetail) string {
+	if len(s.SubAgentCalls) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Sub-Agent Calls"))
+	for i, sa := range s.SubAgentCalls {
+		ts := sa.Ts.Local().Format("15:04:05")
+		dur := formatDur(time.Duration(sa.Duration))
+		fmt.Fprintf(&b, "  %d. %s  %s  [%s]\n", i+1, ts, sa.AgentName, dur)
+		if sa.Explanation != "" {
+			fmt.Fprintf(&b, "     %s\n", mutedStyle.Render(sa.Explanation))
+		}
+		prompt := sa.Prompt
+		if !m.timelineExpanded {
+			prompt = truncate(singleLine(prompt), 120)
+		}
+		fmt.Fprintf(&b, "     Prompt: %s\n", prompt)
+		if sa.Response != "" {
+			resp := sa.Response
+			if !m.timelineExpanded {
+				resp = truncate(singleLine(resp), 120)
+			}
+			fmt.Fprintf(&b, "     Response: %s\n", mutedStyle.Render(resp))
+		}
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -780,6 +812,11 @@ func (m *model) renderSessionTimeline(s *SessionDetail) string {
 		fmt.Fprintf(&b, "  %s %s  %-12s  %7s  %s\n",
 			marker, ts, label, dur,
 			mutedStyle.Render(truncateVisible(summary, summaryW)))
+		if m.timelineExpanded && e.ToolInput != "" {
+			for _, line := range strings.Split(e.ToolInput, "\n") {
+				fmt.Fprintf(&b, "    %s\n", mutedStyle.Render(line))
+			}
+		}
 		if e.IsError && e.ErrorDetail != "" {
 			detail := truncateVisible(e.ErrorDetail, m.interiorWidth()-4)
 			fmt.Fprintf(&b, "    %s\n", errorStyle.Render(detail))

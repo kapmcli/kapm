@@ -12,6 +12,26 @@
 <script src="/assets/js/charts-bootstrap.js" defer></script>
 <script src="/assets/js/tool-detail-charts.js" defer></script>
 </head>
+<script>
+// Preserve <details> open state across htmx morph swaps.
+document.addEventListener('htmx:beforeSwap', function(e) {
+  if (!e.detail.target || e.detail.target.id !== 'content') return;
+  var open = [];
+  e.detail.target.querySelectorAll('details[open][id]').forEach(function(d) {
+    open.push(d.id);
+  });
+  window._kapmOpenDetails = open;
+});
+document.addEventListener('htmx:afterSettle', function() {
+  var open = window._kapmOpenDetails;
+  if (!open || !open.length) return;
+  window._kapmOpenDetails = null;
+  open.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.open = true;
+  });
+});
+</script>
 <body hx-ext="morph">
 <div class="layout">
 <header>

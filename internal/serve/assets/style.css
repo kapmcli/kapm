@@ -198,3 +198,7 @@ tbody tr:hover { background: rgba(125, 86, 244, 0.08); }
 .diff-hunk { display: block; background: rgba(97,175,239,0.10); color: var(--accent); padding: 2px 8px; margin: 4px 0; }
 .badge-add { background: rgba(4,181,117,0.20); color: var(--success); padding: 0 6px; border-radius: 3px; margin-left: 6px; font-size: 0.85em; }
 .badge-del { background: rgba(224,108,117,0.20); color: var(--error); padding: 0 6px; border-radius: 3px; margin-left: 4px; font-size: 0.85em; }
+.hidden { display: none; }
+.tool-input-toggle .expand-icon { font-size: 0.7em; transition: transform 0.15s; display: inline-block; }
+.tool-input-toggle.open .expand-icon { transform: rotate(90deg); }
+.tool-input-full { background: var(--surface); border-radius: 4px; padding: 0.5em; border: 1px solid var(--border); }
