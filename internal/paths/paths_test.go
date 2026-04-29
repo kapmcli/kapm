@@ -48,6 +48,7 @@ func TestIDEBaseDir(t *testing.T) {
 		"windows": "Kiro/User/globalStorage/kiro.kiroagent",
 	}
 	if want, ok := suffixByOS[runtime.GOOS]; ok {
+		want = filepath.FromSlash(want)
 		if !strings.Contains(got, want) {
 			t.Errorf("IDEBaseDir() = %q, want to contain %q", got, want)
 		}
