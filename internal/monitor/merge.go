@@ -128,10 +128,10 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	return merged, refs
 }
 
-// pairPromptsWithTimeline pairs each prompt in history (newest-first) with
+// pairPromptsWithTimeline pairs each prompt in history (oldest-first) with
 // its timestamp from the timeline (oldest-first) by matching
 // EventUserPromptSubmit entries positionally. Unmapped prompts get zero ts.
-// Returns prompts sorted newest-first by paired timestamp.
+// Returns prompts sorted oldest-first by paired timestamp.
 func pairPromptsWithTimeline(details []SessionDetail) []string {
 	type tsPrompt struct {
 		ts  int64
@@ -145,37 +145,33 @@ func pairPromptsWithTimeline(details []SessionDetail) []string {
 		if len(ph) == 0 {
 			continue
 		}
-		chronological := make([]string, len(ph))
-		for i, s := range ph {
-			chronological[len(ph)-1-i] = s
-		}
 		i := 0
 		for _, ev := range sd.Timeline {
 			if ev.Event != apmconfig.EventUserPromptSubmit {
 				continue
 			}
-			if i >= len(chronological) {
+			if i >= len(ph) {
 				break
 			}
-			prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: chronological[i]})
+			prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: ph[i]})
 			i++
 		}
-		for ; i < len(chronological); i++ {
-			prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: chronological[i]})
+		for ; i < len(ph); i++ {
+			prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: ph[i]})
 		}
 	}
 
 	slices.SortStableFunc(prompts, func(a, b tsPrompt) int {
 		if a.ts != b.ts {
-			if a.ts > b.ts {
+			if a.ts < b.ts {
 				return -1
 			}
 			return 1
 		}
-		if a.seq > b.seq {
+		if a.seq < b.seq {
 			return -1
 		}
-		if a.seq < b.seq {
+		if a.seq > b.seq {
 			return 1
 		}
 		return 0
@@ -283,6 +279,11 @@ type MergedRecord struct {
 	TotalInputTokens  int
 	TotalOutputTokens int
 	TotalCredits      float64
+	// IDE-only: pre-aggregated counts (CLI derives these from individual records)
+	PromptTexts []string
+	ToolCalls   int
+	// IDE-only: sub-agent invocation data (set on invokeSubAgent toolUse records)
+	SubAgent *SubAgentCall
 }
 
 // parseHookRecords reads hook JSONL in the new minimal format.

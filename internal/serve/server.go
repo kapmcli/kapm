@@ -246,6 +246,7 @@ type Options struct {
 	Port        int
 	SessionsDir string
 	LogsDir     string
+	IDEBaseDir  string
 	CwdFilter   string
 	Since       time.Duration
 	MetricsTTL  time.Duration // 0 means default 1s
@@ -412,7 +413,7 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 		}
 		s.metricsMu.Unlock()
 
-		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache)
+		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache)
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
 		}

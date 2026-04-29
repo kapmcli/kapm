@@ -22,7 +22,7 @@ var runServe = runLogsCommand(
 		fs.BoolVar(&serveOpen, "open", false, "open browser automatically")
 	},
 	func(ctx context.Context, fs *flag.FlagSet, lf logsFlags) error {
-		srv := serve.New(serve.Options{Port: servePort, SessionsDir: lf.SessionsDir, LogsDir: lf.LogsDir, CwdFilter: lf.CwdFilter, Since: lf.Since})
+		srv := serve.New(serve.Options{Port: servePort, SessionsDir: lf.SessionsDir, LogsDir: lf.LogsDir, IDEBaseDir: lf.IDESessionsDir, CwdFilter: lf.CwdFilter, Since: lf.Since})
 
 		url := fmt.Sprintf("http://%s/", srv.Addr())
 		_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)

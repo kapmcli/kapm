@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,10 +14,11 @@ import (
 
 // LoadAll loads sessions + hook logs, merges them, and returns MergedRecords.
 // hookLogsDir may be empty or non-existent (sessions-only mode).
+// ideBaseDir, when non-empty, loads IDE sessions and appends them.
 // cwdFilter limits sessions to those whose cwd starts with the given path;
 // empty means no filter (global mode).
 // cache may be nil (no caching). Returns a new cache for reuse.
-func LoadAll(ctx context.Context, sessionsDir, hookLogsDir string, since time.Time, cwdFilter string, cache *SessionCache) ([]MergedRecord, *SessionCache, error) {
+func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir string, since time.Time, cwdFilter string, cache *SessionCache) ([]MergedRecord, *SessionCache, error) {
 	sessions, nextCache, err := LoadSessions(ctx, sessionsDir, since, cwdFilter, cache)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load sessions: %w", err)
@@ -34,7 +36,33 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir string, since time.Ti
 	if records == nil {
 		records = []MergedRecord{}
 	}
+
+	if ideBaseDir != "" {
+		ideSessions, ideErr := LoadIDESessions(ctx, ideBaseDir, since, cwdFilter)
+		if ideErr != nil {
+			slog.Warn("load ide sessions", "err", ideErr)
+		} else if len(ideSessions) > 0 {
+			execIDs := collectExecutionIDs(ideSessions)
+			execResults, execErr := LoadIDEExecutions(ctx, ideBaseDir, execIDs)
+			if execErr != nil {
+				slog.Warn("load ide executions", "err", execErr)
+			}
+			records = append(records, BuildIDEMergedRecords(ideSessions, execResults)...)
+		}
+	}
+
 	return records, nextCache, nil
+}
+
+// collectExecutionIDs extracts all ExecutionIDs from IDE sessions into a set.
+func collectExecutionIDs(sessions []IDEParsedSession) map[string]struct{} {
+	ids := make(map[string]struct{})
+	for _, s := range sessions {
+		for _, id := range s.ExecutionIDs {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids
 }
 
 // loadAllHookRecords reads all .jsonl files in hookLogsDir and returns

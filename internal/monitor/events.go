@@ -21,6 +21,9 @@ func touchSessionState(st *aggState, r MergedRecord) *sessionState {
 	if ts.After(s.end) {
 		s.end = ts
 	}
+	if r.UpdatedAt.After(s.end) {
+		s.end = r.UpdatedAt
+	}
 	return s
 }
 

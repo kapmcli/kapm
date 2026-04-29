@@ -1,0 +1,49 @@
+{
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Add a hello world function"}],
+        "id": "msg-0001"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "On it.",
+        "id": "msg-0002"
+      },
+      "executionId": "c8a800f5-0000-0000-0000-000000000001"
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Add tests for it"}],
+        "id": "msg-0003"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Adding tests now.",
+        "id": "msg-0004"
+      },
+      "executionId": "c8a800f5-0000-0000-0000-000000000002"
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Run the tests"}],
+        "id": "msg-0005"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "All tests pass.",
+        "id": "msg-0006"
+      },
+      "executionId": "c8a800f5-0000-0000-0000-000000000003"
+    }
+  ]
+}

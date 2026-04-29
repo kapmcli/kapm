@@ -440,28 +440,28 @@ func TestPairPromptsWithTimeline(t *testing.T) {
 			details: []SessionDetail{
 				{
 					SessionMetric: SessionMetric{},
-					PromptHistory: []string{"p2", "p1"}, // newest-first
+					PromptHistory: []string{"p1", "p2"}, // oldest-first
 					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t2)},
 				},
 			},
-			want: []string{"p2", "p1"}, // p2 paired with t2 (newer), p1 with t1
+			want: []string{"p1", "p2"}, // p1 paired with t1, p2 with t2
 		},
 		{
 			name: "more prompts than events",
 			details: []SessionDetail{
 				{
-					PromptHistory: []string{"p3", "p2", "p1"}, // newest-first
+					PromptHistory: []string{"p1", "p2", "p3"}, // oldest-first
 					Timeline:      []EventEntry{promptEvent(t1)},
 				},
 			},
-			// p1 paired with t1, p2 and p3 get zero ts → sort after p1
-			want: []string{"p1", "p3", "p2"},
+			// p1 paired with t1, p2 and p3 get zero ts → sort before p1
+			want: []string{"p2", "p3", "p1"},
 		},
 		{
 			name: "multiple agents interleaved by timestamp",
 			details: []SessionDetail{
 				{
-					PromptHistory: []string{"a2", "a1"},
+					PromptHistory: []string{"a1", "a2"},
 					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t3)},
 				},
 				{
@@ -469,19 +469,19 @@ func TestPairPromptsWithTimeline(t *testing.T) {
 					Timeline:      []EventEntry{promptEvent(t2)},
 				},
 			},
-			// a1→t1, a2→t3, b1→t2 → sorted newest-first: a2(t3), b1(t2), a1(t1)
-			want: []string{"a2", "b1", "a1"},
+			// a1→t1, a2→t3, b1→t2 → sorted oldest-first: a1(t1), b1(t2), a2(t3)
+			want: []string{"a1", "b1", "a2"},
 		},
 		{
 			name: "equal timestamps preserve input order",
 			details: []SessionDetail{
 				{
-					PromptHistory: []string{"p2", "p1"},
+					PromptHistory: []string{"p1", "p2"},
 					Timeline:      []EventEntry{promptEvent(t1), promptEvent(t1)},
 				},
 			},
-			// both get t1; tiebreak by seq desc → p2(seq=1) before p1(seq=0)
-			want: []string{"p2", "p1"},
+			// both get t1; tiebreak by seq asc → p1(seq=0) before p2(seq=1)
+			want: []string{"p1", "p2"},
 		},
 	}
 

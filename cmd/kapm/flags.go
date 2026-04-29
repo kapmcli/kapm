@@ -17,10 +17,11 @@ import (
 
 // logsFlags holds the parsed result of the common --since / --logs-dir / --target-dir flags.
 type logsFlags struct {
-	SessionsDir string
-	LogsDir     string
-	Since       time.Duration
-	CwdFilter   string // empty = global (show all sessions)
+	SessionsDir    string
+	LogsDir        string
+	IDESessionsDir string
+	Since          time.Duration
+	CwdFilter      string // empty = global (show all sessions)
 }
 
 // parseLogsCommand parses a command's flags and rejects positional arguments.
@@ -40,17 +41,18 @@ func parseLogsCommand(fs *flag.FlagSet, args []string, command string) (bool, er
 
 // addLogsFlags registers the common flags on fs and returns pointers to the flag values.
 // Call resolveLogsFlags after fs.Parse(args) succeeds.
-func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir, sessionsDir *string, global *bool) {
+func addLogsFlags(fs *flag.FlagSet) (since, logsDir, targetDir, sessionsDir, ideSessionsDir *string, global *bool) {
 	since = fs.String("since", "24h", "time window (e.g. 1h, 3d, 1w)")
 	logsDir = fs.String("logs-dir", "", "path to logs directory (default: <target-dir>/.kapm/logs)")
 	targetDir = fs.String("target-dir", ".", "target directory (default: current directory)")
 	sessionsDir = fs.String("sessions-dir", "", "path to sessions directory (default: ~/.kiro/sessions/cli)")
+	ideSessionsDir = fs.String("ide-sessions-dir", "", "path to IDE sessions directory (default: auto-detected)")
 	global = fs.Bool("global", false, "show sessions from all projects (default: current directory only)")
 	return
 }
 
 // resolveLogsFlags validates and resolves the common flags into a logsFlags.
-func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag string, global bool) (logsFlags, error) {
+func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag, ideSessionsDirFlag string, global bool) (logsFlags, error) {
 	td, err := expandTarget(targetDir)
 	if err != nil {
 		return logsFlags{}, err
@@ -69,6 +71,10 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag string, global 
 	if sessionsDir == "" && home != "" {
 		sessionsDir = filepath.Join(home, ".kiro", "sessions", "cli")
 	}
+	ideSessionsDir := ideSessionsDirFlag
+	if ideSessionsDir == "" {
+		ideSessionsDir = paths.IDEBaseDir()
+	}
 	var cwdFilter string
 	if !global {
 		abs, err := filepath.Abs(td)
@@ -77,7 +83,7 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag string, global 
 		}
 		cwdFilter = abs
 	}
-	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, Since: d, CwdFilter: cwdFilter}, nil
+	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, IDESessionsDir: ideSessionsDir, Since: d, CwdFilter: cwdFilter}, nil
 }
 
 // runLogsCommand returns a command handler that sets up flags, parses args,
@@ -90,7 +96,7 @@ func runLogsCommand(
 	return func(args []string) error {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
 		fs.SetOutput(os.Stderr)
-		since, logsDir, targetDir, sessionsDir, global := addLogsFlags(fs)
+		since, logsDir, targetDir, sessionsDir, ideSessionsDir, global := addLogsFlags(fs)
 		if registerExtras != nil {
 			registerExtras(fs)
 		}
@@ -108,7 +114,7 @@ func runLogsCommand(
 			return nil
 		}
 
-		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir, *sessionsDir, *global)
+		lf, err := resolveLogsFlags(*since, *logsDir, *targetDir, *sessionsDir, *ideSessionsDir, *global)
 		if err != nil {
 			return err
 		}

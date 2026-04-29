@@ -1,0 +1,13 @@
+{
+  "executionId": "c8a800f5-0000-0000-0000-000000000004",
+  "workflowType": "chat-agent",
+  "status": "succeed",
+  "startTime": 1777521622200,
+  "endTime": 1777521625000,
+  "chatSessionId": "711eb717-0000-0000-0000-000000000002",
+  "usageSummary": [
+    {"unit": "credit", "usage": 0.003200},
+    {"usedTools": ["readFile"], "unit": "credit", "usage": 0.0280}
+  ],
+  "contextUsagePercentage": 3.10
+}

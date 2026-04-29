@@ -42,6 +42,7 @@ type model struct {
 	metrics     DetailedMetrics
 	sessionsDir string
 	hookLogsDir string
+	ideBaseDir  string
 	cwdFilter   string
 	homeDir     string
 	since       time.Duration
@@ -62,16 +63,17 @@ type model struct {
 	updatedAt        time.Time
 	promptExpanded   bool // toggle for prompt full display
 	changesExpanded  bool // toggle for diff previews in Changes section
+	timelineExpanded bool // toggle for full tool input in Timeline
 }
 
 // NewModel creates a new TUI model.
-func NewModel(ctx context.Context, sessionsDir, hookLogsDir, cwdFilter string, since time.Duration) *model {
+func NewModel(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter string, since time.Duration) *model {
 	// best-effort; empty string fallback is acceptable for path abbreviation
 	home, _ := os.UserHomeDir()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache()}
+	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache()}
 }
 
 func (m *model) Init() tea.Cmd {
@@ -155,6 +157,9 @@ func (m *model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 		m.recomputeDetailCache()
 	case "d":
 		m.changesExpanded = !m.changesExpanded
+		m.recomputeDetailCache()
+	case "t":
+		m.timelineExpanded = !m.timelineExpanded
 		m.recomputeDetailCache()
 	}
 	return m, nil
@@ -465,7 +470,7 @@ func (m *model) recomputeDetailCache() {
 
 func (m *model) helpLine() string {
 	if m.detail {
-		return "←→/hl: prev/next · ↑↓/jk: scroll · pgup/pgdn: page · p: prompts · d: diffs · esc: back · q: quit"
+		return "←→/hl: prev/next · ↑↓/jk: scroll · pgup/pgdn: page · p: prompts · d: diffs · t: tool input · esc: back · q: quit"
 	}
 	base := "tab/←→: switch · 1-5: jump · q: quit · r: refresh"
 	if m.tab == tabOverview {
@@ -478,12 +483,13 @@ func (m *model) refreshCmd() tea.Cmd {
 	cache := m.cache
 	sessionsDir := m.sessionsDir
 	logsDir := m.hookLogsDir
+	ideBaseDir := m.ideBaseDir
 	cwdFilter := m.cwdFilter
 	sinceDur := m.since
 	ctx := m.ctx
 	return func() tea.Msg {
 		since := time.Now().Add(-sinceDur)
-		records, nextCache, err := LoadAll(ctx, sessionsDir, logsDir, since, cwdFilter, cache)
+		records, nextCache, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, since, cwdFilter, cache)
 		if err != nil {
 			return metricsMsg{err: err}
 		}
@@ -557,8 +563,8 @@ func statusBadge(active bool) string {
 }
 
 // RunTUI creates and runs the bubbletea program.
-func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, cwdFilter string, since time.Duration) error {
-	p := tea.NewProgram(NewModel(ctx, sessionsDir, hookLogsDir, cwdFilter, since))
+func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter string, since time.Duration) error {
+	p := tea.NewProgram(NewModel(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, since))
 	_, err := p.Run()
 	return err
 }

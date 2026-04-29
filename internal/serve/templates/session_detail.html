@@ -119,24 +119,44 @@
   {{- end}}
 </section>
 
+
+{{- if $s.SubAgentCalls}}
+<section class="card">
+  <div class="card-title">Sub-Agent Calls</div>
+  {{- range $i, $sa := $s.SubAgentCalls}}
+  <details id="subagent-{{$i}}" style="margin-bottom:1em">
+    <summary><strong>{{$sa.AgentName}}</strong> {{localtime $sa.Ts "time"}} [{{$sa.Duration | dur}}]{{if $sa.Explanation}} — <span class="muted">{{$sa.Explanation}}</span>{{end}}</summary>
+    <div style="padding:0.5em 1em">
+      <div><strong>Prompt:</strong></div>
+      <div class="prompt-md">{{renderMarkdown .Prompt}}</div>
+      {{- if .Response}}
+      <div style="margin-top:0.5em"><strong>Response:</strong></div>
+      <div class="prompt-md" style="max-height:30em;overflow:auto">{{renderMarkdown .Response}}</div>
+      {{- end}}
+    </div>
+  </details>
+  {{- end}}
+</section>
+{{- end}}
+
 <section class="card">
   <div class="card-title">Timeline</div>
   <table>
     <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Duration</th><th>Status</th><th>Input</th></tr></thead>
     <tbody>
-    {{- range $s.Timeline}}
-      {{- if and (eq .Event "postToolUse") (not .IsError)}}{{continue}}{{end}}
+    {{- range $ti, $ev := $s.Timeline}}
+      {{- if and (eq $ev.Event "postToolUse") (not $ev.IsError)}}{{continue}}{{end}}
       <tr>
-        <td>{{localtime .Ts "time"}}</td>
-        <td>{{.Event}}</td>
-        <td>{{.Tool}}</td>
-        <td>{{if not (or (eq .Event "agentSpawn") (eq .Event "userPromptSubmit") (eq .Event "postToolUse") (eq .Event "stop"))}}{{.Duration | dur}}{{end}}</td>
-        <td>{{if .IsError}}<span class="badge badge-error">error</span>{{end}}</td>
-        <td>{{.InputSummary}}</td>
+        <td>{{localtime $ev.Ts "time"}}</td>
+        <td>{{$ev.Event}}</td>
+        <td>{{$ev.Tool}}</td>
+        <td>{{if not (or (eq $ev.Event "agentSpawn") (eq $ev.Event "userPromptSubmit") (eq $ev.Event "postToolUse") (eq $ev.Event "stop"))}}{{$ev.Duration | dur}}{{end}}</td>
+        <td>{{if $ev.IsError}}<span class="badge badge-error">error</span>{{end}}</td>
+        <td>{{if $ev.ToolInput}}<details id="tl-{{$ti}}"><summary>{{$ev.InputSummary}}</summary><pre style="white-space:pre-wrap;font-size:0.85em;max-height:30em;overflow:auto;margin:0.4em 0 0;padding:0.5em;background:var(--surface);border:1px solid var(--border);border-radius:4px">{{$ev.ToolInput}}</pre></details>{{else}}{{$ev.InputSummary}}{{end}}</td>
       </tr>
-      {{- if and .IsError .ErrorDetail}}
+      {{- if and $ev.IsError $ev.ErrorDetail}}
       <tr>
-        <td colspan="6" style="background:rgba(224,108,117,0.08);color:var(--error);font-size:0.85em;padding-left:2rem">{{if gt (len .ErrorDetail) 200}}{{slice .ErrorDetail 0 200}}…{{else}}{{.ErrorDetail}}{{end}}</td>
+        <td colspan="6" style="background:rgba(224,108,117,0.08);color:var(--error);font-size:0.85em;padding-left:2rem">{{if gt (len $ev.ErrorDetail) 200}}{{slice $ev.ErrorDetail 0 200}}…{{else}}{{$ev.ErrorDetail}}{{end}}</td>
       </tr>
       {{- end}}
     {{- else}}

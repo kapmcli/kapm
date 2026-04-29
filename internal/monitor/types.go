@@ -112,6 +112,7 @@ type EventEntry struct {
 	IsError      bool         // preToolUse without matching postToolUse
 	ErrorDetail  string       // exit code + stderr excerpt (max 256 chars), empty if no error
 	InputSummary string       // short human-readable summary of tool_input (preToolUse only)
+	ToolInput    string       // full tool input text for expand view
 	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (preToolUse only, 0 for errors)
 
 	toolUseID string // unexported: used for toolUse/toolResult pairing
@@ -128,6 +129,7 @@ type ToolCall struct {
 	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (0 for errors)
 	IsError      bool         // no matching postToolUse
 	InputSummary string       // short human-readable summary of tool_input
+	ToolInput    string       // full tool input text
 }
 
 // SessionToolSummary is a per-tool breakdown within a single session.
@@ -142,11 +144,22 @@ type SessionToolSummary struct {
 // SessionDetail is the per-session drill-down payload.
 type SessionDetail struct {
 	SessionMetric
-	PromptHistory     []string             // raw prompts, newest first
+	PromptHistory     []string             // raw prompts, oldest first
 	Timeline          []EventEntry         // full ordered event list for this session
 	ToolSummary       []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
 	AssistantResponse string               // LLM final response from stop event (max 2KB)
 	Changes           []FileChange         // chronological order (sorted by Ts ascending)
+	SubAgentCalls     []SubAgentCall       // IDE sub-agent invocations
+}
+
+// SubAgentCall represents a sub-agent invocation from an IDE session.
+type SubAgentCall struct {
+	AgentName   string
+	Explanation string
+	Prompt      string
+	Response    string
+	Duration    JSONDuration
+	Ts          time.Time
 }
 
 // AgentDetail is the per-agent drill-down payload.
@@ -197,6 +210,7 @@ type sessionState struct {
 	totalInputTokens   int
 	totalOutputTokens  int
 	totalCredits       float64
+	subAgentCalls      []SubAgentCall
 }
 
 // aggState holds the mutable accumulators shared by the three
