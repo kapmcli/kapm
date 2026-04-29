@@ -1,0 +1,14 @@
+[
+  {
+    "sessionId": "711eb717-0000-0000-0000-000000000001",
+    "title": "Implement feature X",
+    "dateCreated": "1777435222255",
+    "workspaceDirectory": "/home/user/project-alpha"
+  },
+  {
+    "sessionId": "711eb717-0000-0000-0000-000000000002",
+    "title": "Fix bug in parser",
+    "dateCreated": "1777521622255",
+    "workspaceDirectory": "/home/user/project-alpha"
+  }
+]

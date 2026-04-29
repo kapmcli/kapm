@@ -1,0 +1,16 @@
+{
+  "executionId": "c8a800f5-0000-0000-0000-000000000002",
+  "workflowType": "chat-agent",
+  "status": "succeed",
+  "startTime": 1777435230000,
+  "endTime": 1777435238000,
+  "chatSessionId": "711eb717-0000-0000-0000-000000000001",
+  "usageSummary": [
+    {"unit": "credit", "usage": 0.005120},
+    {"usedTools": ["executeBash"], "unit": "credit", "usage": 0.1166},
+    {"usedTools": ["readFile"], "unit": "credit", "usage": 0.0432},
+    {"usedTools": ["writeFile"], "unit": "credit", "usage": 0.0215},
+    {"usedTools": ["executeBash", "readFile"], "unit": "credit", "usage": 0.0890}
+  ],
+  "contextUsagePercentage": 12.34
+}

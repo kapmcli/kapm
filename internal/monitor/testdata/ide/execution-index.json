@@ -1,0 +1,32 @@
+{
+  "executions": [
+    {
+      "executionId": "c8a800f5-0000-0000-0000-000000000001",
+      "type": "chat-agent",
+      "status": "succeed",
+      "startTime": 1777435222200,
+      "endTime": 1777435225555
+    },
+    {
+      "executionId": "c8a800f5-0000-0000-0000-000000000002",
+      "type": "chat-agent",
+      "status": "succeed",
+      "startTime": 1777435230000,
+      "endTime": 1777435238000
+    },
+    {
+      "executionId": "c8a800f5-0000-0000-0000-000000000003",
+      "type": "chat-agent",
+      "status": "succeed",
+      "startTime": 1777435245000,
+      "endTime": 1777435250000
+    },
+    {
+      "executionId": "c8a800f5-0000-0000-0000-000000000005",
+      "type": "chat-agent",
+      "status": "aborted",
+      "startTime": 1777435260000,
+      "endTime": 1777435261000
+    }
+  ]
+}

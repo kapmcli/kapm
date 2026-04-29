@@ -1,0 +1,19 @@
+{
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "What does this file do?"}],
+        "id": "msg-0010"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "This file defines the main entry point.",
+        "id": "msg-0011"
+      },
+      "executionId": "c8a800f5-0000-0000-0000-000000000004"
+    }
+  ]
+}
