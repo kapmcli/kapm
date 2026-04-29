@@ -88,7 +88,7 @@ func fixture() DetailedMetrics {
 }
 
 func newTestModel() *model {
-	m := NewModel(context.Background(), "", ".kapm/logs", "", 24*time.Hour)
+	m := NewModel(context.Background(), "", ".kapm/logs", "", "", 24*time.Hour)
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40
@@ -197,7 +197,7 @@ func TestTUIDownUpSelection(t *testing.T) {
 
 func TestTUIRenderEmpty(t *testing.T) {
 	t.Parallel()
-	m := NewModel(context.Background(), "", "/nowhere", "", time.Hour)
+	m := NewModel(context.Background(), "", "/nowhere", "", "", time.Hour)
 	m.width, m.height = 100, 30
 	out := m.renderView()
 	if !strings.Contains(out, "No log data found") {
@@ -641,7 +641,7 @@ func TestTUITimelinePathShortening(t *testing.T) {
 
 func TestSwitchToTab(t *testing.T) {
 	t.Parallel()
-	m := NewModel(context.Background(), "", ".", "", time.Hour)
+	m := NewModel(context.Background(), "", ".", "", "", time.Hour)
 	m.detail = true
 	m.detailScroll = 42
 	m.tab = tabOverview
@@ -732,7 +732,7 @@ func TestAbbrevHome_SinglyResolved(t *testing.T) {
 		t.Setenv("HOMEDRIVE", "")
 		t.Setenv("HOMEPATH", "")
 	}
-	m := NewModel(context.Background(), "", filepath.Join(t.TempDir(), "logs"), "", 24*time.Hour)
+	m := NewModel(context.Background(), "", filepath.Join(t.TempDir(), "logs"), "", "", 24*time.Hour)
 	if m.homeDir != fakeHome {
 		t.Errorf("NewModel homeDir = %q, want %q", m.homeDir, fakeHome)
 	}
@@ -1328,7 +1328,7 @@ func TestTUIRenderSessionChanges_DiffHiddenByDefault(t *testing.T) {
 func TestTUISessionsOnlyMode(t *testing.T) {
 	t.Parallel()
 	// NewModel with empty hookLogsDir simulates sessions-only mode.
-	m := NewModel(context.Background(), t.TempDir(), "", "", 24*time.Hour)
+	m := NewModel(context.Background(), t.TempDir(), "", "", "", 24*time.Hour)
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40
