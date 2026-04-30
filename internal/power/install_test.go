@@ -384,8 +384,8 @@ func TestInstall_NoPowerMD(t *testing.T) {
 		Source:    PowerSource{Kind: SourceLocal, Path: filepath.Join(repoPowerFixtureRoot(), "no-power-md", "input")},
 		TargetDir: target,
 	})
-	if err == nil || !strings.Contains(err.Error(), "POWER.md") {
-		t.Fatalf("Install() error = %v, want POWER.md error", err)
+	if err == nil || !strings.Contains(err.Error(), "power.md") {
+		t.Fatalf("Install() error = %v, want power.md error", err)
 	}
 	assertDirEmpty(t, target)
 }
