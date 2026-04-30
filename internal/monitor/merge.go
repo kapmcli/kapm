@@ -343,6 +343,19 @@ func decodeOrSkip[T any](data json.RawMessage, kind, sessionID string) (T, bool)
 	return v, true
 }
 
+// extractTextContent unmarshals a text ContentItem. Returns ("", false) if
+// the item is not ContentKindText or unmarshaling fails.
+func extractTextContent(ci ContentItem) (string, bool) {
+	if ci.Kind != ContentKindText {
+		return "", false
+	}
+	var t string
+	if err := json.Unmarshal(ci.Data, &t); err != nil {
+		return "", false
+	}
+	return t, true
+}
+
 // MergeSessions merges ParsedSession slices with hook log records into
 // MergedRecord slices. When hookLogs is nil or empty, sessions-only mode is
 // used and hook fields are zero values.
@@ -442,11 +455,8 @@ func collectTurnResponses(messages []SessionMessage, sessionID string) []string 
 				continue
 			}
 			for _, ci := range ad.Content {
-				if ci.Kind == ContentKindText {
-					var t string
-					if err := json.Unmarshal(ci.Data, &t); err == nil {
-						lastText = t
-					}
+				if t, ok := extractTextContent(ci); ok {
+					lastText = t
 				}
 			}
 		}
@@ -529,8 +539,7 @@ func (s *messageProcessorState) processAssistantMessage(msg SessionMessage, out 
 	for _, ci := range ad.Content {
 		switch ci.Kind {
 		case ContentKindText:
-			var t string
-			if err := json.Unmarshal(ci.Data, &t); err == nil {
+			if t, ok := extractTextContent(ci); ok {
 				rec := s.base()
 				rec.Kind = RecordKindAssistantText
 				rec.AssistantText = t
