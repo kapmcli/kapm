@@ -8,7 +8,7 @@
   --warning: #E5C07B;
   --chart:   #61AFEF;
   --text:    #FAFAFA;
-  --muted:   #6B6B6B;
+  --muted:   #8B8B8B;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

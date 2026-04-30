@@ -11,7 +11,7 @@ colors:
   error: "#E06C75"
   warning: "#E5C07B"
   text: "#FAFAFA"
-  muted: "#6B6B6B"
+  muted: "#8B8B8B"
   chart: "#61AFEF"
 ---
 
@@ -30,5 +30,5 @@ kapm WebUI は deep navy 背景に purple accent を重ねた dark theme。
 - **error (#E06C75)**: 失敗系 status バッジ
 - **warning (#E5C07B)**: 注意系 status バッジ
 - **text (#FAFAFA)**: 本文。warm off-white
-- **muted (#6B6B6B)**: セカンダリテキスト、timestamp 等
+- **muted (#8B8B8B)**: セカンダリテキスト、timestamp 等
 - **chart (#61AFEF)**: echarts bar の色
