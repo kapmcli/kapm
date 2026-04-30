@@ -125,9 +125,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		}
 	}
 
-	if ev.HookEventName == apmconfig.EventUserPromptSubmit ||
-		ev.HookEventName == apmconfig.EventAgentSpawn ||
-		ev.HookEventName == apmconfig.EventStop {
+	if ev.HookEventName == apmconfig.EventUserPromptSubmit {
 		return 0
 	}
 

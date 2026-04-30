@@ -73,6 +73,10 @@ func recordSortTs(r MergedRecord) time.Time {
 		if !r.PostToolTs.IsZero() {
 			return r.PostToolTs
 		}
+	case RecordKindAgentSpawn, RecordKindStop:
+		if !r.PreToolTs.IsZero() {
+			return r.PreToolTs
+		}
 	}
 	// Fallback: use any non-zero timestamp.
 	for _, t := range []time.Time{r.PromptTs, r.PreToolTs, r.PostToolTs, r.CreatedAt} {
@@ -156,6 +160,16 @@ func processRecord(st *aggState, r MergedRecord) {
 		}
 		s.toolCalls += r.ToolCalls
 		s.prompts = append(s.prompts, r.PromptTexts...)
+
+	case RecordKindAgentSpawn:
+		s.timeline = append(s.timeline, EventEntry{Ts: ts, Event: apmconfig.EventAgentSpawn})
+
+	case RecordKindStop:
+		s.stopped = true
+		s.timeline = append(s.timeline, EventEntry{Ts: ts, Event: apmconfig.EventStop})
+		if r.AssistantText != "" {
+			s.assistantResponse = truncateUTF8(r.AssistantText, maxAssistantResponseLength)
+		}
 	}
 }
 
@@ -213,7 +227,12 @@ func finalizeSessionStats(st *aggState) {
 
 // newSessionMetric builds the SessionMetric summary for a session.
 func newSessionMetric(s *sessionState, now time.Time) SessionMetric {
-	active := now.Sub(s.end) <= activeSessionTimeout
+	var active bool
+	if s.stopped {
+		active = false
+	} else {
+		active = now.Sub(s.end) <= activeSessionTimeout
+	}
 	var title string
 	switch {
 	case s.sumTitle != "":

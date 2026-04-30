@@ -353,12 +353,17 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		sessionHooks := hookBySession[meta.SessionID]
 		// Collect preToolUse and postToolUse in order.
 		var preHooks, postHooks []HookRecord
+		var spawnHooks, stopHooks []HookRecord
 		for _, h := range sessionHooks {
 			switch h.Event {
 			case apmconfig.EventPreToolUse:
 				preHooks = append(preHooks, h)
 			case apmconfig.EventPostToolUse:
 				postHooks = append(postHooks, h)
+			case apmconfig.EventAgentSpawn:
+				spawnHooks = append(spawnHooks, h)
+			case apmconfig.EventStop:
+				stopHooks = append(stopHooks, h)
 			}
 		}
 
@@ -525,6 +530,42 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					})
 				}
 			}
+		}
+
+		// Emit MergedRecords for agentSpawn hook events.
+		for _, h := range spawnHooks {
+			agent := h.Agent
+			if agent == "" {
+				agent = currentAgent
+			}
+			out = append(out, MergedRecord{
+				SessionID: meta.SessionID,
+				Kind:      RecordKindAgentSpawn,
+				Agent:     agent,
+				PreToolTs: h.Ts,
+				Title:     meta.Title,
+				Cwd:       meta.Cwd,
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			})
+		}
+
+		// Emit MergedRecords for stop hook events.
+		for _, h := range stopHooks {
+			agent := h.Agent
+			if agent == "" {
+				agent = currentAgent
+			}
+			out = append(out, MergedRecord{
+				SessionID: meta.SessionID,
+				Kind:      RecordKindStop,
+				Agent:     agent,
+				PreToolTs: h.Ts,
+				Title:     meta.Title,
+				Cwd:       meta.Cwd,
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			})
 		}
 
 		// Second pass: attach postToolUse data to toolResult records by position.

@@ -14,6 +14,8 @@ const (
 	RecordKindToolResult    = "toolResult"
 	RecordKindAssistantText = "assistantText"
 	RecordKindSessionMeta   = "sessionMeta"
+	RecordKindAgentSpawn    = "agentSpawn"
+	RecordKindStop          = "stop"
 )
 
 // SessionMessage.Kind values (wire format from Kiro; do not change).
@@ -229,6 +231,7 @@ type sessionState struct {
 	cwd                string
 	start              time.Time
 	end                time.Time
+	stopped            bool
 	toolCalls          int
 	prompts            []string
 	timeline           []EventEntry

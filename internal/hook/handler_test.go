@@ -73,16 +73,13 @@ func TestHandleWritesToolEventTypes(t *testing.T) {
 	}{
 		{"preToolUse", `{"hook_event_name":"preToolUse","session_id":"s2","cwd":"/tmp","tool_name":"fs_read","tool_input":{"path":"/x"}}`},
 		{"postToolUse", `{"hook_event_name":"postToolUse","session_id":"s2","cwd":"/tmp","tool_name":"fs_write","tool_input":{"path":"/y"},"tool_response":{"ok":true}}`},
+		{"agentSpawn", `{"hook_event_name":"agentSpawn","session_id":"s2","cwd":"/tmp"}`},
+		{"stop", `{"hook_event_name":"stop","session_id":"s2","cwd":"/tmp"}`},
 	}
 	dir := t.TempDir()
-	// agentSpawn, userPromptSubmit, stop should write nothing
-	for _, skip := range []string{
-		`{"hook_event_name":"agentSpawn","session_id":"s2","cwd":"/tmp"}`,
-		`{"hook_event_name":"userPromptSubmit","session_id":"s2","cwd":"/tmp","prompt":"hi"}`,
-		`{"hook_event_name":"stop","session_id":"s2","cwd":"/tmp"}`,
-	} {
-		Handle(strings.NewReader(skip), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
-	}
+	// userPromptSubmit should write nothing
+	Handle(strings.NewReader(`{"hook_event_name":"userPromptSubmit","session_id":"s2","cwd":"/tmp","prompt":"hi"}`), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
+
 	for _, ev := range events {
 		code := Handle(strings.NewReader(ev.input), &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "a")
 		if code != 0 {
@@ -90,8 +87,8 @@ func TestHandleWritesToolEventTypes(t *testing.T) {
 		}
 	}
 	lines := readLines(t, logFile(dir, "s2"))
-	if len(lines) != 2 {
-		t.Fatalf("want 2 lines (only pre/postToolUse), got %d", len(lines))
+	if len(lines) != 4 {
+		t.Fatalf("want 4 lines (pre/postToolUse + agentSpawn + stop), got %d", len(lines))
 	}
 	for i, ev := range events {
 		var rec map[string]any
@@ -376,6 +373,52 @@ func TestHandleUserPromptSubmitWritesNothing(t *testing.T) {
 	logPath := logFile(dir, "s-ups")
 	if _, err := os.Stat(logPath); err == nil {
 		t.Error("log file must not be created for userPromptSubmit")
+	}
+}
+
+func TestHandleAgentSpawnWritesRecord(t *testing.T) {
+	dir := t.TempDir()
+	in := strings.NewReader(`{"hook_event_name":"agentSpawn","session_id":"s-spawn","cwd":"/tmp"}`)
+	code := Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "myagent")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	lines := readLines(t, logFile(dir, "s-spawn"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 line, got %d", len(lines))
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rec["event"] != "agentSpawn" {
+		t.Errorf("event: got %v", rec["event"])
+	}
+	if rec["agent"] != "myagent" {
+		t.Errorf("agent: got %v", rec["agent"])
+	}
+}
+
+func TestHandleStopWritesRecord(t *testing.T) {
+	dir := t.TempDir()
+	in := strings.NewReader(`{"hook_event_name":"stop","session_id":"s-stop","cwd":"/tmp"}`)
+	code := Handle(in, &bytes.Buffer{}, &bytes.Buffer{}, fixedNow, dir, "myagent")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	lines := readLines(t, logFile(dir, "s-stop"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 line, got %d", len(lines))
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rec["event"] != "stop" {
+		t.Errorf("event: got %v", rec["event"])
+	}
+	if rec["agent"] != "myagent" {
+		t.Errorf("agent: got %v", rec["agent"])
 	}
 }
 

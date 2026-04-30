@@ -418,6 +418,74 @@ func TestMergeSessions_ErrorDetail(t *testing.T) {
 	}
 }
 
+// TestMergeSessions_AgentSpawnHook verifies that agentSpawn hook records
+// produce MergedRecords with Kind=RecordKindAgentSpawn.
+func TestMergeSessions_AgentSpawnHook(t *testing.T) {
+	session := makeSession("sess-spawn", []SessionMessage{
+		promptMsg("hello", 1745744400),
+	})
+	spawnTs := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: spawnTs, Session: "sess-spawn", Event: apmconfig.EventAgentSpawn, Agent: "lead"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	var spawn *MergedRecord
+	for i := range recs {
+		if recs[i].Kind == RecordKindAgentSpawn {
+			spawn = &recs[i]
+			break
+		}
+	}
+	if spawn == nil {
+		t.Fatal("expected an agentSpawn record, got none")
+	}
+	if spawn.SessionID != "sess-spawn" {
+		t.Errorf("SessionID = %q, want sess-spawn", spawn.SessionID)
+	}
+	if spawn.Agent != "lead" {
+		t.Errorf("Agent = %q, want lead", spawn.Agent)
+	}
+	if !spawn.PreToolTs.Equal(spawnTs) {
+		t.Errorf("PreToolTs = %v, want %v", spawn.PreToolTs, spawnTs)
+	}
+}
+
+// TestMergeSessions_StopHook verifies that stop hook records produce
+// MergedRecords with Kind=RecordKindStop.
+func TestMergeSessions_StopHook(t *testing.T) {
+	session := makeSession("sess-stop", []SessionMessage{
+		promptMsg("hello", 1745744400),
+	})
+	stopTs := time.Date(2026, 4, 27, 10, 5, 0, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: stopTs, Session: "sess-stop", Event: apmconfig.EventStop, Agent: "coder"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	var stop *MergedRecord
+	for i := range recs {
+		if recs[i].Kind == RecordKindStop {
+			stop = &recs[i]
+			break
+		}
+	}
+	if stop == nil {
+		t.Fatal("expected a stop record, got none")
+	}
+	if stop.SessionID != "sess-stop" {
+		t.Errorf("SessionID = %q, want sess-stop", stop.SessionID)
+	}
+	if stop.Agent != "coder" {
+		t.Errorf("Agent = %q, want coder", stop.Agent)
+	}
+	if !stop.PreToolTs.Equal(stopTs) {
+		t.Errorf("PreToolTs = %v, want %v", stop.PreToolTs, stopTs)
+	}
+}
+
 func promptEvent(ts time.Time) EventEntry {
 	return EventEntry{Ts: ts, Event: apmconfig.EventUserPromptSubmit}
 }
@@ -659,6 +727,12 @@ func TestKindConstants_WireFormat(t *testing.T) {
 	}
 	if RecordKindSessionMeta != "sessionMeta" {
 		t.Errorf("RecordKindSessionMeta = %q, want %q", RecordKindSessionMeta, "sessionMeta")
+	}
+	if RecordKindAgentSpawn != "agentSpawn" {
+		t.Errorf("RecordKindAgentSpawn = %q, want %q", RecordKindAgentSpawn, "agentSpawn")
+	}
+	if RecordKindStop != "stop" {
+		t.Errorf("RecordKindStop = %q, want %q", RecordKindStop, "stop")
 	}
 	if MessageKindPrompt != "Prompt" {
 		t.Errorf("MessageKindPrompt = %q, want %q", MessageKindPrompt, "Prompt")
