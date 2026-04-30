@@ -81,7 +81,9 @@ func reportHookErr(stderr io.Writer, op string, err error) {
 }
 
 // Handle reads a Kiro hook event from in, appends a JSONL record to logs under rootDir,
-// and returns 0 always. Never writes to stdout. Writes diagnostics to stderr on error.
+// and returns 0 always. Errors are intentionally suppressed (exit code 0) because hooks
+// must never block the agent — a failing hook must not prevent the agent from continuing.
+// Diagnostics are written to stderr; stdout is never used.
 func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDir, agent string) (exitCode int) {
 	defer func() {
 		if r := recover(); r != nil {
