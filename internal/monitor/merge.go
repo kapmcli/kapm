@@ -469,6 +469,130 @@ func aggregateTokenCredits(meta SessionMeta) (inputTok, outputTok int, credits f
 	return
 }
 
+// messageProcessorState holds mutable state shared across message-kind handlers.
+type messageProcessorState struct {
+	meta          SessionMeta
+	preHooks      []HookRecord
+	turnResponses []string
+	currentAgent  *string
+	createdAt     time.Time
+	updatedAt     time.Time
+	toolUseIdx    int
+	promptIdx     int
+}
+
+// base returns the common MergedRecord fields.
+func (s *messageProcessorState) base() MergedRecord {
+	return MergedRecord{
+		SessionID: s.meta.SessionID,
+		Agent:     *s.currentAgent,
+		Title:     s.meta.Title,
+		Cwd:       s.meta.Cwd,
+		CreatedAt: s.createdAt,
+		UpdatedAt: s.updatedAt,
+	}
+}
+
+func (s *messageProcessorState) processPrompt(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	pd, ok := decodeOrSkip[PromptData](msg.Data, RecordKindPrompt, s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
+	var sb strings.Builder
+	for _, ci := range pd.Content {
+		if ci.Kind == ContentKindText {
+			var t string
+			if err := json.Unmarshal(ci.Data, &t); err == nil {
+				sb.WriteString(t)
+			}
+		}
+	}
+	var turnResp string
+	if s.promptIdx < len(s.turnResponses) {
+		turnResp = s.turnResponses[s.promptIdx]
+	}
+	s.promptIdx++
+	rec := s.base()
+	rec.Kind = RecordKindPrompt
+	rec.PromptText = sb.String()
+	rec.TurnResponse = turnResp
+	rec.PromptTs = promptTs
+	return append(out, rec)
+}
+
+func (s *messageProcessorState) processAssistantMessage(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	for _, ci := range ad.Content {
+		switch ci.Kind {
+		case ContentKindText:
+			var t string
+			if err := json.Unmarshal(ci.Data, &t); err == nil {
+				rec := s.base()
+				rec.Kind = RecordKindAssistantText
+				rec.AssistantText = t
+				out = append(out, rec)
+			}
+		case ContentKindToolUse:
+			tu, ok := decodeOrSkip[ToolUseData](ci.Data, ContentKindToolUse, s.meta.SessionID)
+			if !ok {
+				continue
+			}
+			var preTs time.Time
+			if s.toolUseIdx < len(s.preHooks) {
+				preTs = s.preHooks[s.toolUseIdx].Ts
+				if s.preHooks[s.toolUseIdx].Agent != "" {
+					*s.currentAgent = s.preHooks[s.toolUseIdx].Agent
+				}
+			}
+			rec := s.base()
+			rec.Kind = RecordKindToolUse
+			rec.ToolUseID = tu.ToolUseID
+			rec.ToolName = tu.Name
+			rec.ToolInput = tu.Input
+			rec.PreToolTs = preTs
+			out = append(out, rec)
+			s.toolUseIdx++
+		}
+	}
+	return out
+}
+
+func (s *messageProcessorState) processToolResults(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	trs, ok := decodeOrSkip[struct {
+		Content []ContentItem `json:"content"`
+	}](msg.Data, "toolResults", s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	for _, ci := range trs.Content {
+		if ci.Kind != ContentKindToolResult {
+			continue
+		}
+		tr, ok := decodeOrSkip[ToolResultData](ci.Data, ContentKindToolResult, s.meta.SessionID)
+		if !ok {
+			continue
+		}
+		var errorDetail string
+		if tr.Status == ToolStatusError && len(tr.Content) > 0 {
+			var d string
+			if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
+				errorDetail = d
+			}
+		}
+		rec := s.base()
+		rec.Kind = RecordKindToolResult
+		rec.ToolUseID = tr.ToolUseID
+		rec.ToolStatus = tr.Status
+		rec.ErrorDetail = errorDetail
+		out = append(out, rec)
+	}
+	return out
+}
+
 // processSessionMessages iterates over messages and appends MergedRecords to out.
 // currentAgent is a pointer because preHooks update it during iteration.
 func processSessionMessages(
@@ -480,164 +604,39 @@ func processSessionMessages(
 	createdAt, updatedAt time.Time,
 	out []MergedRecord,
 ) []MergedRecord {
-	toolUseIdx := 0
-	promptIdx := 0
-
+	s := &messageProcessorState{
+		meta: meta, preHooks: preHooks, turnResponses: turnResponses,
+		currentAgent: currentAgent, createdAt: createdAt, updatedAt: updatedAt,
+	}
 	for _, msg := range messages {
 		switch msg.Kind {
 		case MessageKindPrompt:
-			pd, ok := decodeOrSkip[PromptData](msg.Data, RecordKindPrompt, meta.SessionID)
-			if !ok {
-				continue
-			}
-			promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
-			var sb strings.Builder
-			for _, ci := range pd.Content {
-				if ci.Kind == ContentKindText {
-					var t string
-					if err := json.Unmarshal(ci.Data, &t); err == nil {
-						sb.WriteString(t)
-					}
-				}
-			}
-			var turnResp string
-			if promptIdx < len(turnResponses) {
-				turnResp = turnResponses[promptIdx]
-			}
-			promptIdx++
-			out = append(out, MergedRecord{
-				SessionID:    meta.SessionID,
-				Kind:         RecordKindPrompt,
-				PromptText:   sb.String(),
-				TurnResponse: turnResp,
-				PromptTs:     promptTs,
-				Agent:        *currentAgent,
-				Title:        meta.Title,
-				Cwd:          meta.Cwd,
-				CreatedAt:    createdAt,
-				UpdatedAt:    updatedAt,
-			})
-
+			out = s.processPrompt(msg, out)
 		case MessageKindAssistantMessage:
-			ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", meta.SessionID)
-			if !ok {
-				continue
-			}
-			for _, ci := range ad.Content {
-				switch ci.Kind {
-				case ContentKindText:
-					var t string
-					if err := json.Unmarshal(ci.Data, &t); err == nil {
-						out = append(out, MergedRecord{
-							SessionID:     meta.SessionID,
-							Kind:          RecordKindAssistantText,
-							AssistantText: t,
-							Agent:         *currentAgent,
-							Title:         meta.Title,
-							Cwd:           meta.Cwd,
-							CreatedAt:     createdAt,
-							UpdatedAt:     updatedAt,
-						})
-					}
-				case ContentKindToolUse:
-					tu, ok := decodeOrSkip[ToolUseData](ci.Data, ContentKindToolUse, meta.SessionID)
-					if !ok {
-						continue
-					}
-					var preTs time.Time
-					if toolUseIdx < len(preHooks) {
-						preTs = preHooks[toolUseIdx].Ts
-						if preHooks[toolUseIdx].Agent != "" {
-							*currentAgent = preHooks[toolUseIdx].Agent
-						}
-					}
-					out = append(out, MergedRecord{
-						SessionID: meta.SessionID,
-						Kind:      RecordKindToolUse,
-						ToolUseID: tu.ToolUseID,
-						ToolName:  tu.Name,
-						ToolInput: tu.Input,
-						PreToolTs: preTs,
-						Agent:     *currentAgent,
-						Title:     meta.Title,
-						Cwd:       meta.Cwd,
-						CreatedAt: createdAt,
-						UpdatedAt: updatedAt,
-					})
-					toolUseIdx++
-				}
-			}
-
+			out = s.processAssistantMessage(msg, out)
 		case MessageKindToolResults:
-			trs, ok := decodeOrSkip[struct {
-				Content []ContentItem `json:"content"`
-			}](msg.Data, "toolResults", meta.SessionID)
-			if !ok {
-				continue
-			}
-			for _, ci := range trs.Content {
-				if ci.Kind != ContentKindToolResult {
-					continue
-				}
-				tr, ok := decodeOrSkip[ToolResultData](ci.Data, ContentKindToolResult, meta.SessionID)
-				if !ok {
-					continue
-				}
-				var errorDetail string
-				if tr.Status == ToolStatusError && len(tr.Content) > 0 {
-					var d string
-					if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
-						errorDetail = d
-					}
-				}
-				out = append(out, MergedRecord{
-					SessionID:   meta.SessionID,
-					Kind:        RecordKindToolResult,
-					ToolUseID:   tr.ToolUseID,
-					ToolStatus:  tr.Status,
-					ErrorDetail: errorDetail,
-					Agent:       *currentAgent,
-					Title:       meta.Title,
-					Cwd:         meta.Cwd,
-					CreatedAt:   createdAt,
-					UpdatedAt:   updatedAt,
-				})
-			}
+			out = s.processToolResults(msg, out)
 		}
 	}
 
 	for _, h := range spawnHooks {
-		agent := h.Agent
-		if agent == "" {
-			agent = *currentAgent
+		rec := s.base()
+		rec.Kind = RecordKindAgentSpawn
+		rec.PreToolTs = h.Ts
+		if h.Agent != "" {
+			rec.Agent = h.Agent
 		}
-		out = append(out, MergedRecord{
-			SessionID: meta.SessionID,
-			Kind:      RecordKindAgentSpawn,
-			Agent:     agent,
-			PreToolTs: h.Ts,
-			Title:     meta.Title,
-			Cwd:       meta.Cwd,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-		})
+		out = append(out, rec)
 	}
 
 	for _, h := range stopHooks {
-		agent := h.Agent
-		if agent == "" {
-			agent = *currentAgent
+		rec := s.base()
+		rec.Kind = RecordKindStop
+		rec.PreToolTs = h.Ts
+		if h.Agent != "" {
+			rec.Agent = h.Agent
 		}
-		out = append(out, MergedRecord{
-			SessionID: meta.SessionID,
-			Kind:      RecordKindStop,
-			Agent:     agent,
-			PreToolTs: h.Ts,
-			Title:     meta.Title,
-			Cwd:       meta.Cwd,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-		})
+		out = append(out, rec)
 	}
 
 	return out
