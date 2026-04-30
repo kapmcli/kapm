@@ -25,3 +25,7 @@ apm_modules/
 
 # Local Playwright MCP debug artifacts
 .playwright-mcp/
+.playwright-cli/
+
+# Test binaries
+*.test

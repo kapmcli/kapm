@@ -44,7 +44,7 @@ func renderDiff(fc monitor.FileChange) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<pre class="diff">`)
 	var oldLn, newLn int
-	for _, line := range strings.Split(diffStr, "\n") {
+	for line := range strings.SplitSeq(diffStr, "\n") {
 		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, `\ `) {
 			continue
 		}

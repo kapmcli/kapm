@@ -187,7 +187,7 @@ func validPathInRepo(p string) bool {
 	if p == "" {
 		return true
 	}
-	for _, seg := range strings.Split(p, "/") {
+	for seg := range strings.SplitSeq(p, "/") {
 		if seg == ".." || seg == "." {
 			return false
 		}

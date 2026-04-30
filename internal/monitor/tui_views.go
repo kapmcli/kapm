@@ -61,10 +61,7 @@ func splitBoxWidths(total, n, gap int) []int {
 	if n <= 0 {
 		return nil
 	}
-	avail := total - gap*(n-1)
-	if avail < n*10 {
-		avail = n * 10
-	}
+	avail := max(total-gap*(n-1), n*10)
 	base := avail / n
 	rem := avail - base*n
 	out := make([]int, n)
@@ -150,13 +147,7 @@ func (m *model) renderTopTools(limit, width int) string {
 	}
 	// Reserve: 2(indent) + 12(name) + 1 + bar + 1 + 4(count) + 5(" err:") + 6(err%) = 31 + bar
 	interior := interiorOf(width)
-	barW := interior - 31
-	if barW < 3 {
-		barW = 3
-	}
-	if barW > 20 {
-		barW = 20
-	}
+	barW := min(max(interior-31, 3), 20)
 	maxCall := tools[0].CallCount
 	for i := range limit {
 		t := tools[i]
@@ -182,13 +173,7 @@ func (m *model) renderTopAgents(limit, width int) string {
 	}
 	// Reserve 2(indent) + 1 + 6(Sess) + 1 + 5(Tool) + 1 + 6(Prompt) = 22
 	interior := interiorOf(width)
-	nameW := interior - 22
-	if nameW < 8 {
-		nameW = 8
-	}
-	if nameW > 30 {
-		nameW = 30
-	}
+	nameW := min(max(interior-22, 8), 30)
 	fmt.Fprintf(&b, "  %-*s %6s %5s %6s\n", nameW, "Name", "Sess", "Tools", "Prompt")
 	for i := range limit {
 		a := agents[i]
@@ -216,10 +201,7 @@ func (m *model) renderActivityBox(width int) string {
 	}
 	// Each column is 2 cells wide (bar + space). Fit to interior.
 	interior := interiorOf(width) - 2 // leave 2 for leading "  " indent
-	maxCols := interior / 2
-	if maxCols < 1 {
-		maxCols = 1
-	}
+	maxCols := max(interior/2, 1)
 	if len(hours) > maxCols {
 		hours = hours[len(hours)-maxCols:]
 	}
@@ -259,13 +241,7 @@ func (m *model) renderTopSkills(limit, width int) string {
 	maxC := skills[0].ReadCount
 	// Reserve 2(indent) + 18(name) + 1 + bar + 1 + 4(count) = 26 + bar
 	interior := interiorOf(width)
-	barW := interior - 26
-	if barW < 3 {
-		barW = 3
-	}
-	if barW > 20 {
-		barW = 20
-	}
+	barW := min(max(interior-26, 3), 20)
 	for i := range limit {
 		sk := skills[i]
 		bar := barChart(sk.ReadCount, maxC, barW)
@@ -296,13 +272,11 @@ func (m *model) renderRecentSessionsBox(width int) string {
 	fixed := 2 + 12 + 2 + 8 + 2 + 9 + 2 + 5 + 2 + 7 + 2 + 7 + 2 + 11
 	remaining := interior - fixed - 2 // 2 spaces between ID and Agent
 	titleW := 40
-	agentW := remaining - 2 - titleW // 2 spaces between Agent and Title
-	if agentW < 10 {
-		agentW = 10
-	}
-	if agentW > 16 {
-		agentW = 16
-	}
+	agentW := min(
+		// 2 spaces between Agent and Title
+		max(
+
+			remaining-2-titleW, 10), 16)
 
 	fmt.Fprintf(&b, "  %-12s  %-*s  %-*s  %-8s  %-9s  %5s  %7s  %7s  %-11s\n",
 		"ID", agentW, "Agent", titleW, "Title", "Duration", "Status", "Tools", "Prompts", "Credits", "Last act")
@@ -396,13 +370,7 @@ func (m *model) renderSessionsList() string {
 	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 5(Files) + 1 + 7(Credits) + 1 + 11(Last act)
 	titleW := 40
 	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 7 + 1 + 11
-	agentW := interior - fixed
-	if agentW < 10 {
-		agentW = 10
-	}
-	if agentW > 16 {
-		agentW = 16
-	}
+	agentW := min(max(interior-fixed, 10), 16)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %5s %7s %-11s\n",
@@ -412,10 +380,7 @@ func (m *model) renderSessionsList() string {
 
 	rows := m.viewportHeight()
 	start := clampOffset(m.cursor[tabSessions], len(sessions), rows)
-	end := start + rows
-	if end > len(sessions) {
-		end = len(sessions)
-	}
+	end := min(start+rows, len(sessions))
 	now := time.Now()
 	var prevID string
 	for i := start; i < end; i++ {
@@ -536,13 +501,7 @@ func (m *model) renderSessionToolSummary(s *SessionDetail) string {
 	maxCalls := tools[0].CallCount
 	interior := m.interiorWidth()
 	// Fixed: 2(indent) + 12(tool) + 2 + bar + 1 + 4(Calls) + 2 + 6(Errors) + 2 + 8(Success%) + 2 + 8(Avg Dur)
-	barW := interior - 49
-	if barW < 3 {
-		barW = 3
-	}
-	if barW > 20 {
-		barW = 20
-	}
+	barW := min(max(interior-49, 3), 20)
 	fmt.Fprintf(&b, "  %-12s  %-*s %4s  %6s  %8s  %8s\n", "Tool", barW, "Bar", "Calls", "Errors", "Success%", "Avg Dur")
 	for _, t := range tools {
 		bar := barChart(t.CallCount, maxCalls, barW)
@@ -788,10 +747,7 @@ func (m *model) renderSessionTimeline(s *SessionDetail) string {
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Timeline"))
 	// Fixed columns: 2(indent) + 1(marker) + 1 + 8(time) + 2 + 12(label) + 2 + 7(dur) + 2 = 37
 	const tlFixed = 37
-	summaryW := m.interiorWidth() - tlFixed
-	if summaryW < 10 {
-		summaryW = 10
-	}
+	summaryW := max(m.interiorWidth()-tlFixed, 10)
 	for _, e := range s.Timeline {
 		// Skip postToolUse unless it's an error.
 		if e.Event == apmconfig.EventPostToolUse && !e.IsError {
@@ -812,7 +768,7 @@ func (m *model) renderSessionTimeline(s *SessionDetail) string {
 			marker, ts, label, dur,
 			mutedStyle.Render(truncateVisible(summary, summaryW)))
 		if m.timelineExpanded && e.ToolInput != "" {
-			for _, line := range strings.Split(e.ToolInput, "\n") {
+			for line := range strings.SplitSeq(e.ToolInput, "\n") {
 				fmt.Fprintf(&b, "    %s\n", mutedStyle.Render(line))
 			}
 		}
@@ -870,10 +826,7 @@ func (m *model) renderAgentsList() string {
 
 	// Fixed chars: 2(indent) + 2 + 8(Sessions) + 2 + 7(Tools) + 2 + 8(Prompts) + 2 + 8(Errors) = 41
 	fixed := 2 + 2 + 8 + 2 + 7 + 2 + 8 + 2 + 8
-	nameW := interior - fixed
-	if nameW < 16 {
-		nameW = 16
-	}
+	nameW := max(interior-fixed, 16)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "  %-*s  %8s  %7s  %8s  %8s\n",
@@ -883,10 +836,7 @@ func (m *model) renderAgentsList() string {
 
 	rows := m.viewportHeight()
 	start := clampOffset(m.cursor[tabAgents], len(agents), rows)
-	end := start + rows
-	if end > len(agents) {
-		end = len(agents)
-	}
+	end := min(start+rows, len(agents))
 	for i := start; i < end; i++ {
 		a := agents[i]
 		row := fmt.Sprintf("  %-*s  %8d  %7d  %8d  %8d",
@@ -932,10 +882,7 @@ func (m *model) renderAgentDetail() string {
 	if len(tcs) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
-		limit := 10
-		if len(tcs) < limit {
-			limit = len(tcs)
-		}
+		limit := min(len(tcs), 10)
 		maxC := tcs[0].CallCount
 		fmt.Fprintf(&b, "  %-14s  %-20s %5s  %6s  %8s  %8s\n",
 			"Tool", "", "Calls", "Errors", "Success%", "Avg Dur")
@@ -951,10 +898,7 @@ func (m *model) renderAgentDetail() string {
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Sessions (newest first)"))
 	fmt.Fprintf(&b, "  %-12s  %-16s  %-10s  %-9s  %6s  %7s  %s\n",
 		"ID", "Started", "Duration", "Status", "Tools", "Prompts", "Title")
-	limit := 15
-	if len(a.Sessions) < limit {
-		limit = len(a.Sessions)
-	}
+	limit := min(len(a.Sessions), 15)
 	for i := range limit {
 		s := a.Sessions[i]
 		fmt.Fprintf(&b, "  %-12s  %-16s  %-10s  %s  %6d  %7d  %s\n",
@@ -986,10 +930,7 @@ func (m *model) renderToolsList() string {
 	if showBar {
 		fixed = baseFixed + 2 + barW
 	}
-	nameW := interior - fixed
-	if nameW < 16 {
-		nameW = 16
-	}
+	nameW := max(interior-fixed, 16)
 
 	var maxCall int
 	if len(tools) > 0 {
@@ -1009,10 +950,7 @@ func (m *model) renderToolsList() string {
 
 	rows := m.viewportHeight()
 	start := clampOffset(m.cursor[tabTools], len(tools), rows)
-	end := start + rows
-	if end > len(tools) {
-		end = len(tools)
-	}
+	end := min(start+rows, len(tools))
 	for i := start; i < end; i++ {
 		t := tools[i]
 		var row string
@@ -1064,10 +1002,7 @@ func (m *model) renderToolDetail() string {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
 		fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %10s\n", "Time", "Session", "Agent", "Duration")
-		limit := 15
-		if len(t.RecentCalls) < limit {
-			limit = len(t.RecentCalls)
-		}
+		limit := min(len(t.RecentCalls), 15)
 		for i := range limit {
 			c := t.RecentCalls[i]
 			fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %10s\n",
@@ -1085,15 +1020,9 @@ func (m *model) renderToolDetail() string {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
 		fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %s\n", "Time", "Session", "Agent", "Input")
-		limit := 10
-		if len(t.Errors) < limit {
-			limit = len(t.Errors)
-		}
+		limit := min(len(t.Errors), 10)
 		// Reserve space: 2(indent) + 2(!+space) + 19(time) + 2 + 12(session) + 2 + 14(agent) + 2 = 55
-		inputWidth := m.interiorWidth() - 55
-		if inputWidth < 10 {
-			inputWidth = 10
-		}
+		inputWidth := max(m.interiorWidth()-55, 10)
 		for i := range limit {
 			c := t.Errors[i]
 			fmt.Fprintf(&b, "  %s %-19s  %-12s  %-14s  %s\n",
@@ -1148,22 +1077,13 @@ func formatErrRate(r float64) string {
 func (m *model) contentWidth() int {
 	// The block width passed to borderStyle.Width(...). Border + padding consume
 	// 4 cells, and we want the block to fit within (terminal width - 4).
-	w := m.width - 4
-	if w < 60 {
-		w = 60
-	}
-	if w > 200 {
-		w = 200
-	}
+	w := min(max(m.width-4, 60), 200)
 	return w
 }
 
 // interiorWidth is the usable content width inside contentWidth() (minus border+padding).
 func (m *model) interiorWidth() int {
-	w := m.contentWidth() - 4
-	if w < 40 {
-		w = 40
-	}
+	w := max(m.contentWidth()-4, 40)
 	return w
 }
 
@@ -1188,10 +1108,7 @@ func (m *model) renderSkillsTab() string {
 	skills := m.metrics.Skills
 	interior := m.interiorWidth()
 	// Fixed: 2(indent) + 1 + 8(Reads) = 11 + name
-	nameW := interior - 11
-	if nameW < 20 {
-		nameW = 20
-	}
+	nameW := max(interior-11, 20)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "  %-*s %8s\n", nameW, "Name", "Reads")
@@ -1203,10 +1120,7 @@ func (m *model) renderSkillsTab() string {
 	}
 	rows := m.viewportHeight()
 	start := clampOffset(m.cursor[tabSkills], len(skills), rows)
-	end := start + rows
-	if end > len(skills) {
-		end = len(skills)
-	}
+	end := min(start+rows, len(skills))
 	for i := start; i < end; i++ {
 		sk := skills[i]
 		row := fmt.Sprintf("  %-*s %8d", nameW, truncate(sk.Name, nameW), sk.ReadCount)

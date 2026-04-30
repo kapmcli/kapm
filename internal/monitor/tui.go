@@ -405,10 +405,7 @@ func (m *model) scrollDetail(body string) string {
 		if start < 0 {
 			start = 0
 		}
-		end := start + vh
-		if end > total {
-			end = total
-		}
+		end := min(start+vh, total)
 		out = strings.Join(lines[start:end], "\n")
 		if remaining := total - end; remaining > 0 {
 			out += "\n" + mutedStyle.Render(fmt.Sprintf("(%d more lines, ↓ to scroll)", remaining))
@@ -419,10 +416,7 @@ func (m *model) scrollDetail(body string) string {
 
 // viewportHeight is the number of lines available for detail content.
 func (m *model) viewportHeight() int {
-	n := m.height - 8
-	if n < 5 {
-		n = 5
-	}
+	n := max(m.height-8, 5)
 	return n
 }
 

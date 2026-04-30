@@ -179,7 +179,7 @@ func DiffLineCounts(fc FileChange) (adds, dels int, ok bool) {
 		return n, 0, true
 	case "strReplace":
 		diffStr := udiff.Unified("", "", fc.OldStr, fc.NewStr)
-		for _, line := range strings.Split(diffStr, "\n") {
+		for line := range strings.SplitSeq(diffStr, "\n") {
 			if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
 				continue
 			}

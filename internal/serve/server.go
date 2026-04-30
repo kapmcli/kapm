@@ -691,10 +691,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		all := loaded.dm.Overview.Sessions
 		rows, total := paginateByID(all, requested, sessionsPerPage)
 
-		totalPages := (total + sessionsPerPage - 1) / sessionsPerPage
-		if totalPages < 1 {
-			totalPages = 1
-		}
+		totalPages := max((total+sessionsPerPage-1)/sessionsPerPage, 1)
 		currentPage := requested
 		if currentPage > totalPages {
 			currentPage = totalPages
