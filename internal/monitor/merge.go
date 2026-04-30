@@ -110,7 +110,7 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	slices.SortStableFunc(timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) })
 	merged.Timeline = timeline
 
-	merged.PromptHistory = pairPromptsWithTimeline(src)
+	merged.PromptHistory, merged.AssistantResponses = pairPromptsWithTimeline(src)
 
 	merged.ToolSummary = mergeToolSummary(src)
 	merged.AssistantResponse = mergeAssistantResponse(src)
@@ -131,12 +131,13 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 // pairPromptsWithTimeline pairs each prompt in history (oldest-first) with
 // its timestamp from the timeline (oldest-first) by matching
 // EventUserPromptSubmit entries positionally. Unmapped prompts get zero ts.
-// Returns prompts sorted oldest-first by paired timestamp.
-func pairPromptsWithTimeline(details []SessionDetail) []string {
+// Returns prompts and paired responses sorted oldest-first by paired timestamp.
+func pairPromptsWithTimeline(details []SessionDetail) ([]string, []string) {
 	type tsPrompt struct {
-		ts  int64
-		seq int
-		p   string
+		ts   int64
+		seq  int
+		p    string
+		resp string
 	}
 	var prompts []tsPrompt
 
@@ -153,11 +154,19 @@ func pairPromptsWithTimeline(details []SessionDetail) []string {
 			if i >= len(ph) {
 				break
 			}
-			prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: ph[i]})
+			var resp string
+			if i < len(sd.AssistantResponses) {
+				resp = sd.AssistantResponses[i]
+			}
+			prompts = append(prompts, tsPrompt{ts: ev.Ts.UnixNano(), seq: len(prompts), p: ph[i], resp: resp})
 			i++
 		}
 		for ; i < len(ph); i++ {
-			prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: ph[i]})
+			var resp string
+			if i < len(sd.AssistantResponses) {
+				resp = sd.AssistantResponses[i]
+			}
+			prompts = append(prompts, tsPrompt{ts: 0, seq: len(prompts), p: ph[i], resp: resp})
 		}
 	}
 
@@ -177,11 +186,13 @@ func pairPromptsWithTimeline(details []SessionDetail) []string {
 		return 0
 	})
 
-	out := make([]string, len(prompts))
+	outP := make([]string, len(prompts))
+	outR := make([]string, len(prompts))
 	for i, p := range prompts {
-		out[i] = p.p
+		outP[i] = p.p
+		outR[i] = p.resp
 	}
-	return out
+	return outP, outR
 }
 
 // mergeToolSummary groups ToolSummary entries by Tool across all agents,
@@ -261,6 +272,7 @@ type MergedRecord struct {
 	ErrorDetail   string          // toolResult status=="error": content[0].data
 	PromptText    string
 	AssistantText string
+	TurnResponse  string    // final assistant text for the preceding turn (file-order)
 	PromptTs      time.Time // Prompt.meta.timestamp (unix seconds)
 
 	// hook-supplemented (zero if no hook match)
@@ -280,8 +292,8 @@ type MergedRecord struct {
 	TotalOutputTokens int
 	TotalCredits      float64
 	// IDE-only: pre-aggregated counts (CLI derives these from individual records)
-	PromptTexts []string
-	ToolCalls   int
+	PromptTexts    []string
+	ToolCalls      int
 	// IDE-only: sub-agent invocation data (set on invokeSubAgent toolUse records)
 	SubAgent *SubAgentCall
 }
@@ -384,6 +396,44 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 			}
 		}
 
+		// Pre-pass: collect per-turn final assistant text in file order.
+		// For each prompt (except the first), the response is the last
+		// AssistantMessage text seen before that prompt. The final turn's
+		// response is the last AssistantMessage text in the file.
+		var turnResponses []string
+		{
+			var lastText string
+			firstPrompt := true
+			for _, m := range s.Messages {
+				switch m.Kind {
+				case MessageKindPrompt:
+					if firstPrompt {
+						firstPrompt = false
+					} else {
+						turnResponses = append(turnResponses, lastText)
+						lastText = ""
+					}
+				case MessageKindAssistantMessage:
+					ad, ok := decodeOrSkip[AssistantData](m.Data, "assistantMessage:prepass", meta.SessionID)
+					if !ok {
+						continue
+					}
+					for _, ci := range ad.Content {
+						if ci.Kind == ContentKindText {
+							var t string
+							if err := json.Unmarshal(ci.Data, &t); err == nil {
+								lastText = t
+							}
+						}
+					}
+				}
+			}
+			// Final turn's response.
+			if !firstPrompt {
+				turnResponses = append(turnResponses, lastText)
+			}
+		}
+
 		// Aggregate token/credit totals from per-turn metadata.
 		var inputTok, outputTok int
 		var credits float64
@@ -413,6 +463,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		toolUseIdx := 0
 		// Track the start index of this session's records for postToolUse pass.
 		sessionStart := len(out)
+		// Track prompt index for TurnResponse pairing.
+		promptIdx := 0
 
 		for _, msg := range s.Messages {
 			switch msg.Kind {
@@ -431,16 +483,22 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 						}
 					}
 				}
+				var turnResp string
+				if promptIdx < len(turnResponses) {
+					turnResp = turnResponses[promptIdx]
+				}
+				promptIdx++
 				out = append(out, MergedRecord{
-					SessionID:  meta.SessionID,
-					Kind:       RecordKindPrompt,
-					PromptText: sb.String(),
-					PromptTs:   promptTs,
-					Agent:      currentAgent,
-					Title:      meta.Title,
-					Cwd:        meta.Cwd,
-					CreatedAt:  createdAt,
-					UpdatedAt:  updatedAt,
+					SessionID:    meta.SessionID,
+					Kind:         RecordKindPrompt,
+					PromptText:   sb.String(),
+					TurnResponse: turnResp,
+					PromptTs:     promptTs,
+					Agent:        currentAgent,
+					Title:        meta.Title,
+					Cwd:          meta.Cwd,
+					CreatedAt:    createdAt,
+					UpdatedAt:    updatedAt,
 				})
 
 			case MessageKindAssistantMessage:

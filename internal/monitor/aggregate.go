@@ -105,6 +105,7 @@ func processRecord(st *aggState, r MergedRecord) {
 	case RecordKindPrompt:
 		s.timeline = append(s.timeline, EventEntry{Ts: r.PromptTs, Event: apmconfig.EventUserPromptSubmit})
 		s.prompts = append(s.prompts, r.PromptText)
+		s.assistantResponses = append(s.assistantResponses, r.TurnResponse)
 
 	case RecordKindToolUse:
 		s.toolCalls++
@@ -148,8 +149,7 @@ func processRecord(st *aggState, r MergedRecord) {
 		resolveToolResult(st, s, r)
 
 	case RecordKindAssistantText:
-		s.assistantResponse = r.AssistantText
-		s.assistantResponse = truncateUTF8(s.assistantResponse, maxAssistantResponseLength)
+		s.assistantResponse = truncateUTF8(r.AssistantText, maxAssistantResponseLength)
 
 	case RecordKindSessionMeta:
 		s.totalInputTokens += r.TotalInputTokens
@@ -286,13 +286,14 @@ func buildSessionDetails(st *aggState) {
 			slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
 		}
 		st.sessionDetails = append(st.sessionDetails, SessionDetail{
-			SessionMetric:     base,
-			PromptHistory:     prompts,
-			Timeline:          s.timeline,
-			ToolSummary:       sessionToolSummary(s.timeline),
-			AssistantResponse: s.assistantResponse,
-			Changes:           changes,
-			SubAgentCalls:     s.subAgentCalls,
+			SessionMetric:      base,
+			PromptHistory:      prompts,
+			Timeline:           s.timeline,
+			ToolSummary:        sessionToolSummary(s.timeline),
+			AssistantResponse:  s.assistantResponse,
+			AssistantResponses: slices.Clone(s.assistantResponses),
+			Changes:            changes,
+			SubAgentCalls:      s.subAgentCalls,
 		})
 	}
 }

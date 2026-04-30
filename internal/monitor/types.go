@@ -179,8 +179,9 @@ type SessionDetail struct {
 	PromptHistory     []string             // raw prompts, oldest first
 	Timeline          []EventEntry         // full ordered event list for this session
 	ToolSummary       []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
-	AssistantResponse string               // LLM final response from stop event (max 2KB)
-	Changes           []FileChange         // chronological order (sorted by Ts ascending)
+	AssistantResponse  string               // LLM final response from stop event (max 2KB); kept for backward compat
+	AssistantResponses []string             // all assistant responses per turn, oldest first
+	Changes            []FileChange         // chronological order (sorted by Ts ascending)
 	SubAgentCalls     []SubAgentCall       // IDE sub-agent invocations
 }
 
@@ -236,7 +237,8 @@ type sessionState struct {
 	prompts            []string
 	timeline           []EventEntry
 	sumTitle           string         // latest summary-tool taskDescription (if any)
-	assistantResponse  string         // from stop event
+	assistantResponse  string         // last response (for backward compat)
+	assistantResponses []string       // per-turn final assistant text, from TurnResponses
 	changes            []FileChange   // write preToolUse events, chronological
 	filesChangedCached int            // countUniqueFiles(changes), populated in finalizeSessionStats
 	pendingToolUse     map[string]int // toolUseID → timeline index

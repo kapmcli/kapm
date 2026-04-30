@@ -122,6 +122,15 @@
         <summary style="cursor:pointer">Prompt {{add $i 1}}: {{if gt (len $p) 200}}{{slice $p 0 200}}…{{else}}{{$p}}{{end}}</summary>
         <div class="prompt-md" style="margin-top:0.5rem">{{renderMarkdown $p}}</div>
       </details>
+      {{- if and $s.AssistantResponses (lt $i (len $s.AssistantResponses))}}
+      {{- $resp := index $s.AssistantResponses $i}}
+      {{- if $resp}}
+      <details id="response-{{$i}}" style="margin:4px 0 8px 1rem">
+        <summary style="cursor:pointer;font-size:0.85em" class="muted">↳ Response: {{if gt (len $resp) 200}}{{slice $resp 0 200}}…{{else}}{{$resp}}{{end}}</summary>
+        <div class="prompt-md" style="margin-top:0.5rem">{{renderMarkdown $resp}}</div>
+      </details>
+      {{- end}}
+      {{- end}}
     </li>
     {{- end}}
   </ol>

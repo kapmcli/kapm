@@ -376,16 +376,50 @@ func (m *model) renderSessionPrompts(s *SessionDetail) string {
 	if len(s.PromptHistory) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
+		interior := m.interiorWidth()
 		for i, p := range s.PromptHistory {
 			text := singleLine(p)
 			if !m.promptExpanded {
 				text = truncate(text, 200)
 			}
 			fmt.Fprintf(&b, "  %d. %s\n", i+1, text)
+			// Show paired assistant response if available.
+			if i < len(s.AssistantResponses) && s.AssistantResponses[i] != "" {
+				resp := s.AssistantResponses[i]
+				if !m.promptExpanded {
+					resp = truncate(singleLine(resp), 200)
+					fmt.Fprintf(&b, "     %s\n", mutedStyle.Render("↳ "+resp))
+				} else {
+					m.writeWrapped(&b, resp, interior, "     ")
+				}
+			}
 		}
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// writeWrapped writes text word-wrapped to width with the given indent prefix.
+func (m *model) writeWrapped(b *strings.Builder, text string, width int, indent string) {
+	maxW := width - len(indent)
+	if maxW < 20 {
+		maxW = 20
+	}
+	words := strings.Fields(text)
+	var line strings.Builder
+	for _, w := range words {
+		if line.Len() > 0 && line.Len()+1+len(w) > maxW {
+			fmt.Fprintf(b, "%s%s\n", indent, mutedStyle.Render(line.String()))
+			line.Reset()
+		}
+		if line.Len() > 0 {
+			line.WriteString(" ")
+		}
+		line.WriteString(w)
+	}
+	if line.Len() > 0 {
+		fmt.Fprintf(b, "%s%s\n", indent, mutedStyle.Render(line.String()))
+	}
 }
 
 func (m *model) renderSessionTimeline(s *SessionDetail) string {

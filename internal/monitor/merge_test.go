@@ -557,7 +557,7 @@ func TestPairPromptsWithTimeline(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := pairPromptsWithTimeline(tc.details)
+			got, _ := pairPromptsWithTimeline(tc.details)
 			if len(got) != len(tc.want) {
 				t.Fatalf("len=%d, want %d: got %v", len(got), len(tc.want), got)
 			}
