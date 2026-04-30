@@ -254,6 +254,57 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
+func TestValidateGitRef(t *testing.T) {
+	valid := []string{"main", "feature/branch-1", "v1.2.3", "release/v1.0.0_rc1", "abc1234", "abc1234567890abcdef1234567890abcdef123456"}
+	for _, ref := range valid {
+		if err := validateGitRef(ref); err != nil {
+			t.Errorf("validateGitRef(%q) = %v, want nil", ref, err)
+		}
+	}
+
+	type badCase struct {
+		ref     string
+		wantMsg string
+	}
+	bad := []badCase{
+		{"--upload-pack=evil", "starts with '-'"},
+		{"-fuzz=1", "starts with '-'"},
+		{"", "empty"},
+		{"abc;rm -rf /", "invalid characters"},
+		{"foo bar", "invalid characters"},
+	}
+	for _, tc := range bad {
+		err := validateGitRef(tc.ref)
+		if err == nil {
+			t.Errorf("validateGitRef(%q) = nil, want error containing %q", tc.ref, tc.wantMsg)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.wantMsg) {
+			t.Errorf("validateGitRef(%q) error = %q, want it to contain %q", tc.ref, err.Error(), tc.wantMsg)
+		}
+	}
+}
+
+func TestGitFetcher_InvalidRefNotInvokeGit(t *testing.T) {
+	binDir, logPath := writeFakeGitScript(t, fakeGitOptions{commit: "abc123"})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	_, _, _, err := f.Fetch(context.Background(), PowerSource{
+		Kind: SourceGitRoot,
+		URL:  "https://github.com/o/r",
+		Ref:  "--evil",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid ref, got nil")
+	}
+
+	// fake git log must not exist (git was never invoked)
+	if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+		t.Errorf("fake git was invoked for invalid ref; log exists at %q", logPath)
+	}
+}
+
 // TestGitFetcher_SubpathNotFoundIncludesURL verifies that the subpath-not-found error
 // includes both the subpath and the repository URL.
 func TestGitFetcher_SubpathNotFoundIncludesURL(t *testing.T) {

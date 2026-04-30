@@ -48,6 +48,23 @@ type gitFetcher struct{}
 
 var commitSHARegex = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
 
+// gitRefRegex allows characters legal in git refs but NOT a leading '-'
+// which git would interpret as an option flag.
+var gitRefRegex = regexp.MustCompile(`^[A-Za-z0-9._/\-]+$`)
+
+func validateGitRef(ref string) error {
+	if ref == "" {
+		return errors.New("git ref is empty")
+	}
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("git ref %q starts with '-' (would be interpreted as a flag)", ref)
+	}
+	if !gitRefRegex.MatchString(ref) {
+		return fmt.Errorf("git ref %q contains invalid characters", ref)
+	}
+	return nil
+}
+
 const largeRepoWarningBytes = 100 << 20
 
 func (gitFetcher) Fetch(ctx context.Context, src PowerSource) (string, string, func(), error) {
@@ -110,6 +127,9 @@ func fetchSparseCheckout(ctx context.Context, repoDir string, src PowerSource) (
 	if ref == "" {
 		ref = "HEAD"
 	}
+	if err := validateGitRef(ref); err != nil {
+		return "", err
+	}
 
 	commands := [][]string{
 		{"init"},
@@ -129,6 +149,11 @@ func fetchSparseCheckout(ctx context.Context, repoDir string, src PowerSource) (
 }
 
 func fetchFullClone(ctx context.Context, repoDir string, src PowerSource) (string, error) {
+	if src.Ref != "" {
+		if err := validateGitRef(src.Ref); err != nil {
+			return "", err
+		}
+	}
 	cloneArgs := []string{"clone", "--depth=1"}
 	if src.Ref != "" && !looksLikeCommitSHA(src.Ref) {
 		cloneArgs = append(cloneArgs, "--branch", src.Ref)
