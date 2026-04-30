@@ -69,7 +69,7 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag, ideSessionsDir
 	home, _ := os.UserHomeDir()
 	sessionsDir := sessionsDirFlag
 	if sessionsDir == "" && home != "" {
-		sessionsDir = filepath.Join(home, ".kiro", "sessions", "cli")
+		sessionsDir = filepath.Join(home, paths.KiroDir, paths.SessionsSubdir, paths.CLISubdir)
 	}
 	ideSessionsDir := ideSessionsDirFlag
 	if ideSessionsDir == "" {

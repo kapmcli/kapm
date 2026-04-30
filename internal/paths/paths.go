@@ -19,6 +19,8 @@ const (
 	PromptsSubdir   = "prompts"
 	SteeringSubdir  = "steering"
 	SettingsSubdir  = "settings"
+	SessionsSubdir  = "sessions"
+	CLISubdir       = "cli"
 
 	// .kapm hierarchy
 	KapmDir    = ".kapm"
