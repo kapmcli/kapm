@@ -9,7 +9,7 @@ import (
 type IDESessionEntry struct {
 	SessionID          string `json:"sessionId"`
 	Title              string `json:"title"`
-	DateCreated        string `json:"dateCreated"`        // unix ms as string
+	DateCreated        string `json:"dateCreated"` // unix ms as string
 	WorkspaceDirectory string `json:"workspaceDirectory"`
 }
 

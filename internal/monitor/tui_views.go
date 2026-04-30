@@ -554,7 +554,6 @@ func (m *model) renderSessionToolSummary(s *SessionDetail) string {
 	return b.String()
 }
 
-
 func (m *model) renderSessionSubAgentCalls(s *SessionDetail) string {
 	if len(s.SubAgentCalls) == 0 {
 		return ""
