@@ -87,7 +87,7 @@ func TestGitFetcher_SparseCheckoutArgv(t *testing.T) {
 	got := readGitLog(t, logPath)
 	want := []string{
 		"0|init",
-		"0|remote add origin https://github.com/o/r.git",
+		"0|remote add origin -- https://github.com/o/r.git",
 		"0|sparse-checkout init --cone",
 		"0|sparse-checkout set sub/dir",
 		"0|fetch --depth=1 origin main",
@@ -126,7 +126,7 @@ func TestGitFetcher_FullCloneArgv(t *testing.T) {
 
 	got := readGitLog(t, logPath)
 	wantPrefix := []string{
-		"0|clone --depth=1 --branch main https://github.com/o/r",
+		"0|clone --depth=1 --branch main -- https://github.com/o/r",
 		"0|rev-parse HEAD",
 	}
 	if len(got) < len(wantPrefix) {

@@ -133,7 +133,7 @@ func fetchSparseCheckout(ctx context.Context, repoDir string, src PowerSource) (
 
 	commands := [][]string{
 		{"init"},
-		{"remote", "add", "origin", remoteURL},
+		{"remote", "add", "origin", "--", remoteURL},
 		{"sparse-checkout", "init", "--cone"},
 		{"sparse-checkout", "set", src.PathInRepo},
 		{"fetch", "--depth=1", "origin", ref},
@@ -158,7 +158,7 @@ func fetchFullClone(ctx context.Context, repoDir string, src PowerSource) (strin
 	if src.Ref != "" && !looksLikeCommitSHA(src.Ref) {
 		cloneArgs = append(cloneArgs, "--branch", src.Ref)
 	}
-	cloneArgs = append(cloneArgs, gitRemoteURL(src), repoDir)
+	cloneArgs = append(cloneArgs, "--", gitRemoteURL(src), repoDir)
 	if err := gitRun(ctx, "", cloneArgs...); err != nil {
 		return "", err
 	}
