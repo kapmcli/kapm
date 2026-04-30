@@ -15,7 +15,17 @@ import (
 	"github.com/kapmcli/kapm/internal/fileutil"
 )
 
-// SessionCache caches parsed session files keyed by path, invalidated by mtime+size.
+// SessionCache caches parsed session files keyed by path, invalidated by
+// mtime+size. It is populated by LoadSessions, which returns a new
+// *SessionCache; callers pass the returned cache back on the next call to
+// reuse parse results.
+//
+// Concurrency: a single *SessionCache must not be shared by concurrent
+// LoadSessions calls. The serve package synchronizes calls through
+// golang.org/x/sync/singleflight (see internal/serve/server.go loadMetrics).
+// The internal mu field guards the short window where LoadSessions
+// snapshots the previous cache into local variables, but callers must not
+// rely on it for higher-level coordination.
 type SessionCache struct {
 	mu   sync.Mutex
 	meta map[string]metaCacheEntry
@@ -87,8 +97,10 @@ func parseSessionJSONLFile(path string) ([]SessionMessage, error) {
 // updated_at >= since and optionally by cwd prefix, and parses the
 // corresponding .jsonl for matching sessions. cwdFilter limits to sessions
 // whose cwd starts with the given path; empty means no filter.
-// cache may be nil (no caching). Returns a new cache for reuse.
-// LoadSessions is not safe for concurrent calls with the same cache pointer.
+// cache may be nil (no caching). Returns a fresh *SessionCache that callers
+// should pass on the next invocation. The caller is responsible for
+// serializing LoadSessions calls that share the same cache pointer;
+// see SessionCache documentation.
 func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdFilter string, cache *SessionCache) ([]ParsedSession, *SessionCache, error) {
 	isLink, err := fileutil.IsSymlinkPath(sessionsDir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
