@@ -202,3 +202,8 @@ tbody tr:hover { background: rgba(125, 86, 244, 0.08); }
 .tool-input-toggle .expand-icon { font-size: 0.7em; transition: transform 0.15s; display: inline-block; }
 .tool-input-toggle.open .expand-icon { transform: rotate(90deg); }
 .tool-input-full { background: var(--surface); border-radius: 4px; padding: 0.5em; border: 1px solid var(--border); }
+/* Changes section */
+.btn-expand-all { background: none; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; font-size: 0.8em; cursor: pointer; }
+.btn-expand-all:hover { color: var(--text); border-color: var(--text); }
+.change-group { border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.change-group:last-child { border-bottom: none; }

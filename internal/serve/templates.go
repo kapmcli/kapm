@@ -59,6 +59,7 @@ var templateFuncs = template.FuncMap{
 	"hasShellEvent":      monitor.HasShellEvent,
 	"groupChangesByPath": groupChangesByPath,
 	"diffStats":          diffStats,
+	"editDiffStats":      editDiffStats,
 	"shortID": func(id string, n int) string {
 		if len(id) <= n {
 			return id

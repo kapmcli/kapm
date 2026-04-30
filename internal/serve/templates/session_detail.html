@@ -66,8 +66,8 @@
   <p class="muted">See also Timeline for the full event order.</p>
   {{- range $path, $changes := groupChangesByPath $s.Changes}}
   {{- $last := index $changes (sub (len $changes) 1)}}
-  <details id="change-{{$path}}" style="margin:6px 0">
-    <summary style="cursor:pointer;padding:6px 0">
+  <div class="change-group" style="margin:6px 0">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
       <code>{{$path}}</code>
       <span class="muted">· {{len $changes}} edit{{if gt (len $changes) 1}}s{{end}} · last {{localtime $last.Ts "datetime"}}</span>
       {{- $ds := diffStats $changes }}
@@ -78,18 +78,29 @@
       {{- else }}
         <span class="muted">—</span>
       {{- end }}
-    </summary>
-    {{- range $changes}}
-    <div style="padding:8px 0;border-top:1px solid rgba(255,255,255,0.05)">
-      <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center">
-        <span class="badge badge-muted">{{.Command}}</span>
-        {{localtime .Ts "datetime"}}
-        {{- if .Purpose}}<span class="muted">— {{.Purpose}}</span>{{- end}}
+      {{- if gt (len $changes) 1}}
+      <button type="button" class="btn-expand-all" onclick="toggleAllDiffs(this)" style="margin-left:auto">Show all diffs</button>
+      {{- end}}
+    </div>
+    {{- range $i, $fc := $changes}}
+    <div style="padding:8px 0 0 12px;border-top:1px solid rgba(255,255,255,0.05)">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge badge-muted">{{$fc.Command}}</span>
+        {{localtime $fc.Ts "datetime"}}
+        {{- if $fc.Purpose}}<span class="muted">— {{$fc.Purpose}}</span>{{- end}}
+        {{- $eds := editDiffStats $fc}}
+        {{- if $eds.HasCounts}}
+          <span class="badge badge-add">+{{$eds.Adds}}</span>
+          <span class="badge badge-del">-{{$eds.Dels}}</span>
+        {{- end}}
       </div>
-      {{renderDiff .}}
+      <details id="diff-{{$path}}-{{$i}}" class="edit-diff" style="margin:4px 0 0">
+        <summary style="cursor:pointer;padding:4px 0;font-size:0.85em" class="muted">Show diff</summary>
+        {{renderDiff $fc}}
+      </details>
     </div>
     {{- end}}
-  </details>
+  </div>
   {{- end}}
 </section>
 {{- end}}

@@ -30,7 +30,23 @@ document.addEventListener('htmx:afterSettle', function() {
     var el = document.getElementById(id);
     if (el) el.open = true;
   });
+  // Sync expand-all button text with restored state.
+  document.querySelectorAll('.change-group').forEach(function(g) {
+    var btn = g.querySelector('.btn-expand-all');
+    if (!btn) return;
+    var diffs = g.querySelectorAll('details.edit-diff');
+    var allOpen = Array.prototype.every.call(diffs, function(d) { return d.open; });
+    if (allOpen) btn.textContent = 'Hide all diffs';
+  });
 });
+// Toggle all diff <details> within a change-group.
+function toggleAllDiffs(btn) {
+  var group = btn.closest('.change-group');
+  var diffs = group.querySelectorAll('details.edit-diff');
+  var anyOpen = Array.prototype.some.call(diffs, function(d) { return d.open; });
+  diffs.forEach(function(d) { d.open = !anyOpen; });
+  btn.textContent = anyOpen ? 'Show all diffs' : 'Hide all diffs';
+}
 </script>
 <body hx-ext="morph">
 <div class="layout">
