@@ -759,3 +759,208 @@ func TestKindConstants_WireFormat(t *testing.T) {
 		t.Errorf("ToolStatusError = %q, want %q", ToolStatusError, "error")
 	}
 }
+
+// --- MergeSessionDetails tests ---
+
+func makeDetail(id, agent, agentKey, title, cwd string, start, end, last time.Time, toolCalls, prompts int) SessionDetail {
+	return SessionDetail{
+		SessionMetric: SessionMetric{
+			ID:           id,
+			Agent:        agent,
+			AgentKey:     agentKey,
+			Title:        title,
+			Cwd:          cwd,
+			StartTime:    start,
+			EndTime:      end,
+			LastActivity: last,
+			ToolCalls:    toolCalls,
+			Prompts:      prompts,
+		},
+	}
+}
+
+// TestMergeSessionDetails_Empty verifies that an empty slice returns zero-value
+// SessionDetail and nil AgentRef slice.
+func TestMergeSessionDetails_Empty(t *testing.T) {
+	merged, refs := MergeSessionDetails(nil)
+	if merged.ID != "" {
+		t.Errorf("ID = %q, want empty", merged.ID)
+	}
+	if refs != nil {
+		t.Errorf("refs = %v, want nil", refs)
+	}
+}
+
+// TestMergeSessionDetails_Single verifies that a single SessionDetail is
+// returned with Agent="(all)" and one AgentRef.
+func TestMergeSessionDetails_Single(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)
+	d := makeDetail("sid-1", "coder", "sid-1|coder", "My Title", "/work", t0, t1, t1, 3, 2)
+
+	merged, refs := MergeSessionDetails([]SessionDetail{d})
+
+	if merged.ID != "sid-1" {
+		t.Errorf("ID = %q, want sid-1", merged.ID)
+	}
+	if merged.Agent != "(all)" {
+		t.Errorf("Agent = %q, want (all)", merged.Agent)
+	}
+	if merged.Title != "My Title" {
+		t.Errorf("Title = %q, want My Title", merged.Title)
+	}
+	if merged.ToolCalls != 3 {
+		t.Errorf("ToolCalls = %d, want 3", merged.ToolCalls)
+	}
+	if merged.Prompts != 2 {
+		t.Errorf("Prompts = %d, want 2", merged.Prompts)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("len(refs) = %d, want 1", len(refs))
+	}
+	if refs[0].Agent != "coder" || refs[0].AgentKey != "sid-1|coder" {
+		t.Errorf("refs[0] = %+v, want {coder sid-1|coder}", refs[0])
+	}
+}
+
+// TestMergeSessionDetails_TwoAgents verifies the full merge of two agents:
+// timestamps (min start, max end/lastActivity), title/cwd from most recent,
+// summed ToolCalls/Prompts, and timeline sorted by Ts.
+func TestMergeSessionDetails_TwoAgents(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 8, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	t3 := time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)
+
+	d1 := makeDetail("sid-2", "lead", "sid-2|lead", "Old Title", "/old", t0, t2, t2, 2, 1)
+	d2 := makeDetail("sid-2", "coder", "sid-2|coder", "New Title", "/new", t1, t3, t3, 5, 3)
+
+	// Add timeline entries out of order across agents.
+	d1.Timeline = []EventEntry{{Ts: t2, Event: "postToolUse"}, {Ts: t0, Event: "agentSpawn"}}
+	d2.Timeline = []EventEntry{{Ts: t1, Event: "userPromptSubmit"}, {Ts: t3, Event: "stop"}}
+
+	merged, refs := MergeSessionDetails([]SessionDetail{d1, d2})
+
+	// ID and Agent
+	if merged.ID != "sid-2" {
+		t.Errorf("ID = %q, want sid-2", merged.ID)
+	}
+	if merged.Agent != "(all)" {
+		t.Errorf("Agent = %q, want (all)", merged.Agent)
+	}
+
+	// Timestamps
+	if !merged.StartTime.Equal(t0) {
+		t.Errorf("StartTime = %v, want %v (min)", merged.StartTime, t0)
+	}
+	if !merged.EndTime.Equal(t3) {
+		t.Errorf("EndTime = %v, want %v (max)", merged.EndTime, t3)
+	}
+	if !merged.LastActivity.Equal(t3) {
+		t.Errorf("LastActivity = %v, want %v (max)", merged.LastActivity, t3)
+	}
+
+	// Title/Cwd from most recent (d2 has later LastActivity)
+	if merged.Title != "New Title" {
+		t.Errorf("Title = %q, want New Title", merged.Title)
+	}
+	if merged.Cwd != "/new" {
+		t.Errorf("Cwd = %q, want /new", merged.Cwd)
+	}
+
+	// Sums
+	if merged.ToolCalls != 7 {
+		t.Errorf("ToolCalls = %d, want 7", merged.ToolCalls)
+	}
+	if merged.Prompts != 4 {
+		t.Errorf("Prompts = %d, want 4", merged.Prompts)
+	}
+
+	// Timeline sorted by Ts ascending
+	if len(merged.Timeline) != 4 {
+		t.Fatalf("len(Timeline) = %d, want 4", len(merged.Timeline))
+	}
+	wantOrder := []time.Time{t0, t1, t2, t3}
+	for i, ev := range merged.Timeline {
+		if !ev.Ts.Equal(wantOrder[i]) {
+			t.Errorf("Timeline[%d].Ts = %v, want %v", i, ev.Ts, wantOrder[i])
+		}
+	}
+
+	// AgentRefs in input order
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[0].Agent != "lead" {
+		t.Errorf("refs[0].Agent = %q, want lead", refs[0].Agent)
+	}
+	if refs[1].Agent != "coder" {
+		t.Errorf("refs[1].Agent = %q, want coder", refs[1].Agent)
+	}
+}
+
+// TestMergeSessionDetails_AgentRefOrdering verifies that AgentRef slice
+// preserves input order and carries correct AgentKey values.
+func TestMergeSessionDetails_AgentRefOrdering(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	agents := []struct{ agent, key string }{
+		{"alpha", "sid-3|alpha"},
+		{"beta", "sid-3|beta"},
+		{"gamma", "sid-3|gamma"},
+	}
+	details := make([]SessionDetail, len(agents))
+	for i, a := range agents {
+		details[i] = makeDetail("sid-3", a.agent, a.key, "", "", t0, t0, t0, 0, 0)
+	}
+
+	_, refs := MergeSessionDetails(details)
+
+	if len(refs) != 3 {
+		t.Fatalf("len(refs) = %d, want 3", len(refs))
+	}
+	for i, a := range agents {
+		if refs[i].Agent != a.agent {
+			t.Errorf("refs[%d].Agent = %q, want %q", i, refs[i].Agent, a.agent)
+		}
+		if refs[i].AgentKey != a.key {
+			t.Errorf("refs[%d].AgentKey = %q, want %q", i, refs[i].AgentKey, a.key)
+		}
+	}
+}
+
+// TestMergeSessionDetails_PairPromptsWithTimeline verifies that PromptHistory
+// is correctly paired with timeline events across two agents and sorted by
+// timestamp.
+func TestMergeSessionDetails_PairPromptsWithTimeline(t *testing.T) {
+	t1 := time.Unix(1000, 0).UTC()
+	t2 := time.Unix(2000, 0).UTC()
+	t3 := time.Unix(3000, 0).UTC()
+
+	base := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	d1 := makeDetail("sid-4", "lead", "sid-4|lead", "", "", base, base, base, 0, 2)
+	d1.PromptHistory = []string{"lead-p1", "lead-p2"}
+	d1.Timeline = []EventEntry{
+		{Ts: t1, Event: apmconfig.EventUserPromptSubmit},
+		{Ts: t3, Event: apmconfig.EventUserPromptSubmit},
+	}
+
+	d2 := makeDetail("sid-4", "coder", "sid-4|coder", "", "", base, base, base, 0, 1)
+	d2.PromptHistory = []string{"coder-p1"}
+	d2.Timeline = []EventEntry{
+		{Ts: t2, Event: apmconfig.EventUserPromptSubmit},
+	}
+
+	merged, _ := MergeSessionDetails([]SessionDetail{d1, d2})
+
+	// Expected order by timestamp: lead-p1(t1), coder-p1(t2), lead-p2(t3)
+	want := []string{"lead-p1", "coder-p1", "lead-p2"}
+	if len(merged.PromptHistory) != len(want) {
+		t.Fatalf("len(PromptHistory) = %d, want %d: %v", len(merged.PromptHistory), len(want), merged.PromptHistory)
+	}
+	for i, p := range want {
+		if merged.PromptHistory[i] != p {
+			t.Errorf("PromptHistory[%d] = %q, want %q", i, merged.PromptHistory[i], p)
+		}
+	}
+}
