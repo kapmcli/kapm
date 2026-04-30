@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+// IDE action type constants (wire format values from IDE execution logs).
+const (
+	ActionReadFiles        = "readFiles"
+	ActionRunCommand       = "runCommand"
+	ActionWrite            = "write"
+	ActionCreate           = "create"
+	ActionDelete           = "delete"
+	ActionSearch           = "search"
+	ActionInvokeSubAgent   = "invokeSubAgent"
+	ActionSubAgentResponse = "subagentResponse"
+
+	// ToolNameShell is the display name for ActionRunCommand.
+	ToolNameShell = "shell"
+)
+
 // IDESessionEntry is one entry in workspace-sessions/{base64}/sessions.json.
 type IDESessionEntry struct {
 	SessionID          string `json:"sessionId"`
