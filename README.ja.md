@@ -22,7 +22,7 @@
 
 kapm は、Kiro エージェントの作業内容を把握し、ワークスペースを保守しやすくするための CLI です。
 
-- **Kiro セッションの監視**: `~/.kiro/sessions/cli/` をメインのデータソースとして読み込み、ツール呼び出しのタイムスタンプ・エージェント帰属・シェル終了ステータスを補完するオプションの hook ログ (`.kapm/logs/`) と組み合わせて、セッション、ツール呼び出し、失敗、所要時間、起動されたエージェント、プロンプト、応答、ファイル変更、Skill の参照を TUI / WebUI で確認できます。
+- **Kiro セッションの監視**: `~/.kiro/sessions/cli/` をメインのデータソースとして読み込み、Kiro IDE のセッションログも自動的に読み込まれます。ツール呼び出しのタイムスタンプ・エージェント帰属・シェル終了ステータスを補完するオプションの hook ログ (`.kapm/logs/`) と組み合わせて、セッション、ツール呼び出し、失敗、所要時間、起動されたエージェント、プロンプト、応答、ファイル変更、Skill の参照を TUI / WebUI で確認できます。
 - **Kiro エージェント設定の管理**: `.kiro/agents/*.json` と `.kiro/agent-prompts/*.md` を対話的に作成・更新できます。
 - **パッケージ形式の橋渡し**: APM パッケージと Kiro Power を、プロジェクトローカルの `.kiro/` ファイルとして同期します。
 
@@ -66,9 +66,9 @@ kapm init-hook
 
 ## 監視
 
-kapm は Kiro のセッションファイル (`~/.kiro/sessions/cli/{uuid}.jsonl` および `{uuid}.json`) をメインのデータソースとして読み込みます。基本的な監視には hook のインストールは不要で、セッションファイルにはプロンプト、アシスタント応答、ツール呼び出し、ツール結果、ターンごとのメタデータ (トークン数、クレジット、所要時間) が含まれています。
+kapm は Kiro のセッションファイル (`~/.kiro/sessions/cli/{uuid}.jsonl` および `{uuid}.json`) をメインのデータソースとして読み込みます。利用可能な場合は Kiro IDE のセッションログも自動的に読み込まれます。基本的な監視には hook のインストールは不要で、セッションファイルにはプロンプト、アシスタント応答、ツール呼び出し、ツール結果、ターンごとのメタデータ (トークン数、クレジット、所要時間) が含まれています。
 
-`kapm init-hook` は補足データのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。hook は `preToolUse` / `postToolUse` イベントを最小限の JSONL として `.kapm/logs/{session_id}.jsonl` に記録し、ツール呼び出しごとのタイムスタンプ (所要時間の計算用)、エージェント名 (委譲の追跡用)、シェル終了ステータスを提供します。
+`kapm init-hook` は補足データのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。hook は `agentSpawn` / `preToolUse` / `postToolUse` / `stop` イベントを最小限の JSONL として `.kapm/logs/{session_id}.jsonl` に記録し、ツール呼び出しごとのタイムスタンプ (所要時間の計算用)、エージェント名 (委譲の追跡用)、シェル終了ステータスを提供します。
 
 ```bash
 kapm init-hook             # エージェントを対話的に選択
@@ -90,6 +90,7 @@ kapm serve --port 9097 --open
 --global                   # 全プロジェクトのセッションを表示（デフォルト: カレントディレクトリのみ）
 --logs-dir <path>
 --target-dir <path>
+--ide-sessions-dir <path>  # IDE セッションディレクトリを指定（デフォルト: 自動検出）
 ```
 
 ![WebUI overview](demo-media/webui-overview.png)
