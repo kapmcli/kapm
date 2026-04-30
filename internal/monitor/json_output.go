@@ -12,12 +12,12 @@ import (
 func RunJSON(ctx context.Context, sessionsDir, logsDir, ideBaseDir, cwdFilter string, since time.Duration, session, agent string, w io.Writer) error {
 	records, _, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, time.Now().Add(-since), cwdFilter, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("load records: %w", err)
 	}
 
 	dm, err := AggregateDetail(ctx, records, time.Now())
 	if err != nil {
-		return err
+		return fmt.Errorf("aggregate: %w", err)
 	}
 
 	switch {
@@ -76,8 +76,11 @@ func RunJSON(ctx context.Context, sessionsDir, logsDir, ideBaseDir, cwdFilter st
 
 	b, err := json.MarshalIndent(dm, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal json: %w", err)
 	}
 	_, err = w.Write(b)
-	return err
+	if err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
+	return nil
 }
