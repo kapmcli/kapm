@@ -54,7 +54,7 @@ func TestLoadSessions_SinceFilter(t *testing.T) {
 	old := now.Add(-2 * time.Hour)
 	recent := now.Add(-30 * time.Minute)
 
-	msg := SessionMessage{Kind: "Prompt"}
+	msg := SessionMessage{Kind: MessageKindPrompt}
 	writeSession(t, dir, "old-uuid", old, []SessionMessage{msg})
 	writeSession(t, dir, "new-uuid", recent, []SessionMessage{msg})
 
@@ -74,7 +74,7 @@ func TestLoadSessions_SinceFilter(t *testing.T) {
 func TestLoadSessions_CacheHit(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC().Truncate(time.Second)
-	msg := SessionMessage{Kind: "Prompt"}
+	msg := SessionMessage{Kind: MessageKindPrompt}
 	writeSession(t, dir, "sess1", now, []SessionMessage{msg})
 
 	// First load — populates cache.
@@ -115,7 +115,7 @@ func TestLoadSessions_CacheHit(t *testing.T) {
 func TestLoadSessions_CacheMiss(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC().Truncate(time.Second)
-	msg := SessionMessage{Kind: "Prompt"}
+	msg := SessionMessage{Kind: MessageKindPrompt}
 	writeSession(t, dir, "sess1", now, []SessionMessage{msg})
 
 	_, cache, err := LoadSessions(context.Background(), dir, time.Time{}, "", nil)
@@ -124,7 +124,7 @@ func TestLoadSessions_CacheMiss(t *testing.T) {
 	}
 
 	// Write a new message to .jsonl — changes mtime and size.
-	msg2 := SessionMessage{Kind: "AssistantMessage"}
+	msg2 := SessionMessage{Kind: MessageKindAssistantMessage}
 	jsonlPath := filepath.Join(dir, "sess1.jsonl")
 	var newContent []byte
 	for _, m := range []SessionMessage{msg, msg2} {
@@ -184,7 +184,7 @@ func TestLoadSessions_SymlinkRejected(t *testing.T) {
 func TestLoadSessions_ContextCancelled(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC().Truncate(time.Second)
-	msg := SessionMessage{Kind: "Prompt"}
+	msg := SessionMessage{Kind: MessageKindPrompt}
 	writeSession(t, dir, "sess1", now, []SessionMessage{msg})
 	writeSession(t, dir, "sess2", now, []SessionMessage{msg})
 
@@ -200,7 +200,7 @@ func TestLoadSessions_ContextCancelled(t *testing.T) {
 func TestLoadSessions_LockFilesIgnored(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC().Truncate(time.Second)
-	msg := SessionMessage{Kind: "Prompt"}
+	msg := SessionMessage{Kind: MessageKindPrompt}
 	writeSession(t, dir, "sess1", now, []SessionMessage{msg})
 	// Write a .lock file — should be ignored.
 	if err := os.WriteFile(filepath.Join(dir, "sess1.lock"), []byte("locked"), 0o644); err != nil {

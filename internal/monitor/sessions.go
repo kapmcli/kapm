@@ -147,7 +147,7 @@ func ParseSessionJSONL(r io.Reader) ([]SessionMessage, int, error) {
 			continue // skip incomplete/malformed lines
 		}
 		switch msg.Kind {
-		case "Prompt", "AssistantMessage", "ToolResults":
+		case MessageKindPrompt, MessageKindAssistantMessage, MessageKindToolResults:
 			msgs = append(msgs, msg)
 		default:
 			// unknown kind — silently skip for forward compatibility

@@ -25,13 +25,13 @@ func TestParseSessionJSONL(t *testing.T) {
 		if len(msgs) != 3 {
 			t.Fatalf("len(msgs)=%d, want 3", len(msgs))
 		}
-		if msgs[0].Kind != "Prompt" {
+		if msgs[0].Kind != MessageKindPrompt {
 			t.Errorf("msgs[0].Kind=%q, want Prompt", msgs[0].Kind)
 		}
-		if msgs[1].Kind != "AssistantMessage" {
+		if msgs[1].Kind != MessageKindAssistantMessage {
 			t.Errorf("msgs[1].Kind=%q, want AssistantMessage", msgs[1].Kind)
 		}
-		if msgs[2].Kind != "ToolResults" {
+		if msgs[2].Kind != MessageKindToolResults {
 			t.Errorf("msgs[2].Kind=%q, want ToolResults", msgs[2].Kind)
 		}
 	})
@@ -105,14 +105,14 @@ func TestParseSessionJSONL(t *testing.T) {
 		if err := json.Unmarshal(raw.Content[0].Data, &tr1); err != nil {
 			t.Fatal(err)
 		}
-		if tr1.Status != "success" {
+		if tr1.Status != ToolStatusSuccess {
 			t.Errorf("status=%q, want success", tr1.Status)
 		}
 		var tr2 ToolResultData
 		if err := json.Unmarshal(raw.Content[1].Data, &tr2); err != nil {
 			t.Fatal(err)
 		}
-		if tr2.Status != "error" {
+		if tr2.Status != ToolStatusError {
 			t.Errorf("status=%q, want error", tr2.Status)
 		}
 	})
@@ -153,7 +153,7 @@ func TestParseSessionJSONL_Malformed(t *testing.T) {
 		if len(msgs) != 1 {
 			t.Errorf("len(msgs)=%d, want 1", len(msgs))
 		}
-		if msgs[0].Kind != "Prompt" {
+		if msgs[0].Kind != MessageKindPrompt {
 			t.Errorf("kind=%q, want Prompt", msgs[0].Kind)
 		}
 	})

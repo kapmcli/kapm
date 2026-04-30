@@ -6,6 +6,36 @@ import (
 	"unicode/utf8"
 )
 
+// Kind values of MergedRecord. These are internal but flow into aggregation
+// and WebUI payloads; wire-format stability is desirable.
+const (
+	RecordKindPrompt        = "prompt"
+	RecordKindToolUse       = "toolUse"
+	RecordKindToolResult    = "toolResult"
+	RecordKindAssistantText = "assistantText"
+	RecordKindSessionMeta   = "sessionMeta"
+)
+
+// SessionMessage.Kind values (wire format from Kiro; do not change).
+const (
+	MessageKindPrompt           = "Prompt"
+	MessageKindAssistantMessage = "AssistantMessage"
+	MessageKindToolResults      = "ToolResults"
+)
+
+// ContentItem.Kind values (wire format from Kiro; do not change).
+const (
+	ContentKindText       = "text"
+	ContentKindToolUse    = "toolUse"
+	ContentKindToolResult = "toolResult"
+)
+
+// ToolResultData.Status values (wire format from Kiro).
+const (
+	ToolStatusSuccess = "success"
+	ToolStatusError   = "error"
+)
+
 var skillPathRe = regexp.MustCompile(`([a-zA-Z0-9_-]+)/SKILL\.md`)
 
 const (

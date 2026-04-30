@@ -50,13 +50,13 @@ func rec(session, agent, event, tool string, offset time.Duration) MergedRecord 
 func recPair(session, agent, tool string, preOffset, postOffset time.Duration) (MergedRecord, MergedRecord) {
 	tuid := fmt.Sprintf("tuid-%s-%s-%s", session, tool, baseTime.Add(preOffset))
 	pre := MergedRecord{
-		SessionID: session, Agent: agent, Kind: "toolUse",
+		SessionID: session, Agent: agent, Kind: RecordKindToolUse,
 		ToolUseID: tuid, ToolName: tool, PreToolTs: baseTime.Add(preOffset),
 	}
 	post := MergedRecord{
-		SessionID: session, Agent: agent, Kind: "toolResult",
+		SessionID: session, Agent: agent, Kind: RecordKindToolResult,
 		ToolUseID: tuid, ToolName: tool, PostToolTs: baseTime.Add(postOffset),
-		ToolStatus: "success",
+		ToolStatus: ToolStatusSuccess,
 	}
 	return pre, post
 }
@@ -276,11 +276,11 @@ func TestAggregateDetail(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "coder", Kind: "prompt", PromptTs: baseTime.Add(1 * time.Minute), PromptText: "first", Cwd: "/tmp"},
-		{SessionID: "s1", Agent: "coder", Kind: "prompt", PromptTs: baseTime.Add(2 * time.Minute), PromptText: "second"},
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(3 * time.Minute)},
-		{SessionID: "s1", Agent: "coder", Kind: "toolResult", ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(3*time.Minute + 2*time.Second), ToolStatus: "success"},
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(4 * time.Minute)}, // unmatched => error
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindPrompt, PromptTs: baseTime.Add(1 * time.Minute), PromptText: "first", Cwd: "/tmp"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindPrompt, PromptTs: baseTime.Add(2 * time.Minute), PromptText: "second"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(3 * time.Minute)},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolResult, ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(3*time.Minute + 2*time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(4 * time.Minute)}, // unmatched => error
 	}
 
 	d := mustAggregate(t, records, now)
@@ -345,8 +345,8 @@ func TestAggregateDetailSameTimestampKeepsPreBeforePost(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(30 * time.Minute)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-1", ToolName: "bash", PreToolTs: baseTime, ToolInput: json.RawMessage(`{"command":"echo hi"}`)},
-		{SessionID: "s1", Agent: "coder", Kind: "toolResult", ToolUseID: "tu-1", ToolName: "bash", PostToolTs: baseTime, ToolStatus: "success"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-1", ToolName: "bash", PreToolTs: baseTime, ToolInput: json.RawMessage(`{"command":"echo hi"}`)},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolResult, ToolUseID: "tu-1", ToolName: "bash", PostToolTs: baseTime, ToolStatus: ToolStatusSuccess},
 	}
 
 	d := mustAggregate(t, records, now)
@@ -507,11 +507,11 @@ func TestAggregateInputSummaryPropagates(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
 			ToolInput: []byte(`{"__tool_use_purpose":"read plan"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(time.Second), ToolStatus: ToolStatusSuccess},
 		// Second call: unmatched → error, with a different summary source.
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-2", ToolName: "read", PreToolTs: baseTime.Add(2 * time.Minute),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-2", ToolName: "read", PreToolTs: baseTime.Add(2 * time.Minute),
 			ToolInput: []byte(`{"operations":[{"path":"/x/y/SKILL.md"}]}`)},
 	}
 	d := mustAggregate(t, records, now)
@@ -541,23 +541,23 @@ func TestAggregateSkillsCounting(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
 			ToolInput: []byte(`{"operations":[{"path":".kiro/skills/task-verification/SKILL.md"}]}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "success"},
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-2", ToolName: "read", PreToolTs: baseTime.Add(2 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-2", ToolName: "read", PreToolTs: baseTime.Add(2 * time.Second),
 			ToolInput: []byte(`{"operations":[{"path":"/abs/.kiro/skills/task-verification/SKILL.md"}]}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-2", ToolName: "read", PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: "success"},
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-3", ToolName: "read", PreToolTs: baseTime.Add(4 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-2", ToolName: "read", PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-3", ToolName: "read", PreToolTs: baseTime.Add(4 * time.Second),
 			ToolInput: []byte(`{"operations":[{"path":".kiro/skills/git-master/SKILL.md"}]}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-3", ToolName: "read", PostToolTs: baseTime.Add(5 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-3", ToolName: "read", PostToolTs: baseTime.Add(5 * time.Second), ToolStatus: ToolStatusSuccess},
 		// unrelated: read of a non-SKILL.md path
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-4", ToolName: "read", PreToolTs: baseTime.Add(6 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-4", ToolName: "read", PreToolTs: baseTime.Add(6 * time.Second),
 			ToolInput: []byte(`{"operations":[{"path":"/tmp/foo.go"}]}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-4", ToolName: "read", PostToolTs: baseTime.Add(7 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-4", ToolName: "read", PostToolTs: baseTime.Add(7 * time.Second), ToolStatus: ToolStatusSuccess},
 		// tool != "read" should not count
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-5", ToolName: "shell", PreToolTs: baseTime.Add(8 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-5", ToolName: "shell", PreToolTs: baseTime.Add(8 * time.Second),
 			ToolInput: []byte(`{"command":"cat code-search/SKILL.md"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-5", ToolName: "shell", PostToolTs: baseTime.Add(9 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-5", ToolName: "shell", PostToolTs: baseTime.Add(9 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Skills) != 2 {
@@ -575,10 +575,10 @@ func TestAggregateEventEntryInputSummary(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-1", ToolName: "bash", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-1", ToolName: "bash", PreToolTs: baseTime,
 			ToolInput: []byte(`{"command":"echo hello"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-1", ToolName: "bash", PostToolTs: baseTime.Add(time.Second), ToolStatus: "success"},
-		{SessionID: "s", Agent: "a", Kind: "prompt", PromptTs: baseTime.Add(2 * time.Second)},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-1", ToolName: "bash", PostToolTs: baseTime.Add(time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s", Agent: "a", Kind: RecordKindPrompt, PromptTs: baseTime.Add(2 * time.Second)},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
@@ -615,9 +615,9 @@ func TestAggregateSkillsNoMatches(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-1", ToolName: "read", PreToolTs: baseTime,
 			ToolInput: []byte(`{"operations":[{"path":"/tmp/foo.go"}]}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-1", ToolName: "read", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Skills) != 0 {
@@ -679,12 +679,12 @@ func TestAggregateCodeOperationsDoNotCrossMatch(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-diag", ToolName: "code", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-diag", ToolName: "code", PreToolTs: baseTime,
 			ToolInput: []byte(`{"operation":"get_diagnostics"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-hover", ToolName: "code", PreToolTs: baseTime.Add(1 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-hover", ToolName: "code", PreToolTs: baseTime.Add(1 * time.Second),
 			ToolInput: []byte(`{"operation":"get_hover"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-hover", ToolName: "code", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: "success"},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-diag", ToolName: "code", PostToolTs: baseTime.Add(10 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-hover", ToolName: "code", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-diag", ToolName: "code", PostToolTs: baseTime.Add(10 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	var code ToolDetail
@@ -712,12 +712,12 @@ func TestAggregateShellConcurrentOutOfOrderDurations(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-sleep", ToolName: "shell", PreToolTs: baseTime,
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-sleep", ToolName: "shell", PreToolTs: baseTime,
 			ToolInput: []byte(`{"command":"sleep 10"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolUseID: "tu-echo", ToolName: "shell", PreToolTs: baseTime.Add(1 * time.Second),
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-echo", ToolName: "shell", PreToolTs: baseTime.Add(1 * time.Second),
 			ToolInput: []byte(`{"command":"echo fast"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-echo", ToolName: "shell", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: "success"},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolUseID: "tu-sleep", ToolName: "shell", PostToolTs: baseTime.Add(10 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-echo", ToolName: "shell", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-sleep", ToolName: "shell", PostToolTs: baseTime.Add(10 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	byName := map[string]ToolDetail{}
@@ -825,9 +825,9 @@ func TestMixedAgentFixture(t *testing.T) {
 	leadReadPre, leadReadPost := recPair("ma-session-001", "lead", "read", 10*time.Minute, 11*time.Minute)
 	leadShellPre, leadShellPost := recPair("ma-session-001", "lead", "shell", 12*time.Minute, 13*time.Minute)
 	mixed := []MergedRecord{
-		{SessionID: "ma-session-001", Agent: "orchestrator", Kind: "prompt", PromptTs: baseTime, PromptText: "orchestrate the build pipeline"},
+		{SessionID: "ma-session-001", Agent: "orchestrator", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "orchestrate the build pipeline"},
 		orcBashPre, orcBashPost, orcReadPre, orcReadPost, orcShell2Pre, orcShell2Post, orcGrepPre,
-		{SessionID: "ma-session-001", Agent: "lead", Kind: "prompt", PromptTs: baseTime.Add(9 * time.Minute), PromptText: "implement the assigned subtask"},
+		{SessionID: "ma-session-001", Agent: "lead", Kind: RecordKindPrompt, PromptTs: baseTime.Add(9 * time.Minute), PromptText: "implement the assigned subtask"},
 		leadReadPre, leadReadPost, leadShellPre, leadShellPost,
 	}
 
@@ -996,12 +996,12 @@ func TestAggregateMultiAgentSameSid(t *testing.T) {
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
 		// Same sid "s1" under two agents — must yield two SessionDetails.
-		{SessionID: "s1", Agent: "orchestrator", Kind: "prompt", PromptTs: baseTime, PromptText: "orc prompt"},
-		{SessionID: "s1", Agent: "orchestrator", Kind: "toolUse", ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(1 * time.Minute)},
-		{SessionID: "s1", Agent: "orchestrator", Kind: "toolResult", ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: "success"},
-		{SessionID: "s1", Agent: "lead", Kind: "prompt", PromptTs: baseTime.Add(3 * time.Minute), PromptText: "lead prompt"},
-		{SessionID: "s1", Agent: "lead", Kind: "toolUse", ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(4 * time.Minute)},
-		{SessionID: "s1", Agent: "lead", Kind: "toolResult", ToolUseID: "tu-grep", ToolName: "grep", PostToolTs: baseTime.Add(5 * time.Minute), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "orchestrator", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "orc prompt"},
+		{SessionID: "s1", Agent: "orchestrator", Kind: RecordKindToolUse, ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(1 * time.Minute)},
+		{SessionID: "s1", Agent: "orchestrator", Kind: RecordKindToolResult, ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindPrompt, PromptTs: baseTime.Add(3 * time.Minute), PromptText: "lead prompt"},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindToolUse, ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(4 * time.Minute)},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindToolResult, ToolUseID: "tu-grep", ToolName: "grep", PostToolTs: baseTime.Add(5 * time.Minute), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 2 {
@@ -1046,10 +1046,10 @@ func TestAggregateSummaryToolTitlePreferred(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "coder", Kind: "prompt", PromptTs: baseTime, PromptText: "first prompt"},
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-sum", ToolName: "summary", PreToolTs: baseTime.Add(1 * time.Minute),
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "first prompt"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-sum", ToolName: "summary", PreToolTs: baseTime.Add(1 * time.Minute),
 			ToolInput: []byte(`{"taskDescription":"implement feature X"}`)},
-		{SessionID: "s1", Agent: "coder", Kind: "toolResult", ToolUseID: "tu-sum", ToolName: "summary", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolResult, ToolUseID: "tu-sum", ToolName: "summary", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
@@ -1064,9 +1064,9 @@ func TestAggregateEmptyAgentNormalized(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "", Kind: "prompt", PromptTs: baseTime, PromptText: "hi"},
-		{SessionID: "s1", Agent: "", Kind: "toolUse", ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(1 * time.Minute)},
-		{SessionID: "s1", Agent: "", Kind: "toolResult", ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "hi"},
+		{SessionID: "s1", Agent: "", Kind: RecordKindToolUse, ToolUseID: "tu-bash", ToolName: "bash", PreToolTs: baseTime.Add(1 * time.Minute)},
+		{SessionID: "s1", Agent: "", Kind: RecordKindToolResult, ToolUseID: "tu-bash", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Minute), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
@@ -1159,15 +1159,15 @@ func TestAggregateDetailExitStatusError(t *testing.T) {
 	now := baseTime.Add(30 * time.Minute)
 	records := []MergedRecord{
 		// bash call 1: error
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-false", ToolName: "bash", PreToolTs: baseTime,
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-false", ToolName: "bash", PreToolTs: baseTime,
 			ToolInput: []byte(`{"command":"false"}`)},
-		{SessionID: "s1", Agent: "coder", Kind: "toolResult", ToolUseID: "tu-false", ToolName: "bash", PostToolTs: baseTime.Add(1 * time.Second),
-			ToolStatus: "error", ErrorDetail: "exit 1"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolResult, ToolUseID: "tu-false", ToolName: "bash", PostToolTs: baseTime.Add(1 * time.Second),
+			ToolStatus: ToolStatusError, ErrorDetail: "exit 1"},
 		// bash call 2: success
-		{SessionID: "s1", Agent: "coder", Kind: "toolUse", ToolUseID: "tu-true", ToolName: "bash", PreToolTs: baseTime.Add(2 * time.Second),
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolUse, ToolUseID: "tu-true", ToolName: "bash", PreToolTs: baseTime.Add(2 * time.Second),
 			ToolInput: []byte(`{"command":"true"}`)},
-		{SessionID: "s1", Agent: "coder", Kind: "toolResult", ToolUseID: "tu-true", ToolName: "bash", PostToolTs: baseTime.Add(3 * time.Second),
-			ToolStatus: "success"},
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindToolResult, ToolUseID: "tu-true", ToolName: "bash", PostToolTs: baseTime.Add(3 * time.Second),
+			ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 
@@ -1223,17 +1223,17 @@ func TestAggregateDetail_ErrorInvariant(t *testing.T) {
 	now := baseTime.Add(30 * time.Minute)
 	records := []MergedRecord{
 		// call 1: matched success
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-ok", ToolName: "bash", PreToolTs: baseTime,
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-ok", ToolName: "bash", PreToolTs: baseTime,
 			ToolInput: []byte(`{"command":"ok"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-ok", ToolName: "bash", PostToolTs: baseTime.Add(1 * time.Second),
-			ToolStatus: "success"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-ok", ToolName: "bash", PostToolTs: baseTime.Add(1 * time.Second),
+			ToolStatus: ToolStatusSuccess},
 		// call 2: matched error
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-fail", ToolName: "bash", PreToolTs: baseTime.Add(2 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-fail", ToolName: "bash", PreToolTs: baseTime.Add(2 * time.Second),
 			ToolInput: []byte(`{"command":"fail"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-fail", ToolName: "bash", PostToolTs: baseTime.Add(3 * time.Second),
-			ToolStatus: "error", ErrorDetail: "exit 2"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-fail", ToolName: "bash", PostToolTs: baseTime.Add(3 * time.Second),
+			ToolStatus: ToolStatusError, ErrorDetail: "exit 2"},
 		// call 3: unmatched pre (crash detection)
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-crash", ToolName: "bash", PreToolTs: baseTime.Add(4 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-crash", ToolName: "bash", PreToolTs: baseTime.Add(4 * time.Second),
 			ToolInput: []byte(`{"command":"crash"}`)},
 	}
 	d := mustAggregate(t, records, now)
@@ -1636,25 +1636,25 @@ func TestSessionToolSummary(t *testing.T) {
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
 		// bash: 3 calls, 1 error (unmatched pre)
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-ok1", ToolName: "bash", PreToolTs: baseTime,
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-ok1", ToolName: "bash", PreToolTs: baseTime,
 			ToolInput: []byte(`{"command":"ok1"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-ok1", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: "success"},
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-ok2", ToolName: "bash", PreToolTs: baseTime.Add(4 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-ok1", ToolName: "bash", PostToolTs: baseTime.Add(2 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-ok2", ToolName: "bash", PreToolTs: baseTime.Add(4 * time.Second),
 			ToolInput: []byte(`{"command":"ok2"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-ok2", ToolName: "bash", PostToolTs: baseTime.Add(6 * time.Second), ToolStatus: "success"},
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-fail", ToolName: "bash", PreToolTs: baseTime.Add(8 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-ok2", ToolName: "bash", PostToolTs: baseTime.Add(6 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-fail", ToolName: "bash", PreToolTs: baseTime.Add(8 * time.Second),
 			ToolInput: []byte(`{"command":"fail"}`)}, // unmatched → error
 		// grep: 1 call, 0 errors
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(10 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-grep", ToolName: "grep", PreToolTs: baseTime.Add(10 * time.Second),
 			ToolInput: []byte(`{"pattern":"foo"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-grep", ToolName: "grep", PostToolTs: baseTime.Add(12 * time.Second), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-grep", ToolName: "grep", PostToolTs: baseTime.Add(12 * time.Second), ToolStatus: ToolStatusSuccess},
 		// read: 2 calls, 0 errors
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-read1", ToolName: "read", PreToolTs: baseTime.Add(14 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-read1", ToolName: "read", PreToolTs: baseTime.Add(14 * time.Second),
 			ToolInput: []byte(`{"path":"/a"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-read1", ToolName: "read", PostToolTs: baseTime.Add(16 * time.Second), ToolStatus: "success"},
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-read2", ToolName: "read", PreToolTs: baseTime.Add(18 * time.Second),
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-read1", ToolName: "read", PostToolTs: baseTime.Add(16 * time.Second), ToolStatus: ToolStatusSuccess},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-read2", ToolName: "read", PreToolTs: baseTime.Add(18 * time.Second),
 			ToolInput: []byte(`{"path":"/b"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-read2", ToolName: "read", PostToolTs: baseTime.Add(20 * time.Second), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-read2", ToolName: "read", PostToolTs: baseTime.Add(20 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
@@ -1712,7 +1712,7 @@ func TestSessionAssistantResponse(t *testing.T) {
 	now := baseTime.Add(10 * time.Minute)
 	records := []MergedRecord{
 		rec("s1", "a", apmconfig.EventAgentSpawn, "", 0),
-		{SessionID: "s1", Agent: "a", Kind: "assistantText", AssistantText: "The task is complete.", CreatedAt: baseTime.Add(5 * time.Minute)},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindAssistantText, AssistantText: "The task is complete.", CreatedAt: baseTime.Add(5 * time.Minute)},
 	}
 	d := mustAggregate(t, records, now)
 	if len(d.Sessions) != 1 {
@@ -1733,7 +1733,7 @@ func writeRec(session, agent, path, command string, offset time.Duration) Merged
 	return MergedRecord{
 		SessionID: session,
 		Agent:     agent,
-		Kind:      "toolUse",
+		Kind: RecordKindToolUse,
 		ToolUseID: fmt.Sprintf("tu-write-%d", id),
 		ToolName:  "write",
 		ToolInput: input,
@@ -1831,7 +1831,7 @@ func TestAggregateDetail_TokenCredits(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "coder", Kind: "sessionMeta",
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindSessionMeta,
 			TotalInputTokens: 400, TotalOutputTokens: 600, TotalCredits: 2.0},
 		rec("s1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
 	}
@@ -1873,10 +1873,10 @@ func TestAggregateDetail_TokenCredits_MultiSession(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "coder", Kind: "sessionMeta",
+		{SessionID: "s1", Agent: "coder", Kind: RecordKindSessionMeta,
 			TotalInputTokens: 100, TotalOutputTokens: 200, TotalCredits: 1.0},
 		rec("s1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
-		{SessionID: "s2", Agent: "coder", Kind: "sessionMeta",
+		{SessionID: "s2", Agent: "coder", Kind: RecordKindSessionMeta,
 			TotalInputTokens: 300, TotalOutputTokens: 400, TotalCredits: 1.5},
 		rec("s2", "coder", apmconfig.EventUserPromptSubmit, "", 30*time.Minute),
 	}
@@ -1949,7 +1949,7 @@ func TestTouchSessionState_UpdatedAt(t *testing.T) {
 	r := MergedRecord{
 		SessionID: "ide-1",
 		Agent:     "kiro-ide",
-		Kind:      "sessionMeta",
+		Kind: RecordKindSessionMeta,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}
@@ -1974,7 +1974,7 @@ func TestAggregateDetail_IDESession(t *testing.T) {
 	records := []MergedRecord{
 		{
 			SessionID:    "ide-sess-1",
-			Kind:         "sessionMeta",
+			Kind: RecordKindSessionMeta,
 			Agent:        "kiro-ide",
 			Title:        "Implement feature X",
 			Cwd:          "/home/user/project-alpha",
@@ -2016,13 +2016,13 @@ func TestAggregateDetail_MixedSources(t *testing.T) {
 	records := []MergedRecord{
 		// CLI session
 		rec("cli-1", "coder", apmconfig.EventUserPromptSubmit, "", 1*time.Minute),
-		{SessionID: "cli-1", Agent: "coder", Kind: "sessionMeta",
+		{SessionID: "cli-1", Agent: "coder", Kind: RecordKindSessionMeta,
 			TotalInputTokens: 100, TotalOutputTokens: 200, TotalCredits: 1.0,
 			CreatedAt: baseTime, UpdatedAt: baseTime.Add(5 * time.Minute)},
 		// IDE session
 		{
 			SessionID:    "ide-1",
-			Kind:         "sessionMeta",
+			Kind: RecordKindSessionMeta,
 			Agent:        "kiro-ide",
 			Cwd:          "/home/user/proj",
 			CreatedAt:    baseTime.Add(10 * time.Minute),

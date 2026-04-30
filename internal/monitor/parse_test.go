@@ -115,14 +115,14 @@ func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
 	now := baseTime.Add(30 * time.Minute)
 
 	records := []MergedRecord{
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-fail", ToolName: "bash",
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-fail", ToolName: "bash",
 			PreToolTs: baseTime, ToolInput: []byte(`{"command":"fail"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-fail", ToolName: "bash",
-			PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "error", ErrorDetail: "exit 1: permission denied"},
-		{SessionID: "s1", Agent: "a", Kind: "toolUse", ToolUseID: "tu-ok", ToolName: "bash",
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-fail", ToolName: "bash",
+			PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: ToolStatusError, ErrorDetail: "exit 1: permission denied"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolUse, ToolUseID: "tu-ok", ToolName: "bash",
 			PreToolTs: baseTime.Add(2 * time.Second), ToolInput: []byte(`{"command":"ok"}`)},
-		{SessionID: "s1", Agent: "a", Kind: "toolResult", ToolUseID: "tu-ok", ToolName: "bash",
-			PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: "success"},
+		{SessionID: "s1", Agent: "a", Kind: RecordKindToolResult, ToolUseID: "tu-ok", ToolName: "bash",
+			PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 	d := mustAggregate(t, records, now)
 	tl := d.Sessions[0].Timeline

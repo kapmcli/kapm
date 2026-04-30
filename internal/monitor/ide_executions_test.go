@@ -131,7 +131,7 @@ func TestBuildIDEMergedRecords(t *testing.T) {
 	if r.SessionID != "sess-1" {
 		t.Errorf("SessionID = %q", r.SessionID)
 	}
-	if r.Kind != "sessionMeta" {
+	if r.Kind != RecordKindSessionMeta {
 		t.Errorf("Kind = %q", r.Kind)
 	}
 	if r.Agent != "kiro-ide" {
@@ -163,7 +163,7 @@ func TestBuildIDEMergedRecords_NoExecResult(t *testing.T) {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
 	r := records[0]
-	if r.Kind != "sessionMeta" || r.Agent != "kiro-ide" {
+	if r.Kind != RecordKindSessionMeta || r.Agent != "kiro-ide" {
 		t.Errorf("Kind=%q Agent=%q", r.Kind, r.Agent)
 	}
 	if !approxEqual(r.TotalCredits, 0.0, 1e-9) {

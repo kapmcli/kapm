@@ -163,7 +163,7 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 		}
 		out = append(out, MergedRecord{
 			SessionID:         s.SessionID,
-			Kind:              "sessionMeta",
+			Kind:              RecordKindSessionMeta,
 			Agent:             "kiro-ide",
 			Title:             s.Title,
 			Cwd:               s.WorkspaceDirectory,
@@ -202,7 +202,7 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 
 			rec := MergedRecord{
 				SessionID: s.SessionID,
-				Kind:      "toolUse",
+				Kind:      RecordKindToolUse,
 				Agent:     "kiro-ide",
 				Cwd:       s.WorkspaceDirectory,
 				ToolName:  toolName,
@@ -219,7 +219,7 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 			out = append(out, rec)
 			out = append(out, MergedRecord{
 				SessionID:   s.SessionID,
-				Kind:        "toolResult",
+				Kind:        RecordKindToolResult,
 				Agent:       "kiro-ide",
 				ToolName:    toolName,
 				ToolUseID:   a.ActionID,
@@ -235,9 +235,9 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 func ideActionStatus(state string) string {
 	switch state {
 	case "Error", "Rejected":
-		return "error"
+		return ToolStatusError
 	default:
-		return "success"
+		return ToolStatusSuccess
 	}
 }
 

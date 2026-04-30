@@ -63,13 +63,13 @@ func AggregateDetail(ctx context.Context, records []MergedRecord, now time.Time)
 // recordSortTs returns the best timestamp for sorting a MergedRecord.
 func recordSortTs(r MergedRecord) time.Time {
 	switch r.Kind {
-	case "prompt":
+	case RecordKindPrompt:
 		return r.PromptTs
-	case "toolUse":
+	case RecordKindToolUse:
 		if !r.PreToolTs.IsZero() {
 			return r.PreToolTs
 		}
-	case "toolResult":
+	case RecordKindToolResult:
 		if !r.PostToolTs.IsZero() {
 			return r.PostToolTs
 		}
@@ -91,18 +91,18 @@ func processRecord(st *aggState, r MergedRecord) {
 	toolName := r.ToolName
 
 	// Re-key shell tool calls into derived per-command buckets.
-	if toolName == apmconfig.ToolShell && (r.Kind == "toolUse" || r.Kind == "toolResult") {
+	if toolName == apmconfig.ToolShell && (r.Kind == RecordKindToolUse || r.Kind == RecordKindToolResult) {
 		toolName = classifyShell(r.ToolInput, r.Cwd)
 	}
 
 	s := touchSessionState(st, r)
 
 	switch r.Kind {
-	case "prompt":
+	case RecordKindPrompt:
 		s.timeline = append(s.timeline, EventEntry{Ts: r.PromptTs, Event: apmconfig.EventUserPromptSubmit})
 		s.prompts = append(s.prompts, r.PromptText)
 
-	case "toolUse":
+	case RecordKindToolUse:
 		s.toolCalls++
 		summary := inputSummary(r.ToolInput, toolName, s.cwd)
 		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, ToolInput: formatToolInput(r.ToolInput), toolUseID: r.ToolUseID}
@@ -138,16 +138,16 @@ func processRecord(st *aggState, r MergedRecord) {
 			}
 		}
 
-	case "toolResult":
+	case RecordKindToolResult:
 		// toolResult records carry ToolUseID for pairing with toolUse.
 		// Find the matching toolUse entry in the timeline by ToolUseID.
 		resolveToolResult(st, s, r)
 
-	case "assistantText":
+	case RecordKindAssistantText:
 		s.assistantResponse = r.AssistantText
 		s.assistantResponse = truncateUTF8(s.assistantResponse, maxAssistantResponseLength)
 
-	case "sessionMeta":
+	case RecordKindSessionMeta:
 		s.totalInputTokens += r.TotalInputTokens
 		s.totalOutputTokens += r.TotalOutputTokens
 		s.totalCredits += r.TotalCredits
@@ -184,7 +184,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 		ToolInput: s.timeline[matchIdx].ToolInput,
 	}
 
-	if r.ToolStatus == "error" {
+	if r.ToolStatus == ToolStatusError {
 		s.timeline[matchIdx].IsError = true
 		s.timeline[matchIdx].ErrorDetail = r.ErrorDetail
 		s.timeline[matchIdx].ErrorDetail = truncateUTF8(s.timeline[matchIdx].ErrorDetail, maxErrorDetailLength)

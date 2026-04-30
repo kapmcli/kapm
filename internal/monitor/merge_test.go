@@ -34,43 +34,43 @@ func makeSession(id string, msgs []SessionMessage) ParsedSession {
 func promptMsg(text string, ts int64) SessionMessage {
 	pd := PromptData{
 		MessageID: "msg-1",
-		Content:   []ContentItem{{Kind: "text", Data: mustJSON(text)}},
+		Content:   []ContentItem{{Kind: ContentKindText, Data: mustJSON(text)}},
 		Meta:      PromptMeta{Timestamp: ts},
 	}
-	return SessionMessage{Kind: "Prompt", Data: mustJSON(pd)}
+	return SessionMessage{Kind: MessageKindPrompt, Data: mustJSON(pd)}
 }
 
 func toolUseMsg(id, name string, input any) SessionMessage {
 	tu := ToolUseData{ToolUseID: id, Name: name, Input: mustJSON(input)}
 	ad := AssistantData{
 		MessageID: "msg-2",
-		Content:   []ContentItem{{Kind: "toolUse", Data: mustJSON(tu)}},
+		Content:   []ContentItem{{Kind: ContentKindToolUse, Data: mustJSON(tu)}},
 	}
-	return SessionMessage{Kind: "AssistantMessage", Data: mustJSON(ad)}
+	return SessionMessage{Kind: MessageKindAssistantMessage, Data: mustJSON(ad)}
 }
 
 func toolResultMsg(id, status string) SessionMessage {
 	tr := ToolResultData{
 		ToolUseID: id,
 		Status:    status,
-		Content:   []ContentItem{{Kind: "text", Data: mustJSON("ok")}},
+		Content:   []ContentItem{{Kind: ContentKindText, Data: mustJSON("ok")}},
 	}
 	trs := struct {
 		Content []ContentItem `json:"content"`
-	}{Content: []ContentItem{{Kind: "toolResult", Data: mustJSON(tr)}}}
-	return SessionMessage{Kind: "ToolResults", Data: mustJSON(trs)}
+	}{Content: []ContentItem{{Kind: ContentKindToolResult, Data: mustJSON(tr)}}}
+	return SessionMessage{Kind: MessageKindToolResults, Data: mustJSON(trs)}
 }
 
 func toolResultErrMsg(id, errText string) SessionMessage {
 	tr := ToolResultData{
 		ToolUseID: id,
-		Status:    "error",
-		Content:   []ContentItem{{Kind: "text", Data: mustJSON(errText)}},
+		Status:    ToolStatusError,
+		Content:   []ContentItem{{Kind: ContentKindText, Data: mustJSON(errText)}},
 	}
 	trs := struct {
 		Content []ContentItem `json:"content"`
-	}{Content: []ContentItem{{Kind: "toolResult", Data: mustJSON(tr)}}}
-	return SessionMessage{Kind: "ToolResults", Data: mustJSON(trs)}
+	}{Content: []ContentItem{{Kind: ContentKindToolResult, Data: mustJSON(tr)}}}
+	return SessionMessage{Kind: MessageKindToolResults, Data: mustJSON(trs)}
 }
 
 // TestMergeSessions_SessionsOnly verifies sessions-only mode: no hook data,
@@ -89,7 +89,7 @@ func TestMergeSessions_SessionsOnly(t *testing.T) {
 	}
 
 	prompt := recs[0]
-	if prompt.Kind != "prompt" {
+	if prompt.Kind != RecordKindPrompt {
 		t.Errorf("recs[0].Kind = %q, want prompt", prompt.Kind)
 	}
 	if prompt.PromptText != "hello" {
@@ -100,7 +100,7 @@ func TestMergeSessions_SessionsOnly(t *testing.T) {
 	}
 
 	tu := recs[1]
-	if tu.Kind != "toolUse" {
+	if tu.Kind != RecordKindToolUse {
 		t.Errorf("recs[1].Kind = %q, want toolUse", tu.Kind)
 	}
 	if tu.ToolName != "read" {
@@ -111,10 +111,10 @@ func TestMergeSessions_SessionsOnly(t *testing.T) {
 	}
 
 	tr := recs[2]
-	if tr.Kind != "toolResult" {
+	if tr.Kind != RecordKindToolResult {
 		t.Errorf("recs[2].Kind = %q, want toolResult", tr.Kind)
 	}
-	if tr.ToolStatus != "success" {
+	if tr.ToolStatus != ToolStatusSuccess {
 		t.Errorf("ToolStatus = %q, want success", tr.ToolStatus)
 	}
 	if !tr.PostToolTs.IsZero() || tr.ShellExitStatus != "" {
@@ -144,7 +144,7 @@ func TestMergeSessions_WithHook(t *testing.T) {
 	}
 
 	tu := recs[0]
-	if tu.Kind != "toolUse" {
+	if tu.Kind != RecordKindToolUse {
 		t.Errorf("recs[0].Kind = %q, want toolUse", tu.Kind)
 	}
 	if !tu.PreToolTs.Equal(preTs) {
@@ -155,7 +155,7 @@ func TestMergeSessions_WithHook(t *testing.T) {
 	}
 
 	tr := recs[1]
-	if tr.Kind != "toolResult" {
+	if tr.Kind != RecordKindToolResult {
 		t.Errorf("recs[1].Kind = %q, want toolResult", tr.Kind)
 	}
 	if !tr.PostToolTs.Equal(postTs) {
@@ -190,7 +190,7 @@ func TestMergeSessions_FewerHooksThanToolUse(t *testing.T) {
 	}
 
 	tu1 := recs[0]
-	if tu1.Kind != "toolUse" {
+	if tu1.Kind != RecordKindToolUse {
 		t.Errorf("recs[0].Kind = %q, want toolUse", tu1.Kind)
 	}
 	if !tu1.PreToolTs.Equal(preTs) {
@@ -198,7 +198,7 @@ func TestMergeSessions_FewerHooksThanToolUse(t *testing.T) {
 	}
 
 	tu2 := recs[2]
-	if tu2.Kind != "toolUse" {
+	if tu2.Kind != RecordKindToolUse {
 		t.Errorf("recs[2].Kind = %q, want toolUse", tu2.Kind)
 	}
 	if !tu2.PreToolTs.IsZero() {
@@ -206,7 +206,7 @@ func TestMergeSessions_FewerHooksThanToolUse(t *testing.T) {
 	}
 
 	tr2 := recs[3]
-	if tr2.Kind != "toolResult" {
+	if tr2.Kind != RecordKindToolResult {
 		t.Errorf("recs[3].Kind = %q, want toolResult", tr2.Kind)
 	}
 	if !tr2.PostToolTs.IsZero() {
@@ -274,7 +274,7 @@ func TestMergeSessions_SessionMeta(t *testing.T) {
 
 	var meta *MergedRecord
 	for i := range recs {
-		if recs[i].Kind == "sessionMeta" {
+		if recs[i].Kind == RecordKindSessionMeta {
 			meta = &recs[i]
 			break
 		}
@@ -302,7 +302,7 @@ func TestMergeSessions_SessionMeta_Zero(t *testing.T) {
 	session := makeSession("sess-zero", []SessionMessage{promptMsg("hi", 1745744400)})
 	recs := MergeSessions([]ParsedSession{session}, nil)
 	for _, r := range recs {
-		if r.Kind == "sessionMeta" {
+		if r.Kind == RecordKindSessionMeta {
 			t.Errorf("unexpected sessionMeta record for session with no UserTurnMetadatas")
 		}
 	}
@@ -333,7 +333,7 @@ func TestMergeSessions_SessionMeta_SingleTurn(t *testing.T) {
 
 	var meta *MergedRecord
 	for i := range recs {
-		if recs[i].Kind == "sessionMeta" {
+		if recs[i].Kind == RecordKindSessionMeta {
 			meta = &recs[i]
 			break
 		}
@@ -379,7 +379,7 @@ func TestMergeSessions_SessionMeta_ZeroCreditsWithTokens(t *testing.T) {
 
 	var meta *MergedRecord
 	for i := range recs {
-		if recs[i].Kind == "sessionMeta" {
+		if recs[i].Kind == RecordKindSessionMeta {
 			meta = &recs[i]
 			break
 		}
@@ -410,7 +410,7 @@ func TestMergeSessions_ErrorDetail(t *testing.T) {
 		t.Fatalf("expected 2 records, got %d", len(recs))
 	}
 	tr := recs[1]
-	if tr.ToolStatus != "error" {
+	if tr.ToolStatus != ToolStatusError {
 		t.Errorf("ToolStatus = %q, want error", tr.ToolStatus)
 	}
 	if tr.ErrorDetail != "command not found" {
@@ -509,7 +509,7 @@ func TestMergeSessions_MalformedPrompt(t *testing.T) {
 	defer restore()
 
 	session := makeSession("sess-bad-prompt", []SessionMessage{
-		{Kind: "Prompt", Data: json.RawMessage(`not-valid-json`)},
+		{Kind: MessageKindPrompt, Data: json.RawMessage(`not-valid-json`)},
 	})
 	recs := MergeSessions([]ParsedSession{session}, nil)
 
@@ -535,7 +535,7 @@ func TestMergeSessions_MalformedAssistantMessage(t *testing.T) {
 	defer restore()
 
 	session := makeSession("sess-bad-asst", []SessionMessage{
-		{Kind: "AssistantMessage", Data: json.RawMessage(`not-valid-json`)},
+		{Kind: MessageKindAssistantMessage, Data: json.RawMessage(`not-valid-json`)},
 	})
 	recs := MergeSessions([]ParsedSession{session}, nil)
 
@@ -563,10 +563,10 @@ func TestMergeSessions_MalformedToolUse(t *testing.T) {
 	// ci.Data is a JSON string — valid JSON but not a ToolUseData object.
 	ad := AssistantData{
 		MessageID: "msg-bad-tu",
-		Content:   []ContentItem{{Kind: "toolUse", Data: json.RawMessage(`"not-an-object"`)}},
+		Content:   []ContentItem{{Kind: ContentKindToolUse, Data: json.RawMessage(`"not-an-object"`)}},
 	}
 	session := makeSession("sess-bad-tu", []SessionMessage{
-		{Kind: "AssistantMessage", Data: mustJSON(ad)},
+		{Kind: MessageKindAssistantMessage, Data: mustJSON(ad)},
 	})
 	recs := MergeSessions([]ParsedSession{session}, nil)
 
@@ -591,13 +591,13 @@ func TestMergeSessions_MultiContentPrompt(t *testing.T) {
 	pd := PromptData{
 		MessageID: "msg-multi",
 		Content: []ContentItem{
-			{Kind: "text", Data: mustJSON("hello ")},
-			{Kind: "text", Data: mustJSON("world")},
+			{Kind: ContentKindText, Data: mustJSON("hello ")},
+			{Kind: ContentKindText, Data: mustJSON("world")},
 		},
 		Meta: PromptMeta{Timestamp: 1745744400},
 	}
 	session := makeSession("sess-multi", []SessionMessage{
-		{Kind: "Prompt", Data: mustJSON(pd)},
+		{Kind: MessageKindPrompt, Data: mustJSON(pd)},
 	})
 	recs := MergeSessions([]ParsedSession{session}, nil)
 
@@ -631,7 +631,7 @@ func TestMergeSessions_EventConstantPreToolUse(t *testing.T) {
 	}
 
 	tu := recs[0]
-	if tu.Kind != "toolUse" {
+	if tu.Kind != RecordKindToolUse {
 		t.Errorf("recs[0].Kind = %q, want toolUse", tu.Kind)
 	}
 	if !tu.PreToolTs.Equal(preTs) {
@@ -639,5 +639,49 @@ func TestMergeSessions_EventConstantPreToolUse(t *testing.T) {
 	}
 	if tu.Agent != "test-agent" {
 		t.Errorf("Agent = %q, want test-agent", tu.Agent)
+	}
+}
+
+// TestKindConstants_WireFormat guards that const values equal the previous
+// literals so no future rename silently changes the wire format.
+func TestKindConstants_WireFormat(t *testing.T) {
+	if RecordKindPrompt != "prompt" {
+		t.Errorf("RecordKindPrompt = %q, want %q", RecordKindPrompt, "prompt")
+	}
+	if RecordKindToolUse != "toolUse" {
+		t.Errorf("RecordKindToolUse = %q, want %q", RecordKindToolUse, "toolUse")
+	}
+	if RecordKindToolResult != "toolResult" {
+		t.Errorf("RecordKindToolResult = %q, want %q", RecordKindToolResult, "toolResult")
+	}
+	if RecordKindAssistantText != "assistantText" {
+		t.Errorf("RecordKindAssistantText = %q, want %q", RecordKindAssistantText, "assistantText")
+	}
+	if RecordKindSessionMeta != "sessionMeta" {
+		t.Errorf("RecordKindSessionMeta = %q, want %q", RecordKindSessionMeta, "sessionMeta")
+	}
+	if MessageKindPrompt != "Prompt" {
+		t.Errorf("MessageKindPrompt = %q, want %q", MessageKindPrompt, "Prompt")
+	}
+	if MessageKindAssistantMessage != "AssistantMessage" {
+		t.Errorf("MessageKindAssistantMessage = %q, want %q", MessageKindAssistantMessage, "AssistantMessage")
+	}
+	if MessageKindToolResults != "ToolResults" {
+		t.Errorf("MessageKindToolResults = %q, want %q", MessageKindToolResults, "ToolResults")
+	}
+	if ContentKindText != "text" {
+		t.Errorf("ContentKindText = %q, want %q", ContentKindText, "text")
+	}
+	if ContentKindToolUse != "toolUse" {
+		t.Errorf("ContentKindToolUse = %q, want %q", ContentKindToolUse, "toolUse")
+	}
+	if ContentKindToolResult != "toolResult" {
+		t.Errorf("ContentKindToolResult = %q, want %q", ContentKindToolResult, "toolResult")
+	}
+	if ToolStatusSuccess != "success" {
+		t.Errorf("ToolStatusSuccess = %q, want %q", ToolStatusSuccess, "success")
+	}
+	if ToolStatusError != "error" {
+		t.Errorf("ToolStatusError = %q, want %q", ToolStatusError, "error")
 	}
 }

@@ -392,7 +392,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		if inputTok > 0 || outputTok > 0 || credits > 0 {
 			out = append(out, MergedRecord{
 				SessionID:         meta.SessionID,
-				Kind:              "sessionMeta",
+				Kind:              RecordKindSessionMeta,
 				Agent:             currentAgent,
 				Title:             meta.Title,
 				Cwd:               meta.Cwd,
@@ -411,15 +411,15 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 
 		for _, msg := range s.Messages {
 			switch msg.Kind {
-			case "Prompt":
-				pd, ok := decodeOrSkip[PromptData](msg.Data, "prompt", meta.SessionID)
+			case MessageKindPrompt:
+				pd, ok := decodeOrSkip[PromptData](msg.Data, RecordKindPrompt, meta.SessionID)
 				if !ok {
 					continue
 				}
 				promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
 				var sb strings.Builder
 				for _, ci := range pd.Content {
-					if ci.Kind == "text" {
+					if ci.Kind == ContentKindText {
 						var t string
 						if err := json.Unmarshal(ci.Data, &t); err == nil {
 							sb.WriteString(t)
@@ -428,7 +428,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 				}
 				out = append(out, MergedRecord{
 					SessionID:  meta.SessionID,
-					Kind:       "prompt",
+					Kind:       RecordKindPrompt,
 					PromptText: sb.String(),
 					PromptTs:   promptTs,
 					Agent:      currentAgent,
@@ -438,19 +438,19 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					UpdatedAt:  updatedAt,
 				})
 
-			case "AssistantMessage":
+			case MessageKindAssistantMessage:
 				ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", meta.SessionID)
 				if !ok {
 					continue
 				}
 				for _, ci := range ad.Content {
 					switch ci.Kind {
-					case "text":
+					case ContentKindText:
 						var t string
 						if err := json.Unmarshal(ci.Data, &t); err == nil {
 							out = append(out, MergedRecord{
 								SessionID:     meta.SessionID,
-								Kind:          "assistantText",
+								Kind:          RecordKindAssistantText,
 								AssistantText: t,
 								Agent:         currentAgent,
 								Title:         meta.Title,
@@ -459,8 +459,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 								UpdatedAt:     updatedAt,
 							})
 						}
-					case "toolUse":
-						tu, ok := decodeOrSkip[ToolUseData](ci.Data, "toolUse", meta.SessionID)
+					case ContentKindToolUse:
+						tu, ok := decodeOrSkip[ToolUseData](ci.Data, ContentKindToolUse, meta.SessionID)
 						if !ok {
 							continue
 						}
@@ -474,7 +474,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 						}
 						out = append(out, MergedRecord{
 							SessionID: meta.SessionID,
-							Kind:      "toolUse",
+							Kind:      RecordKindToolUse,
 							ToolUseID: tu.ToolUseID,
 							ToolName:  tu.Name,
 							ToolInput: tu.Input,
@@ -489,7 +489,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					}
 				}
 
-			case "ToolResults":
+			case MessageKindToolResults:
 				trs, ok := decodeOrSkip[struct {
 					Content []ContentItem `json:"content"`
 				}](msg.Data, "toolResults", meta.SessionID)
@@ -497,15 +497,15 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					continue
 				}
 				for _, ci := range trs.Content {
-					if ci.Kind != "toolResult" {
+					if ci.Kind != ContentKindToolResult {
 						continue
 					}
-					tr, ok := decodeOrSkip[ToolResultData](ci.Data, "toolResult", meta.SessionID)
+					tr, ok := decodeOrSkip[ToolResultData](ci.Data, ContentKindToolResult, meta.SessionID)
 					if !ok {
 						continue
 					}
 					var errorDetail string
-					if tr.Status == "error" && len(tr.Content) > 0 {
+					if tr.Status == ToolStatusError && len(tr.Content) > 0 {
 						var d string
 						if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
 							errorDetail = d
@@ -513,7 +513,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 					}
 					out = append(out, MergedRecord{
 						SessionID:   meta.SessionID,
-						Kind:        "toolResult",
+						Kind:        RecordKindToolResult,
 						ToolUseID:   tr.ToolUseID,
 						ToolStatus:  tr.Status,
 						ErrorDetail: errorDetail,
@@ -531,7 +531,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		if len(postHooks) > 0 {
 			postIdx := 0
 			for i := sessionStart; i < len(out); i++ {
-				if out[i].Kind != "toolResult" {
+				if out[i].Kind != RecordKindToolResult {
 					continue
 				}
 				if postIdx < len(postHooks) {

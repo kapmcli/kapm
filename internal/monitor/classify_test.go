@@ -46,22 +46,22 @@ func TestAggregateShellSplitsIntoDerivedBuckets(t *testing.T) {
 	baseTime := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
 	records := []MergedRecord{
 		// ls: success
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolName: "shell", Cwd: "/w",
 			ToolUseID: "tu-ls", PreToolTs: baseTime, ToolInput: json.RawMessage(`{"command":"ls -la"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
-			ToolUseID: "tu-ls", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolName: "shell",
+			ToolUseID: "tu-ls", PostToolTs: baseTime.Add(1 * time.Second), ToolStatus: ToolStatusSuccess},
 
 		// git push: failure
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolName: "shell", Cwd: "/w",
 			ToolUseID: "tu-gp1", PreToolTs: baseTime.Add(2 * time.Second), ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
-			ToolUseID: "tu-gp1", PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: "error", ErrorDetail: "exit 1"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolName: "shell",
+			ToolUseID: "tu-gp1", PostToolTs: baseTime.Add(3 * time.Second), ToolStatus: ToolStatusError, ErrorDetail: "exit 1"},
 
 		// git push: success
-		{SessionID: "s", Agent: "a", Kind: "toolUse", ToolName: "shell", Cwd: "/w",
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolUse, ToolName: "shell", Cwd: "/w",
 			ToolUseID: "tu-gp2", PreToolTs: baseTime.Add(4 * time.Second), ToolInput: json.RawMessage(`{"command":"git push -u origin main"}`)},
-		{SessionID: "s", Agent: "a", Kind: "toolResult", ToolName: "shell",
-			ToolUseID: "tu-gp2", PostToolTs: baseTime.Add(5 * time.Second), ToolStatus: "success"},
+		{SessionID: "s", Agent: "a", Kind: RecordKindToolResult, ToolName: "shell",
+			ToolUseID: "tu-gp2", PostToolTs: baseTime.Add(5 * time.Second), ToolStatus: ToolStatusSuccess},
 	}
 
 	d := mustAggregate(t, records, baseTime.Add(time.Hour))
