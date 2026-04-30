@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/testutil"
 )
 
 func TestLoadAll_EmptyDirs(t *testing.T) {
@@ -126,5 +129,35 @@ func TestCollectExecutionIDs(t *testing.T) {
 		if _, ok := got[id]; !ok {
 			t.Errorf("missing ID %q", id)
 		}
+	}
+}
+
+// TestLoadAllHookRecords_UnreadableWarn verifies that a directory-named .jsonl
+// (unreadable as a file) causes a Warn log with the path.
+// Must NOT call t.Parallel() — uses testutil.CaptureSlog.
+func TestLoadAllHookRecords_UnreadableWarn(t *testing.T) {
+	hookDir := t.TempDir()
+	// Create a directory named "bad.jsonl" — os.Open on a dir returns an error
+	// that is not fs.ErrNotExist, triggering the non-ErrNotExist branch.
+	badPath := filepath.Join(hookDir, "bad.jsonl")
+	if err := os.Mkdir(badPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	recs, err := loadAllHookRecords(context.Background(), hookDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(recs) != 0 {
+		t.Errorf("expected 0 records, got %d", len(recs))
+	}
+	if !strings.Contains(buf.String(), "skipped hook log file") {
+		t.Errorf("expected 'skipped hook log file' in log, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), badPath) {
+		t.Errorf("expected path %q in log, got: %s", badPath, buf.String())
 	}
 }

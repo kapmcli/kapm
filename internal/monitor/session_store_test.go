@@ -250,3 +250,69 @@ func TestLoadSessions_MalformedTimestamp(t *testing.T) {
 		t.Errorf("expected path %q in log, got: %s", jsonPath, buf.String())
 	}
 }
+
+// TestLoadSessions_UnreadableJSONLWarn verifies that a directory-named .jsonl
+// causes a Warn log and the session is skipped.
+// Must NOT call t.Parallel() — uses testutil.CaptureSlog.
+func TestLoadSessions_UnreadableJSONLWarn(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Write valid .json metadata.
+	meta := SessionMeta{SessionID: "sess-bad-jsonl", UpdatedAt: rfc3339Time(now)}
+	metaBytes, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(dir, "sess-bad-jsonl.json"), metaBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Create a directory named "sess-bad-jsonl.jsonl" — unreadable as a file.
+	jsonlPath := filepath.Join(dir, "sess-bad-jsonl.jsonl")
+	if err := os.Mkdir(jsonlPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	sessions, _, err := LoadSessions(context.Background(), dir, time.Time{}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions, got %d", len(sessions))
+	}
+	if !strings.Contains(buf.String(), "skipped unreadable session jsonl") {
+		t.Errorf("expected 'skipped unreadable session jsonl' in log, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), jsonlPath) {
+		t.Errorf("expected path %q in log, got: %s", jsonlPath, buf.String())
+	}
+}
+
+// TestLoadSessions_MissingJSONLSilent verifies that a missing .jsonl (ErrNotExist)
+// produces no Warn log.
+// Must NOT call t.Parallel() — uses testutil.CaptureSlog.
+func TestLoadSessions_MissingJSONLSilent(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	meta := SessionMeta{SessionID: "sess-no-jsonl", UpdatedAt: rfc3339Time(now)}
+	metaBytes, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(dir, "sess-no-jsonl.json"), metaBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No .jsonl written.
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	sessions, _, err := LoadSessions(context.Background(), dir, time.Time{}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions, got %d", len(sessions))
+	}
+	if strings.Contains(buf.String(), "level=WARN") {
+		t.Errorf("expected no WARN log for missing .jsonl, got: %s", buf.String())
+	}
+}

@@ -78,16 +78,14 @@ func loadAllHookRecords(ctx context.Context, hookLogsDir string) ([]HookRecord, 
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if e.IsDir() {
-			continue
-		}
 		if !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue
 		}
 		path := filepath.Join(hookLogsDir, e.Name())
 		recs, err := parseHookRecords(path)
 		if err != nil {
-			continue // skip missing or unreadable hook log files
+			slog.Warn("skipped hook log file", "path", path, "err", err)
+			continue
 		}
 		all = append(all, recs...)
 	}

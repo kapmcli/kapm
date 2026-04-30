@@ -180,7 +180,8 @@ func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdF
 				if errors.Is(err, fs.ErrNotExist) {
 					continue
 				}
-				continue // skip unreadable .jsonl
+				slog.Warn("skipped unreadable session jsonl", "path", jsonlPath, "err", err)
+				continue
 			}
 			nextData[jsonlPath] = dataCacheEntry{mtime: jmtime, size: jsize, msgs: msgs}
 		}
