@@ -22,7 +22,7 @@
 
 kapm 是一个 CLI，用于理解和维护 Kiro Agent 工作区。
 
-- **监控 Kiro 会话**：以 `~/.kiro/sessions/cli/` 为主要数据源，同时自动加载 Kiro IDE 会话日志（如有），辅以 `.kapm/logs/` 下的可选 hook 日志（提供工具调用时间戳、Agent 归属和 shell 退出状态）。在 TUI 或 WebUI 中查看会话、工具调用、失败、耗时、派生的 Agent、提示、响应、文件变更和 Skill 读取情况。
+- **监控 Kiro 会话**：读取 CLI 会话日志（`~/.kiro/sessions/cli/`）和 Kiro IDE 会话日志（自动检测），辅以 `.kapm/logs/` 下的可选 hook 日志（提供工具调用时间戳、Agent 归属和 shell 退出状态）。在 TUI 或 WebUI 中查看会话、工具调用、失败、耗时、派生的 Agent、提示、响应、文件变更和 Skill 读取情况。
 - **管理 Kiro Agent**：以交互方式创建和更新 `.kiro/agents/*.json` 与 `.kiro/agent-prompts/*.md`。
 - **连接包格式**：将 APM 包和 Kiro Power 同步为项目本地的 `.kiro/` 文件。
 
