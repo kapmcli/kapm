@@ -406,3 +406,19 @@ func TestHandlePostToolUseNonShellNoExitStatus(t *testing.T) {
 		t.Error("shell_exit_status must not appear for non-shell tool")
 	}
 }
+
+func TestHandleParseJSONStderrFormat(t *testing.T) {
+	dir := t.TempDir()
+	var stderr bytes.Buffer
+	code := Handle(strings.NewReader("not-json"), &bytes.Buffer{}, &stderr, fixedNow, dir, "a")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	got := stderr.String()
+	if !strings.HasPrefix(got, "hook-handler: parse json: ") {
+		t.Errorf("stderr prefix: want %q, got %q", "hook-handler: parse json: ", got)
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Errorf("stderr must end with newline, got %q", got)
+	}
+}

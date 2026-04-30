@@ -76,6 +76,10 @@ func extractShellExitStatus(raw json.RawMessage) string {
 	return ""
 }
 
+func reportHookErr(stderr io.Writer, op string, err error) {
+	_, _ = fmt.Fprintf(stderr, "hook-handler: %s: %v\n", op, err)
+}
+
 // Handle reads a Kiro hook event from in, appends a JSONL record to logs under rootDir,
 // and returns 0 always. Never writes to stdout. Writes diagnostics to stderr on error.
 func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDir, agent string) (exitCode int) {
@@ -89,7 +93,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	limited := io.LimitReader(in, maxHookEvent+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: read stdin: %v\n", err)
+		reportHookErr(stderr, "read stdin", err)
 		return 0
 	}
 	if int64(len(data)) > maxHookEvent {
@@ -103,7 +107,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 
 	var ev hookEvent
 	if err := json.Unmarshal(data, &ev); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: parse json: %v\n", err)
+		reportHookErr(stderr, "parse json", err)
 		return 0
 	}
 
@@ -141,7 +145,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 
 	line, err := json.Marshal(rec)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: marshal record: %v\n", err)
+		reportHookErr(stderr, "marshal record", err)
 		return 0
 	}
 	line = append(line, '\n')
@@ -153,30 +157,30 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		return 0
 	}
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: mkdir %q: %v\n", logDir, err)
+		reportHookErr(stderr, fmt.Sprintf("mkdir %q", logDir), err)
 		return 0
 	}
 
 	logPath := filepath.Join(logDir, sessionID+".jsonl")
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: open %q: %v\n", logPath, err)
+		reportHookErr(stderr, fmt.Sprintf("open %q", logPath), err)
 		return 0
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
-			_, _ = fmt.Fprintf(stderr, "hook-handler: close %q: %v\n", logPath, cerr)
+			reportHookErr(stderr, fmt.Sprintf("close %q", logPath), cerr)
 		}
 	}()
 
 	if err := flockExclusive(f); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: flock %q: %v\n", logPath, err)
+		reportHookErr(stderr, fmt.Sprintf("flock %q", logPath), err)
 		return 0
 	}
 	defer flockUnlock(f)
 
 	if _, err := f.Write(line); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: write %q: %v\n", logPath, err)
+		reportHookErr(stderr, fmt.Sprintf("write %q", logPath), err)
 	}
 
 	return 0
