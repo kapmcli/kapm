@@ -298,21 +298,24 @@ func parseHookRecords(path string) ([]HookRecord, error) {
 	var recs []HookRecord
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
-	var skipped int
+	var parseFailed int
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 		var rec HookRecord
-		if err := json.Unmarshal(line, &rec); err != nil || rec.Ts.IsZero() {
-			skipped++
-			continue // old format or malformed — skip silently
+		if err := json.Unmarshal(line, &rec); err != nil {
+			parseFailed++ // garbage JSON — will Warn
+			continue
+		}
+		if rec.Ts.IsZero() {
+			continue // structurally-valid old-format — silent forward-compat skip
 		}
 		recs = append(recs, rec)
 	}
-	if skipped > 0 {
-		slog.Debug("skipped hook log lines (old format or malformed)", "count", skipped)
+	if parseFailed > 0 {
+		slog.Warn("skipped malformed hook log lines", "path", path, "count", parseFailed)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
