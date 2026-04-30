@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,44 @@ func TestReadPower(t *testing.T) {
 			t.Fatalf("readPower() error = %v, want missing description/displayName", err)
 		}
 	})
+}
+
+func TestReadPower_SymlinkRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		if err := os.Symlink("nul", filepath.Join(t.TempDir(), "probe")); err != nil {
+			t.Skip("symlinks require elevated privileges on Windows")
+		}
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, "target.txt")
+	writeFileForTest(t, target, []byte("leak"))
+	if err := os.Symlink(target, filepath.Join(root, "POWER.md")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	_, err := readPower(root)
+	if err == nil || !strings.Contains(err.Error(), "refusing to read symlink") {
+		t.Fatalf("readPower() error = %v, want refusing to read symlink", err)
+	}
+}
+
+func TestParseSourceMCP_SymlinkRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		if err := os.Symlink("nul", filepath.Join(t.TempDir(), "probe")); err != nil {
+			t.Skip("symlinks require elevated privileges on Windows")
+		}
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, "target.json")
+	writeFileForTest(t, target, []byte(`{"mcpServers":{}}`))
+	if err := os.Symlink(target, filepath.Join(root, "mcp.json")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	_, _, err := parseSourceMCP(root)
+	if err == nil || !strings.Contains(err.Error(), "refusing to read symlink") {
+		t.Fatalf("parseSourceMCP() error = %v, want refusing to read symlink", err)
+	}
 }
 
 func TestListInstalledResourcePaths(t *testing.T) {

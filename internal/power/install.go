@@ -149,9 +149,20 @@ func installPowerPackage(tempDir string, manifest *PowerManifest, opts InstallOp
 	return powerDir, false, nil
 }
 
+func readFileNoFollow(path string) ([]byte, error) {
+	isLink, err := fileutil.IsSymlinkPath(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("lstat %q: %w", path, err)
+	}
+	if isLink {
+		return nil, fmt.Errorf("refusing to read symlink: %s", path)
+	}
+	return os.ReadFile(path)
+}
+
 func readPower(dir string) (*PowerManifest, error) {
 	path := filepath.Join(dir, "POWER.md")
-	data, err := os.ReadFile(path)
+	data, err := readFileNoFollow(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("POWER.md not found in %s", dir)
@@ -280,7 +291,7 @@ func loadPowerSteering(srcDir string) ([]PowerSteeringDoc, []string, error) {
 
 func parseSourceMCP(powerSrcDir string) (convert.MCPConfig, string, error) {
 	path := filepath.Join(powerSrcDir, paths.MCPFile)
-	data, err := os.ReadFile(path)
+	data, err := readFileNoFollow(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return convert.MCPConfig{}, path, nil
