@@ -352,9 +352,9 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		var preHooks, postHooks []HookRecord
 		for _, h := range sessionHooks {
 			switch h.Event {
-			case "preToolUse":
+			case apmconfig.EventPreToolUse:
 				preHooks = append(preHooks, h)
-			case "postToolUse":
+			case apmconfig.EventPostToolUse:
 				postHooks = append(postHooks, h)
 			}
 		}

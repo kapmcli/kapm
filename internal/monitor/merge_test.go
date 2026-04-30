@@ -608,3 +608,36 @@ func TestMergeSessions_MultiContentPrompt(t *testing.T) {
 		t.Errorf("PromptText = %q, want %q", recs[0].PromptText, "hello world")
 	}
 }
+
+// TestMergeSessions_EventConstantPreToolUse verifies that hook records with
+// Event == apmconfig.EventPreToolUse are correctly matched and populate PreToolTs.
+func TestMergeSessions_EventConstantPreToolUse(t *testing.T) {
+	session := makeSession("sess-const", []SessionMessage{
+		toolUseMsg("tu-1", "bash", map[string]string{"cmd": "ls"}),
+		toolResultMsg("tu-1", "success"),
+	})
+
+	preTs := time.Date(2026, 4, 27, 10, 19, 42, 0, time.UTC)
+	postTs := time.Date(2026, 4, 27, 10, 19, 43, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "sess-const", Event: apmconfig.EventPreToolUse, Agent: "test-agent", Tool: "bash"},
+		{Ts: postTs, Session: "sess-const", Event: apmconfig.EventPostToolUse, Agent: "test-agent", Tool: "bash", ShellExitStatus: "0"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(recs))
+	}
+
+	tu := recs[0]
+	if tu.Kind != "toolUse" {
+		t.Errorf("recs[0].Kind = %q, want toolUse", tu.Kind)
+	}
+	if !tu.PreToolTs.Equal(preTs) {
+		t.Errorf("PreToolTs = %v, want %v", tu.PreToolTs, preTs)
+	}
+	if tu.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want test-agent", tu.Agent)
+	}
+}
