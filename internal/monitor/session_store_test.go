@@ -288,6 +288,51 @@ func TestLoadSessions_UnreadableJSONLWarn(t *testing.T) {
 	}
 }
 
+// TestLoadSessions_OversizedJSONL verifies that a .jsonl exceeding sessionJSONLMaxBytes
+// causes a Warn log and the session appears with empty Messages.
+// Must NOT call t.Parallel() — uses testutil.CaptureSlog.
+func TestLoadSessions_OversizedJSONL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping sparse-file test in short mode")
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	meta := SessionMeta{SessionID: "big-sess", UpdatedAt: rfc3339Time(now)}
+	metaBytes, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(dir, "big-sess.json"), metaBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	jsonlPath := filepath.Join(dir, "big-sess.jsonl")
+	// Create a sparse file just over the cap — O(1) on APFS/ext4/xfs.
+	if err := os.WriteFile(jsonlPath, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(jsonlPath, sessionJSONLMaxBytes+1); err != nil {
+		t.Skip("sparse file truncate not supported:", err)
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	sessions, _, err := LoadSessions(context.Background(), dir, time.Time{}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (with empty messages), got %d", len(sessions))
+	}
+	if len(sessions[0].Messages) != 0 {
+		t.Fatalf("expected empty messages for oversized jsonl, got %d", len(sessions[0].Messages))
+	}
+	if !strings.Contains(buf.String(), "session jsonl too large") {
+		t.Errorf("expected 'session jsonl too large' in log, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), jsonlPath) {
+		t.Errorf("expected path %q in log, got: %s", jsonlPath, buf.String())
+	}
+}
+
 // TestLoadSessions_MissingJSONLSilent verifies that a missing .jsonl (ErrNotExist)
 // produces no Warn log.
 // Must NOT call t.Parallel() — uses testutil.CaptureSlog.

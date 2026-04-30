@@ -42,6 +42,11 @@ type dataCacheEntry struct {
 	msgs  []SessionMessage
 }
 
+// sessionJSONLMaxBytes caps the size of a single session .jsonl file that
+// kapm will parse. Files beyond this size are skipped with a Warn log to
+// avoid OOM on pathologically large logs. 100 MiB.
+const sessionJSONLMaxBytes = 100 << 20
+
 // ParsedSession holds the metadata and messages for one session.
 type ParsedSession struct {
 	Meta     SessionMeta
@@ -58,6 +63,17 @@ func parseSessionMetaFile(path string) (SessionMeta, error) {
 }
 
 func parseSessionJSONLFile(path string) ([]SessionMessage, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > sessionJSONLMaxBytes {
+		slog.Warn("session jsonl too large; skipping",
+			"path", path,
+			"size_bytes", info.Size(),
+			"max_bytes", sessionJSONLMaxBytes)
+		return nil, nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
