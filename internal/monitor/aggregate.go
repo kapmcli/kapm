@@ -91,79 +91,25 @@ func recordSortTs(r MergedRecord) time.Time {
 func processRecord(st *aggState, r MergedRecord) {
 	ts := recordSortTs(r)
 	st.hours[ts.Truncate(time.Hour)]++
-
 	toolName := r.ToolName
-
 	// Re-key shell tool calls into derived per-command buckets.
 	if toolName == apmconfig.ToolShell && (r.Kind == RecordKindToolUse || r.Kind == RecordKindToolResult) {
 		toolName = classifyShell(r.ToolInput, r.Cwd)
 	}
-
 	s := touchSessionState(st, r)
-
 	switch r.Kind {
 	case RecordKindPrompt:
-		s.timeline = append(s.timeline, EventEntry{Ts: r.PromptTs, Event: apmconfig.EventUserPromptSubmit})
-		s.prompts = append(s.prompts, r.PromptText)
-		s.assistantResponses = append(s.assistantResponses, r.TurnResponse)
-
+		processPromptRecord(st, s, r)
 	case RecordKindToolUse:
-		s.toolCalls++
-		summary := inputSummary(r.ToolInput, toolName, s.cwd)
-		entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, ToolInput: formatToolInput(r.ToolInput), toolUseID: r.ToolUseID}
-		s.timeline = append(s.timeline, entry)
-
-		if r.SubAgent != nil {
-			s.subAgentCalls = append(s.subAgentCalls, *r.SubAgent)
-		}
-
-		if r.ToolUseID != "" {
-			if s.pendingToolUse == nil {
-				s.pendingToolUse = make(map[string]int)
-			}
-			s.pendingToolUse[r.ToolUseID] = len(s.timeline) - 1
-		}
-
-		if toolName == "summary" {
-			if td := extractSummaryTitle(r.ToolInput); td != "" {
-				s.sumTitle = td
-			}
-		}
-		toolEntry(st.tools, toolName).CallCount++
-
-		if toolName == apmconfig.ToolRead && len(r.ToolInput) > 0 {
-			if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
-				st.skills[string(match[1])]++
-			}
-		}
-
-		if toolName == apmconfig.ToolWrite {
-			if fc, ok := parseWriteInput(r.ToolInput, ts, s.cwd); ok {
-				s.changes = append(s.changes, fc)
-			}
-		}
-
+		processToolUseRecord(st, s, r, toolName, ts)
 	case RecordKindToolResult:
-		// toolResult records carry ToolUseID for pairing with toolUse.
-		// Find the matching toolUse entry in the timeline by ToolUseID.
 		resolveToolResult(st, s, r)
-
 	case RecordKindAssistantText:
 		s.assistantResponse = truncateUTF8(r.AssistantText, maxAssistantResponseLength)
-
 	case RecordKindSessionMeta:
-		s.totalInputTokens += r.TotalInputTokens
-		s.totalOutputTokens += r.TotalOutputTokens
-		s.totalCredits += r.TotalCredits
-		if r.Title != "" && s.sumTitle == "" && len(s.prompts) == 0 {
-			s.sumTitle = r.Title
-		}
-		s.toolCalls += r.ToolCalls
-		s.prompts = append(s.prompts, r.PromptTexts...)
-
+		processSessionMetaRecord(st, s, r)
 	case RecordKindAgentSpawn:
 		s.timeline = append(s.timeline, EventEntry{Ts: ts, Event: apmconfig.EventAgentSpawn})
-
 	case RecordKindStop:
 		s.stopped = true
 		s.timeline = append(s.timeline, EventEntry{Ts: ts, Event: apmconfig.EventStop})
@@ -171,6 +117,60 @@ func processRecord(st *aggState, r MergedRecord) {
 			s.assistantResponse = truncateUTF8(r.AssistantText, maxAssistantResponseLength)
 		}
 	}
+}
+
+func processSessionMetaRecord(st *aggState, s *sessionState, r MergedRecord) {
+	s.totalInputTokens += r.TotalInputTokens
+	s.totalOutputTokens += r.TotalOutputTokens
+	s.totalCredits += r.TotalCredits
+	if r.Title != "" && s.sumTitle == "" && len(s.prompts) == 0 {
+		s.sumTitle = r.Title
+	}
+	s.toolCalls += r.ToolCalls
+	s.prompts = append(s.prompts, r.PromptTexts...)
+}
+
+func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolName string, ts time.Time) {
+	s.toolCalls++
+	summary := inputSummary(r.ToolInput, toolName, s.cwd)
+	entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, ToolInput: formatToolInput(r.ToolInput), toolUseID: r.ToolUseID}
+	s.timeline = append(s.timeline, entry)
+
+	if r.SubAgent != nil {
+		s.subAgentCalls = append(s.subAgentCalls, *r.SubAgent)
+	}
+
+	if r.ToolUseID != "" {
+		if s.pendingToolUse == nil {
+			s.pendingToolUse = make(map[string]int)
+		}
+		s.pendingToolUse[r.ToolUseID] = len(s.timeline) - 1
+	}
+
+	if toolName == "summary" {
+		if td := extractSummaryTitle(r.ToolInput); td != "" {
+			s.sumTitle = td
+		}
+	}
+	toolEntry(st.tools, toolName).CallCount++
+
+	if toolName == apmconfig.ToolRead && len(r.ToolInput) > 0 {
+		if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
+			st.skills[string(match[1])]++
+		}
+	}
+
+	if toolName == apmconfig.ToolWrite {
+		if fc, ok := parseWriteInput(r.ToolInput, ts, s.cwd); ok {
+			s.changes = append(s.changes, fc)
+		}
+	}
+}
+
+func processPromptRecord(st *aggState, s *sessionState, r MergedRecord) {
+	s.timeline = append(s.timeline, EventEntry{Ts: r.PromptTs, Event: apmconfig.EventUserPromptSubmit})
+	s.prompts = append(s.prompts, r.PromptText)
+	s.assistantResponses = append(s.assistantResponses, r.TurnResponse)
 }
 
 // resolveToolResult finds the matching toolUse in the timeline by ToolUseID
