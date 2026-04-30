@@ -20,6 +20,7 @@ type logsFlags struct {
 	SessionsDir    string
 	LogsDir        string
 	IDESessionsDir string
+	SQLiteDBPath   string
 	Since          time.Duration
 	CwdFilter      string // empty = global (show all sessions)
 }
@@ -83,7 +84,7 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag, ideSessionsDir
 		}
 		cwdFilter = abs
 	}
-	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, IDESessionsDir: ideSessionsDir, Since: d, CwdFilter: cwdFilter}, nil
+	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, IDESessionsDir: ideSessionsDir, SQLiteDBPath: paths.CLIDataPath(), Since: d, CwdFilter: cwdFilter}, nil
 }
 
 // runLogsCommand returns a command handler that sets up flags, parses args,

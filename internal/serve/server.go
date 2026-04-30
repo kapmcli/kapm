@@ -39,6 +39,7 @@ type Options struct {
 	CwdFilter   string
 	Since       time.Duration
 	MetricsTTL  time.Duration // 0 means default 1s
+	SQLiteDBPath string
 	// MaxSSE caps concurrent SSE connections. 0 means default 64.
 	MaxSSE int
 }
@@ -56,6 +57,7 @@ type Server struct {
 	now          func() time.Time
 	handler      http.Handler
 	cache        *monitor.SessionCache
+	sqliteCache  *monitor.SQLiteCache
 	ttl          time.Duration
 	metricsMu    sync.Mutex
 	metricsCache *metricsCacheEntry
@@ -70,7 +72,7 @@ func New(opts Options) *Server {
 	if ttl == 0 {
 		ttl = time.Second
 	}
-	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), ttl: ttl}
+	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), sqliteCache: monitor.NewSQLiteCache(), ttl: ttl}
 	s.sseMax = defaultMaxSSE
 	if opts.MaxSSE > 0 {
 		if opts.MaxSSE > math.MaxInt32 {
@@ -202,7 +204,7 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 		}
 		s.metricsMu.Unlock()
 
-		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache)
+		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, s.opts.SQLiteDBPath, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache, s.sqliteCache)
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
 		}

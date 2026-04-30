@@ -28,8 +28,8 @@ var runMonitor = runLogsCommand(
 		}
 
 		if monitorJSON {
-			return monitor.RunJSON(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.Since, session, agent, os.Stdout)
+			return monitor.RunJSON(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.SQLiteDBPath, lf.Since, session, agent, os.Stdout)
 		}
-		return monitor.RunTUI(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.Since)
+		return monitor.RunTUI(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.SQLiteDBPath, lf.Since)
 	},
 )

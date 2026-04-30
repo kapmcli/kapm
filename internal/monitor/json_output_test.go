@@ -35,7 +35,7 @@ func TestRunJSON_NoFilter(t *testing.T) {
 	t.Parallel()
 	sessDir := setupTestSessions(t)
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(context.Background(), sessDir, "", "", "", 8760*time.Hour, "", "", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), sessDir, "", "", "", "", 8760*time.Hour, "", "", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -51,7 +51,7 @@ func TestRunJSON_SessionFilter(t *testing.T) {
 	t.Parallel()
 	sessDir := setupTestSessions(t)
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(context.Background(), sessDir, "", "", "", 8760*time.Hour, "sess-1", "", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), sessDir, "", "", "", "", 8760*time.Hour, "sess-1", "", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -71,7 +71,7 @@ func TestRunJSON_NoMatchSession(t *testing.T) {
 	t.Parallel()
 	sessDir := setupTestSessions(t)
 	var buf bytes.Buffer
-	err := monitor.RunJSON(context.Background(), sessDir, "", "", "", 8760*time.Hour, "nonexistent-sid", "", &buf)
+	err := monitor.RunJSON(context.Background(), sessDir, "", "", "", "", 8760*time.Hour, "nonexistent-sid", "", &buf)
 	if err == nil {
 		t.Fatal("expected error for missing session, got nil")
 	}
@@ -84,7 +84,7 @@ func TestRunJSON_NoMatchSessionAndAgent(t *testing.T) {
 	t.Parallel()
 	sessDir := setupTestSessions(t)
 	var buf bytes.Buffer
-	err := monitor.RunJSON(context.Background(), sessDir, "", "", "", 8760*time.Hour, "sess-1", "nonexistent-agent", &buf)
+	err := monitor.RunJSON(context.Background(), sessDir, "", "", "", "", 8760*time.Hour, "sess-1", "nonexistent-agent", &buf)
 	if err == nil {
 		t.Fatal("expected error for missing session+agent, got nil")
 	}

@@ -9,8 +9,8 @@ import (
 )
 
 // RunJSON loads records, aggregates, optionally filters, and writes JSON to w.
-func RunJSON(ctx context.Context, sessionsDir, logsDir, ideBaseDir, cwdFilter string, since time.Duration, session, agent string, w io.Writer) error {
-	records, _, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, time.Now().Add(-since), cwdFilter, nil)
+func RunJSON(ctx context.Context, sessionsDir, logsDir, ideBaseDir, cwdFilter, sqliteDBPath string, since time.Duration, session, agent string, w io.Writer) error {
+	records, _, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, sqliteDBPath, time.Now().Add(-since), cwdFilter, nil, NewSQLiteCache())
 	if err != nil {
 		return fmt.Errorf("load records: %w", err)
 	}
