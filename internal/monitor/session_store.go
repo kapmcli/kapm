@@ -148,8 +148,7 @@ func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdF
 		}
 
 		// Apply since filter using updated_at from metadata.
-		updatedAt, err := time.Parse(time.RFC3339, meta.UpdatedAt)
-		if err != nil || updatedAt.Before(since) {
+		if time.Time(meta.UpdatedAt).Before(since) {
 			continue
 		}
 

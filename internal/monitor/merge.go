@@ -333,8 +333,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 	var out []MergedRecord
 	for _, s := range sessions {
 		meta := s.Meta
-		createdAt, _ := time.Parse(time.RFC3339, meta.CreatedAt)
-		updatedAt, _ := time.Parse(time.RFC3339, meta.UpdatedAt)
+		createdAt := time.Time(meta.CreatedAt)
+		updatedAt := time.Time(meta.UpdatedAt)
 
 		sessionHooks := hookBySession[meta.SessionID]
 		// Collect preToolUse and postToolUse in order.

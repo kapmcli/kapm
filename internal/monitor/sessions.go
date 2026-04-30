@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"time"
 )
 
 // SessionMessage is one line of a sessions .jsonl file.
@@ -53,13 +54,43 @@ type ToolResultData struct {
 	Status    string        `json:"status"` // "success" or "error"
 }
 
+// rfc3339Time is a time.Time that JSON-unmarshals from an RFC3339 string.
+// An empty string unmarshals to the zero time (no error).
+// A malformed non-empty string returns an error.
+type rfc3339Time time.Time
+
+func (t rfc3339Time) MarshalJSON() ([]byte, error) {
+	tt := time.Time(t)
+	if tt.IsZero() {
+		return []byte(`""`), nil
+	}
+	return []byte(`"` + tt.UTC().Format(time.RFC3339) + `"`), nil
+}
+
+func (t *rfc3339Time) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	if s == "" {
+		*t = rfc3339Time(time.Time{})
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return err
+	}
+	*t = rfc3339Time(parsed)
+	return nil
+}
+
 // SessionMeta is the top-level structure of a {uuid}.json file.
 type SessionMeta struct {
 	SessionID    string       `json:"session_id"`
 	Title        string       `json:"title"`
 	Cwd          string       `json:"cwd"`
-	CreatedAt    string       `json:"created_at"` // RFC3339
-	UpdatedAt    string       `json:"updated_at"` // RFC3339
+	CreatedAt    rfc3339Time  `json:"created_at"`
+	UpdatedAt    rfc3339Time  `json:"updated_at"`
 	SessionState SessionState `json:"session_state"`
 }
 

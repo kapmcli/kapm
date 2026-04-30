@@ -22,8 +22,8 @@ func makeSession(id string, msgs []SessionMessage) ParsedSession {
 			SessionID: id,
 			Title:     "test",
 			Cwd:       "/tmp",
-			CreatedAt: "2026-04-27T10:00:00Z",
-			UpdatedAt: "2026-04-27T10:01:00Z",
+			CreatedAt: rfc3339Time(time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)),
+			UpdatedAt: rfc3339Time(time.Date(2026, 4, 27, 10, 1, 0, 0, time.UTC)),
 		},
 		Messages: msgs,
 	}
@@ -258,8 +258,8 @@ func TestMergeSessions_SessionMeta(t *testing.T) {
 			SessionID: "sess-tok",
 			Title:     "token test",
 			Cwd:       "/tmp",
-			CreatedAt: "2026-04-28T10:00:00Z",
-			UpdatedAt: "2026-04-28T10:01:00Z",
+			CreatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)),
+			UpdatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 1, 0, 0, time.UTC)),
 			SessionState: SessionState{
 				AgentName:            "coder",
 				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},
@@ -317,8 +317,8 @@ func TestMergeSessions_SessionMeta_SingleTurn(t *testing.T) {
 			SessionID: "sess-single",
 			Title:     "single turn",
 			Cwd:       "/tmp",
-			CreatedAt: "2026-04-28T10:00:00Z",
-			UpdatedAt: "2026-04-28T10:01:00Z",
+			CreatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)),
+			UpdatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 1, 0, 0, time.UTC)),
 			SessionState: SessionState{
 				AgentName:            "lead",
 				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},
@@ -363,8 +363,8 @@ func TestMergeSessions_SessionMeta_ZeroCreditsWithTokens(t *testing.T) {
 			SessionID: "sess-nocredits",
 			Title:     "no credits",
 			Cwd:       "/tmp",
-			CreatedAt: "2026-04-28T10:00:00Z",
-			UpdatedAt: "2026-04-28T10:01:00Z",
+			CreatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)),
+			UpdatedAt: rfc3339Time(time.Date(2026, 4, 28, 10, 1, 0, 0, time.UTC)),
 			SessionState: SessionState{
 				AgentName:            "coder",
 				ConversationMetadata: ConversationMetadata{UserTurnMetadatas: turns},

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/testutil"
 )
 
 // writeSession writes a .json + .jsonl pair into dir.
@@ -14,7 +17,7 @@ func writeSession(t *testing.T, dir, uuid string, updatedAt time.Time, msgs []Se
 	t.Helper()
 	meta := SessionMeta{
 		SessionID: uuid,
-		UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: rfc3339Time(updatedAt.UTC()),
 	}
 	metaBytes, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(dir, uuid+".json"), metaBytes, 0o644); err != nil {
@@ -148,7 +151,7 @@ func TestLoadSessions_CacheMiss(t *testing.T) {
 func TestLoadSessions_MissingJSONL(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC().Truncate(time.Second)
-	meta := SessionMeta{SessionID: "no-jsonl", UpdatedAt: now.Format(time.RFC3339)}
+	meta := SessionMeta{SessionID: "no-jsonl", UpdatedAt: rfc3339Time(now)}
 	metaBytes, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(dir, "no-jsonl.json"), metaBytes, 0o644); err != nil {
 		t.Fatal(err)
@@ -210,5 +213,40 @@ func TestLoadSessions_LockFilesIgnored(t *testing.T) {
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+}
+
+// TestLoadSessions_MalformedTimestamp verifies that a session with a malformed
+// updated_at is skipped with a Warn log containing the path.
+// Must NOT call t.Parallel() — uses testutil.CaptureSlog.
+func TestLoadSessions_MalformedTimestamp(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a .json with a malformed updated_at.
+	raw := []byte(`{"session_id":"bad-ts","updated_at":"garbage"}`)
+	jsonPath := filepath.Join(dir, "bad-ts.json")
+	if err := os.WriteFile(jsonPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Write a companion .jsonl so the session would otherwise be included.
+	if err := os.WriteFile(filepath.Join(dir, "bad-ts.jsonl"), []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	sessions, _, err := LoadSessions(context.Background(), dir, time.Time{}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions, got %d", len(sessions))
+	}
+	if !strings.Contains(buf.String(), "skipped malformed session metadata") {
+		t.Errorf("expected 'skipped malformed session metadata' in log, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), jsonPath) {
+		t.Errorf("expected path %q in log, got: %s", jsonPath, buf.String())
 	}
 }
