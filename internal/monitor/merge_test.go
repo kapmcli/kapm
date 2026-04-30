@@ -2,10 +2,12 @@ package monitor
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
+	"github.com/kapmcli/kapm/internal/testutil"
 )
 
 func mustJSON(v any) json.RawMessage {
@@ -497,5 +499,112 @@ func TestPairPromptsWithTimeline(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestMergeSessions_MalformedPrompt verifies that a Prompt with corrupt Data
+// is skipped and a slog.Warn is emitted with kind=prompt and session=<sid>.
+func TestMergeSessions_MalformedPrompt(t *testing.T) {
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	session := makeSession("sess-bad-prompt", []SessionMessage{
+		{Kind: "Prompt", Data: json.RawMessage(`not-valid-json`)},
+	})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 0 {
+		t.Errorf("expected 0 records (prompt skipped), got %d", len(recs))
+	}
+	log := buf.String()
+	if !strings.Contains(log, "skipped malformed merge record") {
+		t.Errorf("expected warn log 'skipped malformed merge record', got: %s", log)
+	}
+	if !strings.Contains(log, "kind=prompt") {
+		t.Errorf("expected kind=prompt in log, got: %s", log)
+	}
+	if !strings.Contains(log, "session=sess-bad-prompt") {
+		t.Errorf("expected session=sess-bad-prompt in log, got: %s", log)
+	}
+}
+
+// TestMergeSessions_MalformedAssistantMessage verifies that an AssistantMessage
+// with corrupt Data is skipped and a slog.Warn is emitted.
+func TestMergeSessions_MalformedAssistantMessage(t *testing.T) {
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	session := makeSession("sess-bad-asst", []SessionMessage{
+		{Kind: "AssistantMessage", Data: json.RawMessage(`not-valid-json`)},
+	})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 0 {
+		t.Errorf("expected 0 records (assistant message skipped), got %d", len(recs))
+	}
+	log := buf.String()
+	if !strings.Contains(log, "skipped malformed merge record") {
+		t.Errorf("expected warn log 'skipped malformed merge record', got: %s", log)
+	}
+	if !strings.Contains(log, "kind=assistantMessage") {
+		t.Errorf("expected kind=assistantMessage in log, got: %s", log)
+	}
+	if !strings.Contains(log, "session=sess-bad-asst") {
+		t.Errorf("expected session=sess-bad-asst in log, got: %s", log)
+	}
+}
+
+// TestMergeSessions_MalformedToolUse verifies that a toolUse ContentItem with
+// corrupt Data is skipped and a slog.Warn is emitted.
+func TestMergeSessions_MalformedToolUse(t *testing.T) {
+	buf, restore := testutil.CaptureSlog(t)
+	defer restore()
+
+	// ci.Data is a JSON string — valid JSON but not a ToolUseData object.
+	ad := AssistantData{
+		MessageID: "msg-bad-tu",
+		Content:   []ContentItem{{Kind: "toolUse", Data: json.RawMessage(`"not-an-object"`)}},
+	}
+	session := makeSession("sess-bad-tu", []SessionMessage{
+		{Kind: "AssistantMessage", Data: mustJSON(ad)},
+	})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 0 {
+		t.Errorf("expected 0 records (toolUse skipped), got %d", len(recs))
+	}
+	log := buf.String()
+	if !strings.Contains(log, "skipped malformed merge record") {
+		t.Errorf("expected warn log 'skipped malformed merge record', got: %s", log)
+	}
+	if !strings.Contains(log, "kind=toolUse") {
+		t.Errorf("expected kind=toolUse in log, got: %s", log)
+	}
+	if !strings.Contains(log, "session=sess-bad-tu") {
+		t.Errorf("expected session=sess-bad-tu in log, got: %s", log)
+	}
+}
+
+// TestMergeSessions_MultiContentPrompt verifies that a Prompt with multiple
+// text ContentItems concatenates correctly (guards the strings.Builder rewrite).
+func TestMergeSessions_MultiContentPrompt(t *testing.T) {
+	pd := PromptData{
+		MessageID: "msg-multi",
+		Content: []ContentItem{
+			{Kind: "text", Data: mustJSON("hello ")},
+			{Kind: "text", Data: mustJSON("world")},
+		},
+		Meta: PromptMeta{Timestamp: 1745744400},
+	}
+	session := makeSession("sess-multi", []SessionMessage{
+		{Kind: "Prompt", Data: mustJSON(pd)},
+	})
+	recs := MergeSessions([]ParsedSession{session}, nil)
+
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	if recs[0].PromptText != "hello world" {
+		t.Errorf("PromptText = %q, want %q", recs[0].PromptText, "hello world")
 	}
 }

@@ -320,6 +320,17 @@ func parseHookRecords(path string) ([]HookRecord, error) {
 	return recs, nil
 }
 
+// decodeOrSkip unmarshals data into T. On failure it logs a slog.Warn with
+// session context and returns the zero value of T plus false.
+func decodeOrSkip[T any](data json.RawMessage, kind, sessionID string) (T, bool) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		slog.Warn("skipped malformed merge record", "kind", kind, "session", sessionID, "err", err)
+		return v, false
+	}
+	return v, true
+}
+
 // MergeSessions merges ParsedSession slices with hook log records into
 // MergedRecord slices. When hookLogs is nil or empty, sessions-only mode is
 // used and hook fields are zero values.
@@ -398,24 +409,24 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		for _, msg := range s.Messages {
 			switch msg.Kind {
 			case "Prompt":
-				var pd PromptData
-				if err := json.Unmarshal(msg.Data, &pd); err != nil {
+				pd, ok := decodeOrSkip[PromptData](msg.Data, "prompt", meta.SessionID)
+				if !ok {
 					continue
 				}
 				promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
-				var promptText string
+				var sb strings.Builder
 				for _, ci := range pd.Content {
 					if ci.Kind == "text" {
 						var t string
 						if err := json.Unmarshal(ci.Data, &t); err == nil {
-							promptText += t
+							sb.WriteString(t)
 						}
 					}
 				}
 				out = append(out, MergedRecord{
 					SessionID:  meta.SessionID,
 					Kind:       "prompt",
-					PromptText: promptText,
+					PromptText: sb.String(),
 					PromptTs:   promptTs,
 					Agent:      currentAgent,
 					Title:      meta.Title,
@@ -425,8 +436,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 				})
 
 			case "AssistantMessage":
-				var ad AssistantData
-				if err := json.Unmarshal(msg.Data, &ad); err != nil {
+				ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", meta.SessionID)
+				if !ok {
 					continue
 				}
 				for _, ci := range ad.Content {
@@ -446,8 +457,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 							})
 						}
 					case "toolUse":
-						var tu ToolUseData
-						if err := json.Unmarshal(ci.Data, &tu); err != nil {
+						tu, ok := decodeOrSkip[ToolUseData](ci.Data, "toolUse", meta.SessionID)
+						if !ok {
 							continue
 						}
 						// Position-based hook matching.
@@ -476,18 +487,18 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 				}
 
 			case "ToolResults":
-				var trs struct {
+				trs, ok := decodeOrSkip[struct {
 					Content []ContentItem `json:"content"`
-				}
-				if err := json.Unmarshal(msg.Data, &trs); err != nil {
+				}](msg.Data, "toolResults", meta.SessionID)
+				if !ok {
 					continue
 				}
 				for _, ci := range trs.Content {
 					if ci.Kind != "toolResult" {
 						continue
 					}
-					var tr ToolResultData
-					if err := json.Unmarshal(ci.Data, &tr); err != nil {
+					tr, ok := decodeOrSkip[ToolResultData](ci.Data, "toolResult", meta.SessionID)
+					if !ok {
 						continue
 					}
 					var errorDetail string
