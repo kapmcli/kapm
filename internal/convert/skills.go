@@ -14,7 +14,10 @@ import (
 // ConvertSkills copies APM skills into `.kiro/skills`.
 func ConvertSkills(srcDir, dstDir string, force bool) error {
 	_, err := ConvertSkillsWithReport(srcDir, dstDir, force)
-	return err
+	if err != nil {
+		return fmt.Errorf("convert skills: %w", err)
+	}
+	return nil
 }
 
 // ConvertSkillsWithReport copies skills and reports converted or skipped directories.

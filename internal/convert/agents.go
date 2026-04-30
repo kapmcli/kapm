@@ -15,7 +15,10 @@ type agentConfig = apmconfig.AgentConfig
 // ConvertAgents converts agent and legacy chatmode inputs into Kiro agent files.
 func ConvertAgents(srcDir, dstDir string, force bool) error {
 	_, err := ConvertAgentsWithReport(srcDir, dstDir, force)
-	return err
+	if err != nil {
+		return fmt.Errorf("convert agents: %w", err)
+	}
+	return nil
 }
 
 // ConvertAgentsWithReport converts agent inputs and reports converted or skipped files.
