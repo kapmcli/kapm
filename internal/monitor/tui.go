@@ -47,8 +47,10 @@ type model struct {
 	homeDir     string
 	since       time.Duration
 
-	ctx   context.Context
-	cache *SessionCache
+	ctx         context.Context
+	cache       *SessionCache
+	sqliteDBPath string
+	sqliteCache  *SQLiteCache
 
 	width  int
 	height int
@@ -73,7 +75,7 @@ func NewModel(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilt
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache()}
+	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache(), sqliteCache: NewSQLiteCache()}
 }
 
 func (m *model) Init() tea.Cmd {
@@ -481,9 +483,11 @@ func (m *model) refreshCmd() tea.Cmd {
 	cwdFilter := m.cwdFilter
 	sinceDur := m.since
 	ctx := m.ctx
+	sqliteDBPath := m.sqliteDBPath
+	sqliteCache := m.sqliteCache
 	return func() tea.Msg {
 		since := time.Now().Add(-sinceDur)
-		records, nextCache, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, since, cwdFilter, cache)
+		records, nextCache, err := LoadAll(ctx, sessionsDir, logsDir, ideBaseDir, sqliteDBPath, since, cwdFilter, cache, sqliteCache)
 		if err != nil {
 			return metricsMsg{err: err}
 		}
@@ -557,8 +561,10 @@ func statusBadge(active bool) string {
 }
 
 // RunTUI creates and runs the bubbletea program.
-func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter string, since time.Duration) error {
-	p := tea.NewProgram(NewModel(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, since))
+func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, sqliteDBPath string, since time.Duration) error {
+	m := NewModel(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, since)
+	m.sqliteDBPath = sqliteDBPath
+	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
 }

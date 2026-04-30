@@ -50,7 +50,7 @@ func TestRunJSON_IDESession(t *testing.T) {
 	ideDir := buildIDEDir(t)
 
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(context.Background(), sessDir, "", ideDir, "", 8760*time.Hour, "", "", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), sessDir, "", ideDir, "", "", 8760*time.Hour, "", "", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics
@@ -79,7 +79,7 @@ func TestRunJSON_AgentFilter_IDE(t *testing.T) {
 	ideDir := buildIDEDir(t)
 
 	var buf bytes.Buffer
-	if err := monitor.RunJSON(context.Background(), sessDir, "", ideDir, "", 8760*time.Hour, "", "kiro-ide", &buf); err != nil {
+	if err := monitor.RunJSON(context.Background(), sessDir, "", ideDir, "", "", 8760*time.Hour, "", "kiro-ide", &buf); err != nil {
 		t.Fatalf("RunJSON: %v", err)
 	}
 	var dm monitor.DetailedMetrics

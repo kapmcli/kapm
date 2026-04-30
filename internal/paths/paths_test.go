@@ -33,6 +33,32 @@ func TestConstants(t *testing.T) {
 	}
 }
 
+func TestCLIDataPath(t *testing.T) {
+	got := paths.CLIDataPath()
+	if runtime.GOOS == "windows" {
+		if got != "" {
+			t.Errorf("CLIDataPath() on windows = %q, want empty string", got)
+		}
+		return
+	}
+	if got == "" {
+		t.Fatal("CLIDataPath() returned empty string")
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("CLIDataPath() = %q, want absolute path", got)
+	}
+	suffixByOS := map[string]string{
+		"darwin": "Library/Application Support/kiro-cli/data.sqlite3",
+		"linux":  ".local/share/kiro-cli/data.sqlite3",
+	}
+	if want, ok := suffixByOS[runtime.GOOS]; ok {
+		want = filepath.FromSlash(want)
+		if !strings.HasSuffix(got, want) {
+			t.Errorf("CLIDataPath() = %q, want suffix %q", got, want)
+		}
+	}
+}
+
 func TestIDEBaseDir(t *testing.T) {
 	got := paths.IDEBaseDir()
 	if got == "" {

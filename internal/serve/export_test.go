@@ -31,3 +31,11 @@ func (s *Server) DashboardSessionsFromCache() []monitor.SessionMetric {
 
 // SSEMaxForTest returns the configured SSE cap for white-box tests.
 func (s *Server) SSEMaxForTest() int32 { return s.sseMax }
+
+// OpenBrowserFnForTest replaces the platform opener with fn and returns a
+// cleanup function that restores the original.
+func OpenBrowserFnForTest(fn func(string) error) func() {
+	orig := openBrowserFn
+	openBrowserFn = fn
+	return func() { openBrowserFn = orig }
+}

@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -11,7 +12,10 @@ import (
 // ConvertPrompts converts APM prompts into `.kiro/prompts` files.
 func ConvertPrompts(srcDir, dstDir string, force bool) error {
 	_, err := ConvertPromptsWithReport(srcDir, dstDir, force)
-	return err
+	if err != nil {
+		return fmt.Errorf("convert prompts: %w", err)
+	}
+	return nil
 }
 
 // ConvertPromptsWithReport converts prompts and reports converted or skipped files.
@@ -28,7 +32,10 @@ func ConvertPromptsWithReport(srcDir, dstDir string, force bool) (Report, error)
 // ConvertInstructions converts APM instructions into `.kiro/steering` files.
 func ConvertInstructions(srcDir, dstDir string, force bool) error {
 	_, err := ConvertInstructionsWithReport(srcDir, dstDir, force)
-	return err
+	if err != nil {
+		return fmt.Errorf("convert instructions: %w", err)
+	}
+	return nil
 }
 
 // ConvertInstructionsWithReport converts instructions and reports converted or skipped files.
@@ -45,7 +52,10 @@ func ConvertInstructionsWithReport(srcDir, dstDir string, force bool) (Report, e
 // ConvertCommands converts APM commands into `.kiro/prompts` files.
 func ConvertCommands(srcDir, dstDir string, force bool) error {
 	_, err := ConvertCommandsWithReport(srcDir, dstDir, force)
-	return err
+	if err != nil {
+		return fmt.Errorf("convert commands: %w", err)
+	}
+	return nil
 }
 
 // ConvertCommandsWithReport converts commands and reports converted or skipped files.

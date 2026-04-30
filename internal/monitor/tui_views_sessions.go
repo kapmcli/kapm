@@ -311,9 +311,9 @@ func renderEditPreview(fc FileChange, maxLines int) string {
 	}
 	var old, new string
 	switch fc.Command {
-	case "create", "insert":
+	case CommandCreate, CommandInsert:
 		old, new = "", fc.Content
-	case "strReplace":
+	case CommandStrReplace:
 		old, new = fc.OldStr, fc.NewStr
 	default:
 		return ""

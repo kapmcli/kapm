@@ -41,8 +41,6 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 		return SessionDetail{}, nil
 	}
 	id := details[0].ID
-
-	// Keep only inputs whose ID matches; drop mismatches silently.
 	src := make([]SessionDetail, 0, len(details))
 	for _, sd := range details {
 		if sd.ID == id {
@@ -52,21 +50,13 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	if len(src) == 0 {
 		return SessionDetail{}, nil
 	}
-
-	merged := SessionDetail{
-		SessionMetric: SessionMetric{
-			ID:           id,
-			Agent:        "(all)",
-			AgentKey:     id + "|(all)",
-			StartTime:    src[0].StartTime,
-			EndTime:      src[0].EndTime,
-			LastActivity: src[0].LastActivity,
-		},
-	}
-
+	start, end, lastActivity := mergeSessionTimestamps(src)
+	merged := SessionDetail{SessionMetric: SessionMetric{
+		ID: id, Agent: "(all)", AgentKey: id + "|(all)",
+		StartTime: start, EndTime: end, LastActivity: lastActivity,
+		Duration: JSONDuration(end.Sub(start)),
+	}}
 	refs := make([]AgentRef, 0, len(src))
-	var timeline []EventEntry
-
 	for _, sd := range src {
 		refs = append(refs, AgentRef{Agent: sd.Agent, AgentKey: sd.AgentKey})
 		merged.ToolCalls += sd.ToolCalls
@@ -77,55 +67,62 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 		if sd.Active {
 			merged.Active = true
 		}
-		if sd.StartTime.Before(merged.StartTime) {
-			merged.StartTime = sd.StartTime
-		}
-		if sd.EndTime.After(merged.EndTime) {
-			merged.EndTime = sd.EndTime
-		}
-		if sd.LastActivity.After(merged.LastActivity) {
-			merged.LastActivity = sd.LastActivity
-		}
-		timeline = append(timeline, sd.Timeline...)
 	}
+	merged.Title, merged.Cwd = mergeSessionTitleCwd(src)
+	merged.Timeline, merged.Changes = mergeSessionContent(src)
+	merged.FilesChanged = countUniqueFiles(merged.Changes)
+	merged.PromptHistory, merged.AssistantResponses = pairPromptsWithTimeline(src)
+	merged.ToolSummary = mergeToolSummary(src)
+	merged.AssistantResponse = mergeAssistantResponse(src)
+	return merged, refs
+}
 
-	// Title: first non-empty by LastActivity desc.
+// mergeSessionTimestamps returns the min StartTime, max EndTime, and max LastActivity across all details.
+func mergeSessionTimestamps(src []SessionDetail) (start, end, lastActivity time.Time) {
+	start, end, lastActivity = src[0].StartTime, src[0].EndTime, src[0].LastActivity
+	for _, sd := range src[1:] {
+		if sd.StartTime.Before(start) {
+			start = sd.StartTime
+		}
+		if sd.EndTime.After(end) {
+			end = sd.EndTime
+		}
+		if sd.LastActivity.After(lastActivity) {
+			lastActivity = sd.LastActivity
+		}
+	}
+	return
+}
+
+// mergeSessionTitleCwd picks Title and Cwd from the detail with the latest LastActivity.
+func mergeSessionTitleCwd(src []SessionDetail) (title, cwd string) {
 	byActivity := slices.Clone(src)
 	slices.SortStableFunc(byActivity, func(a, b SessionDetail) int { return b.LastActivity.Compare(a.LastActivity) })
 	for _, sd := range byActivity {
-		if sd.Title != "" {
-			merged.Title = sd.Title
+		if title == "" && sd.Title != "" {
+			title = sd.Title
+		}
+		if cwd == "" && sd.Cwd != "" {
+			cwd = sd.Cwd
+		}
+		if title != "" && cwd != "" {
 			break
 		}
 	}
-	for _, sd := range byActivity {
-		if sd.Cwd != "" {
-			merged.Cwd = sd.Cwd
-			break
-		}
-	}
+	return
+}
 
-	merged.Duration = JSONDuration(merged.EndTime.Sub(merged.StartTime))
-
-	slices.SortStableFunc(timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) })
-	merged.Timeline = timeline
-
-	merged.PromptHistory, merged.AssistantResponses = pairPromptsWithTimeline(src)
-
-	merged.ToolSummary = mergeToolSummary(src)
-	merged.AssistantResponse = mergeAssistantResponse(src)
-
-	var changes []FileChange
+// mergeSessionContent concatenates and sorts Timeline and FileChanges across all details.
+func mergeSessionContent(src []SessionDetail) (timeline []EventEntry, changes []FileChange) {
 	for _, sd := range src {
+		timeline = append(timeline, sd.Timeline...)
 		changes = append(changes, sd.Changes...)
 	}
+	slices.SortStableFunc(timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) })
 	if len(changes) > 0 {
 		slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
-		merged.Changes = changes
 	}
-	merged.FilesChanged = countUniqueFiles(changes)
-
-	return merged, refs
+	return
 }
 
 // pairPromptsWithTimeline pairs each prompt in history (oldest-first) with
@@ -346,11 +343,23 @@ func decodeOrSkip[T any](data json.RawMessage, kind, sessionID string) (T, bool)
 	return v, true
 }
 
+// extractTextContent unmarshals a text ContentItem. Returns ("", false) if
+// the item is not ContentKindText or unmarshaling fails.
+func extractTextContent(ci ContentItem) (string, bool) {
+	if ci.Kind != ContentKindText {
+		return "", false
+	}
+	var t string
+	if err := json.Unmarshal(ci.Data, &t); err != nil {
+		return "", false
+	}
+	return t, true
+}
+
 // MergeSessions merges ParsedSession slices with hook log records into
 // MergedRecord slices. When hookLogs is nil or empty, sessions-only mode is
 // used and hook fields are zero values.
 func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedRecord {
-	// Group hook records by session UUID.
 	hookBySession := make(map[string][]HookRecord, len(hookLogs))
 	for _, h := range hookLogs {
 		hookBySession[h.Session] = append(hookBySession[h.Session], h)
@@ -363,87 +372,11 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		updatedAt := time.Time(meta.UpdatedAt)
 
 		sessionHooks := hookBySession[meta.SessionID]
-		// Collect preToolUse and postToolUse in order.
-		var preHooks, postHooks []HookRecord
-		var spawnHooks, stopHooks []HookRecord
-		for _, h := range sessionHooks {
-			switch h.Event {
-			case apmconfig.EventPreToolUse:
-				preHooks = append(preHooks, h)
-			case apmconfig.EventPostToolUse:
-				postHooks = append(postHooks, h)
-			case apmconfig.EventAgentSpawn:
-				spawnHooks = append(spawnHooks, h)
-			case apmconfig.EventStop:
-				stopHooks = append(stopHooks, h)
-			}
-		}
+		preHooks, postHooks, spawnHooks, stopHooks := groupHooksByEvent(sessionHooks)
+		currentAgent := resolveInitialAgent(meta, sessionHooks)
+		turnResponses := collectTurnResponses(s.Messages, meta.SessionID)
+		inputTok, outputTok, credits := aggregateTokenCredits(meta)
 
-		// currentAgent tracks the active agent while walking this session's
-		// messages. Initialized from the session metadata agent_name so that
-		// records before the first hook-matched toolUse use the session's own
-		// agent. Once a hook preToolUse supplies a different agent (e.g. after
-		// delegation), currentAgent is updated and subsequent records inherit
-		// the new value. Falls back to the first non-empty agent in hook logs
-		// when the session metadata has no agent_name (e.g. sub-agent sessions).
-		currentAgent := meta.SessionState.AgentName
-		if currentAgent == "" {
-			for _, h := range sessionHooks {
-				if h.Agent != "" {
-					currentAgent = h.Agent
-					break
-				}
-			}
-		}
-
-		// Pre-pass: collect per-turn final assistant text in file order.
-		// For each prompt (except the first), the response is the last
-		// AssistantMessage text seen before that prompt. The final turn's
-		// response is the last AssistantMessage text in the file.
-		var turnResponses []string
-		{
-			var lastText string
-			firstPrompt := true
-			for _, m := range s.Messages {
-				switch m.Kind {
-				case MessageKindPrompt:
-					if firstPrompt {
-						firstPrompt = false
-					} else {
-						turnResponses = append(turnResponses, lastText)
-						lastText = ""
-					}
-				case MessageKindAssistantMessage:
-					ad, ok := decodeOrSkip[AssistantData](m.Data, "assistantMessage:prepass", meta.SessionID)
-					if !ok {
-						continue
-					}
-					for _, ci := range ad.Content {
-						if ci.Kind == ContentKindText {
-							var t string
-							if err := json.Unmarshal(ci.Data, &t); err == nil {
-								lastText = t
-							}
-						}
-					}
-				}
-			}
-			// Final turn's response.
-			if !firstPrompt {
-				turnResponses = append(turnResponses, lastText)
-			}
-		}
-
-		// Aggregate token/credit totals from per-turn metadata.
-		var inputTok, outputTok int
-		var credits float64
-		for _, utm := range meta.SessionState.ConversationMetadata.UserTurnMetadatas {
-			inputTok += utm.InputTokenCount
-			outputTok += utm.OutputTokenCount
-			for _, mu := range utm.MeteringUsage {
-				credits += mu.Value
-			}
-		}
 		if inputTok > 0 || outputTok > 0 || credits > 0 {
 			out = append(out, MergedRecord{
 				SessionID:         meta.SessionID,
@@ -459,191 +392,282 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 			})
 		}
 
-		// Count toolUse positions for position-based matching.
-		toolUseIdx := 0
-		// Track the start index of this session's records for postToolUse pass.
 		sessionStart := len(out)
-		// Track prompt index for TurnResponse pairing.
-		promptIdx := 0
+		out = processSessionMessages(s.Messages, meta, preHooks, spawnHooks, stopHooks, turnResponses, &currentAgent, createdAt, updatedAt, out)
+		attachPostToolData(out, postHooks, sessionStart)
+	}
 
-		for _, msg := range s.Messages {
-			switch msg.Kind {
-			case MessageKindPrompt:
-				pd, ok := decodeOrSkip[PromptData](msg.Data, RecordKindPrompt, meta.SessionID)
-				if !ok {
-					continue
-				}
-				promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
-				var sb strings.Builder
-				for _, ci := range pd.Content {
-					if ci.Kind == ContentKindText {
-						var t string
-						if err := json.Unmarshal(ci.Data, &t); err == nil {
-							sb.WriteString(t)
-						}
-					}
-				}
-				var turnResp string
-				if promptIdx < len(turnResponses) {
-					turnResp = turnResponses[promptIdx]
-				}
-				promptIdx++
-				out = append(out, MergedRecord{
-					SessionID:    meta.SessionID,
-					Kind:         RecordKindPrompt,
-					PromptText:   sb.String(),
-					TurnResponse: turnResp,
-					PromptTs:     promptTs,
-					Agent:        currentAgent,
-					Title:        meta.Title,
-					Cwd:          meta.Cwd,
-					CreatedAt:    createdAt,
-					UpdatedAt:    updatedAt,
-				})
+	return out
+}
 
-			case MessageKindAssistantMessage:
-				ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", meta.SessionID)
-				if !ok {
-					continue
-				}
-				for _, ci := range ad.Content {
-					switch ci.Kind {
-					case ContentKindText:
-						var t string
-						if err := json.Unmarshal(ci.Data, &t); err == nil {
-							out = append(out, MergedRecord{
-								SessionID:     meta.SessionID,
-								Kind:          RecordKindAssistantText,
-								AssistantText: t,
-								Agent:         currentAgent,
-								Title:         meta.Title,
-								Cwd:           meta.Cwd,
-								CreatedAt:     createdAt,
-								UpdatedAt:     updatedAt,
-							})
-						}
-					case ContentKindToolUse:
-						tu, ok := decodeOrSkip[ToolUseData](ci.Data, ContentKindToolUse, meta.SessionID)
-						if !ok {
-							continue
-						}
-						// Position-based hook matching.
-						var preTs time.Time
-						if toolUseIdx < len(preHooks) {
-							preTs = preHooks[toolUseIdx].Ts
-							if preHooks[toolUseIdx].Agent != "" {
-								currentAgent = preHooks[toolUseIdx].Agent
-							}
-						}
-						out = append(out, MergedRecord{
-							SessionID: meta.SessionID,
-							Kind:      RecordKindToolUse,
-							ToolUseID: tu.ToolUseID,
-							ToolName:  tu.Name,
-							ToolInput: tu.Input,
-							PreToolTs: preTs,
-							Agent:     currentAgent,
-							Title:     meta.Title,
-							Cwd:       meta.Cwd,
-							CreatedAt: createdAt,
-							UpdatedAt: updatedAt,
-						})
-						toolUseIdx++
-					}
-				}
-
-			case MessageKindToolResults:
-				trs, ok := decodeOrSkip[struct {
-					Content []ContentItem `json:"content"`
-				}](msg.Data, "toolResults", meta.SessionID)
-				if !ok {
-					continue
-				}
-				for _, ci := range trs.Content {
-					if ci.Kind != ContentKindToolResult {
-						continue
-					}
-					tr, ok := decodeOrSkip[ToolResultData](ci.Data, ContentKindToolResult, meta.SessionID)
-					if !ok {
-						continue
-					}
-					var errorDetail string
-					if tr.Status == ToolStatusError && len(tr.Content) > 0 {
-						var d string
-						if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
-							errorDetail = d
-						}
-					}
-					out = append(out, MergedRecord{
-						SessionID:   meta.SessionID,
-						Kind:        RecordKindToolResult,
-						ToolUseID:   tr.ToolUseID,
-						ToolStatus:  tr.Status,
-						ErrorDetail: errorDetail,
-						Agent:       currentAgent,
-						Title:       meta.Title,
-						Cwd:         meta.Cwd,
-						CreatedAt:   createdAt,
-						UpdatedAt:   updatedAt,
-					})
-				}
-			}
+// groupHooksByEvent categorizes hooks into pre, post, spawn, and stop slices.
+func groupHooksByEvent(hooks []HookRecord) (pre, post, spawn, stop []HookRecord) {
+	for _, h := range hooks {
+		switch h.Event {
+		case apmconfig.EventPreToolUse:
+			pre = append(pre, h)
+		case apmconfig.EventPostToolUse:
+			post = append(post, h)
+		case apmconfig.EventAgentSpawn:
+			spawn = append(spawn, h)
+		case apmconfig.EventStop:
+			stop = append(stop, h)
 		}
+	}
+	return
+}
 
-		// Emit MergedRecords for agentSpawn hook events.
-		for _, h := range spawnHooks {
-			agent := h.Agent
-			if agent == "" {
-				agent = currentAgent
-			}
-			out = append(out, MergedRecord{
-				SessionID: meta.SessionID,
-				Kind:      RecordKindAgentSpawn,
-				Agent:     agent,
-				PreToolTs: h.Ts,
-				Title:     meta.Title,
-				Cwd:       meta.Cwd,
-				CreatedAt: createdAt,
-				UpdatedAt: updatedAt,
-			})
+// resolveInitialAgent returns the active agent name for a session.
+// Falls back to the first non-empty agent in hook logs when session metadata
+// has no agent_name (e.g. sub-agent sessions).
+func resolveInitialAgent(meta SessionMeta, hooks []HookRecord) string {
+	if meta.SessionState.AgentName != "" {
+		return meta.SessionState.AgentName
+	}
+	for _, h := range hooks {
+		if h.Agent != "" {
+			return h.Agent
 		}
+	}
+	return ""
+}
 
-		// Emit MergedRecords for stop hook events.
-		for _, h := range stopHooks {
-			agent := h.Agent
-			if agent == "" {
-				agent = currentAgent
+// collectTurnResponses does a pre-pass over messages to collect per-turn final
+// assistant text in file order. For each prompt (except the first), the
+// response is the last AssistantMessage text seen before that prompt. The
+// final turn's response is the last AssistantMessage text in the file.
+func collectTurnResponses(messages []SessionMessage, sessionID string) []string {
+	var turnResponses []string
+	var lastText string
+	firstPrompt := true
+	for _, m := range messages {
+		switch m.Kind {
+		case MessageKindPrompt:
+			if firstPrompt {
+				firstPrompt = false
+			} else {
+				turnResponses = append(turnResponses, lastText)
+				lastText = ""
 			}
-			out = append(out, MergedRecord{
-				SessionID: meta.SessionID,
-				Kind:      RecordKindStop,
-				Agent:     agent,
-				PreToolTs: h.Ts,
-				Title:     meta.Title,
-				Cwd:       meta.Cwd,
-				CreatedAt: createdAt,
-				UpdatedAt: updatedAt,
-			})
-		}
-
-		// Second pass: attach postToolUse data to toolResult records by position.
-		if len(postHooks) > 0 {
-			postIdx := 0
-			for i := sessionStart; i < len(out); i++ {
-				if out[i].Kind != RecordKindToolResult {
-					continue
-				}
-				if postIdx < len(postHooks) {
-					out[i].PostToolTs = postHooks[postIdx].Ts
-					if postHooks[postIdx].Agent != "" {
-						out[i].Agent = postHooks[postIdx].Agent
-					}
-					out[i].ShellExitStatus = postHooks[postIdx].ShellExitStatus
-					postIdx++
+		case MessageKindAssistantMessage:
+			ad, ok := decodeOrSkip[AssistantData](m.Data, "assistantMessage:prepass", sessionID)
+			if !ok {
+				continue
+			}
+			for _, ci := range ad.Content {
+				if t, ok := extractTextContent(ci); ok {
+					lastText = t
 				}
 			}
 		}
 	}
+	if !firstPrompt {
+		turnResponses = append(turnResponses, lastText)
+	}
+	return turnResponses
+}
+
+// aggregateTokenCredits sums token counts and credits from per-turn metadata.
+func aggregateTokenCredits(meta SessionMeta) (inputTok, outputTok int, credits float64) {
+	for _, utm := range meta.SessionState.ConversationMetadata.UserTurnMetadatas {
+		inputTok += utm.InputTokenCount
+		outputTok += utm.OutputTokenCount
+		for _, mu := range utm.MeteringUsage {
+			credits += mu.Value
+		}
+	}
+	return
+}
+
+// messageProcessorState holds mutable state shared across message-kind handlers.
+type messageProcessorState struct {
+	meta          SessionMeta
+	preHooks      []HookRecord
+	turnResponses []string
+	currentAgent  *string
+	createdAt     time.Time
+	updatedAt     time.Time
+	toolUseIdx    int
+	promptIdx     int
+}
+
+// base returns the common MergedRecord fields.
+func (s *messageProcessorState) base() MergedRecord {
+	return MergedRecord{
+		SessionID: s.meta.SessionID,
+		Agent:     *s.currentAgent,
+		Title:     s.meta.Title,
+		Cwd:       s.meta.Cwd,
+		CreatedAt: s.createdAt,
+		UpdatedAt: s.updatedAt,
+	}
+}
+
+func (s *messageProcessorState) processPrompt(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	pd, ok := decodeOrSkip[PromptData](msg.Data, RecordKindPrompt, s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	promptTs := time.Unix(pd.Meta.Timestamp, 0).UTC()
+	var sb strings.Builder
+	for _, ci := range pd.Content {
+		if ci.Kind == ContentKindText {
+			var t string
+			if err := json.Unmarshal(ci.Data, &t); err == nil {
+				sb.WriteString(t)
+			}
+		}
+	}
+	var turnResp string
+	if s.promptIdx < len(s.turnResponses) {
+		turnResp = s.turnResponses[s.promptIdx]
+	}
+	s.promptIdx++
+	rec := s.base()
+	rec.Kind = RecordKindPrompt
+	rec.PromptText = sb.String()
+	rec.TurnResponse = turnResp
+	rec.PromptTs = promptTs
+	return append(out, rec)
+}
+
+func (s *messageProcessorState) processAssistantMessage(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage", s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	for _, ci := range ad.Content {
+		switch ci.Kind {
+		case ContentKindText:
+			if t, ok := extractTextContent(ci); ok {
+				rec := s.base()
+				rec.Kind = RecordKindAssistantText
+				rec.AssistantText = t
+				out = append(out, rec)
+			}
+		case ContentKindToolUse:
+			tu, ok := decodeOrSkip[ToolUseData](ci.Data, ContentKindToolUse, s.meta.SessionID)
+			if !ok {
+				continue
+			}
+			var preTs time.Time
+			if s.toolUseIdx < len(s.preHooks) {
+				preTs = s.preHooks[s.toolUseIdx].Ts
+				if s.preHooks[s.toolUseIdx].Agent != "" {
+					*s.currentAgent = s.preHooks[s.toolUseIdx].Agent
+				}
+			}
+			rec := s.base()
+			rec.Kind = RecordKindToolUse
+			rec.ToolUseID = tu.ToolUseID
+			rec.ToolName = tu.Name
+			rec.ToolInput = tu.Input
+			rec.PreToolTs = preTs
+			out = append(out, rec)
+			s.toolUseIdx++
+		}
+	}
+	return out
+}
+
+func (s *messageProcessorState) processToolResults(msg SessionMessage, out []MergedRecord) []MergedRecord {
+	trs, ok := decodeOrSkip[struct {
+		Content []ContentItem `json:"content"`
+	}](msg.Data, "toolResults", s.meta.SessionID)
+	if !ok {
+		return out
+	}
+	for _, ci := range trs.Content {
+		if ci.Kind != ContentKindToolResult {
+			continue
+		}
+		tr, ok := decodeOrSkip[ToolResultData](ci.Data, ContentKindToolResult, s.meta.SessionID)
+		if !ok {
+			continue
+		}
+		var errorDetail string
+		if tr.Status == ToolStatusError && len(tr.Content) > 0 {
+			var d string
+			if err := json.Unmarshal(tr.Content[0].Data, &d); err == nil {
+				errorDetail = d
+			}
+		}
+		rec := s.base()
+		rec.Kind = RecordKindToolResult
+		rec.ToolUseID = tr.ToolUseID
+		rec.ToolStatus = tr.Status
+		rec.ErrorDetail = errorDetail
+		out = append(out, rec)
+	}
+	return out
+}
+
+// processSessionMessages iterates over messages and appends MergedRecords to out.
+// currentAgent is a pointer because preHooks update it during iteration.
+func processSessionMessages(
+	messages []SessionMessage,
+	meta SessionMeta,
+	preHooks, spawnHooks, stopHooks []HookRecord,
+	turnResponses []string,
+	currentAgent *string,
+	createdAt, updatedAt time.Time,
+	out []MergedRecord,
+) []MergedRecord {
+	s := &messageProcessorState{
+		meta: meta, preHooks: preHooks, turnResponses: turnResponses,
+		currentAgent: currentAgent, createdAt: createdAt, updatedAt: updatedAt,
+	}
+	for _, msg := range messages {
+		switch msg.Kind {
+		case MessageKindPrompt:
+			out = s.processPrompt(msg, out)
+		case MessageKindAssistantMessage:
+			out = s.processAssistantMessage(msg, out)
+		case MessageKindToolResults:
+			out = s.processToolResults(msg, out)
+		}
+	}
+
+	for _, h := range spawnHooks {
+		rec := s.base()
+		rec.Kind = RecordKindAgentSpawn
+		rec.PreToolTs = h.Ts
+		if h.Agent != "" {
+			rec.Agent = h.Agent
+		}
+		out = append(out, rec)
+	}
+
+	for _, h := range stopHooks {
+		rec := s.base()
+		rec.Kind = RecordKindStop
+		rec.PreToolTs = h.Ts
+		if h.Agent != "" {
+			rec.Agent = h.Agent
+		}
+		out = append(out, rec)
+	}
 
 	return out
+}
+
+// attachPostToolData attaches postToolUse data to toolResult records by position.
+func attachPostToolData(records []MergedRecord, postHooks []HookRecord, sessionStart int) {
+	if len(postHooks) == 0 {
+		return
+	}
+	postIdx := 0
+	for i := sessionStart; i < len(records); i++ {
+		if records[i].Kind != RecordKindToolResult {
+			continue
+		}
+		if postIdx < len(postHooks) {
+			records[i].PostToolTs = postHooks[postIdx].Ts
+			if postHooks[postIdx].Agent != "" {
+				records[i].Agent = postHooks[postIdx].Agent
+			}
+			records[i].ShellExitStatus = postHooks[postIdx].ShellExitStatus
+			postIdx++
+		}
+	}
 }

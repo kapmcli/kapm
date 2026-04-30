@@ -40,7 +40,7 @@ func parseWriteInput(raw json.RawMessage, ts time.Time, cwd string) (FileChange,
 		return FileChange{}, false
 	}
 	switch in.Command {
-	case "create", "strReplace", "insert":
+	case CommandCreate, CommandStrReplace, CommandInsert:
 	default:
 		return FileChange{}, false
 	}
@@ -168,7 +168,7 @@ func DiffLineCounts(fc FileChange) (adds, dels int, ok bool) {
 		return 0, 0, false
 	}
 	switch fc.Command {
-	case "create", "insert":
+	case CommandCreate, CommandInsert:
 		if fc.Content == "" {
 			return 0, 0, true
 		}
@@ -177,7 +177,7 @@ func DiffLineCounts(fc FileChange) (adds, dels int, ok bool) {
 			n++
 		}
 		return n, 0, true
-	case "strReplace":
+	case CommandStrReplace:
 		diffStr := udiff.Unified("", "", fc.OldStr, fc.NewStr)
 		for line := range strings.SplitSeq(diffStr, "\n") {
 			if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {

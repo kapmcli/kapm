@@ -99,6 +99,8 @@ func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request
 		s.logWriteFailure(r, "sse overview", fmt.Errorf("send sse overview frame: %w", err))
 		return false
 	}
+	// Flush error is intentionally ignored: the SSE connection will be
+	// detected as broken on the next write cycle and closed gracefully.
 	flusher.Flush()
 	return true
 }

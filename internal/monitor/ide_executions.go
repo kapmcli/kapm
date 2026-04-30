@@ -118,7 +118,7 @@ func processExecutionLog(path string, executionIDs map[string]struct{}, results 
 	var toolActions []IDEAction
 	for i, a := range log.Actions {
 		switch a.ActionType {
-		case "readFiles", "runCommand", "write", "create", "delete", "search", "invokeSubAgent", "subagentResponse":
+		case ActionReadFiles, ActionRunCommand, ActionWrite, ActionCreate, ActionDelete, ActionSearch, ActionInvokeSubAgent, ActionSubAgentResponse:
 			// Estimate duration from gap to next action's emittedAt, or execution endTime.
 			nextTs := log.EndTime
 			for j := i + 1; j < len(log.Actions); j++ {
@@ -179,21 +179,21 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 		var lastInvokeTs int64
 		for _, a := range res.ToolActions {
 			toolName := a.ActionType
-			if toolName == "runCommand" {
-				toolName = "shell"
+			if toolName == ActionRunCommand {
+				toolName = ToolNameShell
 			}
 
 			preTs := time.UnixMilli(a.EmittedAt)
 			postTs := preTs.Add(a.EstimatedDuration)
 
 			// invokeSubAgent's emittedAt is completion time; derive start from duration.
-			if a.ActionType == "invokeSubAgent" {
+			if a.ActionType == ActionInvokeSubAgent {
 				postTs = preTs
 				preTs = postTs.Add(-a.EstimatedDuration)
 				lastInvokeTs = a.EmittedAt
 			}
 			// subagentResponse must sort after invokeSubAgent; duration is 0 (it's the response).
-			if a.ActionType == "subagentResponse" {
+			if a.ActionType == ActionSubAgentResponse {
 				if a.EmittedAt <= lastInvokeTs {
 					preTs = time.UnixMilli(lastInvokeTs + 1)
 				}
@@ -212,7 +212,7 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 			}
 
 			// Parse sub-agent invocation data.
-			if a.ActionType == "invokeSubAgent" {
+			if a.ActionType == ActionInvokeSubAgent {
 				rec.SubAgent = parseSubAgentCall(a, preTs, a.EstimatedDuration)
 			}
 

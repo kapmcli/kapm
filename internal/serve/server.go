@@ -39,6 +39,7 @@ type Options struct {
 	CwdFilter   string
 	Since       time.Duration
 	MetricsTTL  time.Duration // 0 means default 1s
+	SQLiteDBPath string
 	// MaxSSE caps concurrent SSE connections. 0 means default 64.
 	MaxSSE int
 }
@@ -56,6 +57,7 @@ type Server struct {
 	now          func() time.Time
 	handler      http.Handler
 	cache        *monitor.SessionCache
+	sqliteCache  *monitor.SQLiteCache
 	ttl          time.Duration
 	metricsMu    sync.Mutex
 	metricsCache *metricsCacheEntry
@@ -70,7 +72,7 @@ func New(opts Options) *Server {
 	if ttl == 0 {
 		ttl = time.Second
 	}
-	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), ttl: ttl}
+	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), sqliteCache: monitor.NewSQLiteCache(), ttl: ttl}
 	s.sseMax = defaultMaxSSE
 	if opts.MaxSSE > 0 {
 		if opts.MaxSSE > math.MaxInt32 {
@@ -202,7 +204,7 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 		}
 		s.metricsMu.Unlock()
 
-		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache)
+		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, s.opts.SQLiteDBPath, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache, s.sqliteCache)
 		if err != nil {
 			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
 		}
@@ -253,6 +255,22 @@ func computeDashboardSessions(sessions []monitor.SessionMetric) []monitor.Sessio
 	return out
 }
 
+// buildFilteredMetrics constructs DetailedMetrics from pre-filtered agents and sessions,
+// re-aggregating tools from session timelines.
+func buildFilteredMetrics(agents []monitor.AgentDetail, sessions []monitor.SessionDetail) monitor.DetailedMetrics {
+	var out monitor.DetailedMetrics
+	for _, a := range agents {
+		out.Agents = append(out.Agents, a)
+		out.Overview.Agents = append(out.Overview.Agents, a.AgentMetric)
+	}
+	for _, sd := range sessions {
+		out.Sessions = append(out.Sessions, sd)
+		out.Overview.Sessions = append(out.Overview.Sessions, sd.SessionMetric)
+	}
+	out.Tools, out.Overview.Tools = monitor.AggregateToolsFromTimeline(sessions)
+	return out
+}
+
 // filterBySession narrows dm to a single session id and returns a merged
 // SessionDetail across all agents participating in that sid (see
 // monitor.MergeSessionDetails). Tools and Overview.Tools are re-aggregated
@@ -279,21 +297,19 @@ func filterBySession(dm monitor.DetailedMetrics, id string) monitor.DetailedMetr
 // attribution for skills is not preserved in DetailedMetrics) and remain
 // empty in the result.
 func filterByAgent(dm monitor.DetailedMetrics, name string) monitor.DetailedMetrics {
-	out := monitor.DetailedMetrics{}
+	var agents []monitor.AgentDetail
 	for _, a := range dm.Agents {
 		if a.Name == name {
-			out.Agents = append(out.Agents, a)
-			out.Overview.Agents = append(out.Overview.Agents, a.AgentMetric)
+			agents = append(agents, a)
 		}
 	}
+	var sessions []monitor.SessionDetail
 	for _, sd := range dm.Sessions {
 		if sd.Agent == name {
-			out.Sessions = append(out.Sessions, sd)
-			out.Overview.Sessions = append(out.Overview.Sessions, sd.SessionMetric)
+			sessions = append(sessions, sd)
 		}
 	}
-	out.Tools, out.Overview.Tools = monitor.AggregateToolsFromTimeline(out.Sessions)
-	return out
+	return buildFilteredMetrics(agents, sessions)
 }
 
 func sessionDetailsByID(sessions []monitor.SessionDetail, id string) []monitor.SessionDetail {
@@ -353,18 +369,24 @@ const (
 	sessionsPerPage       = 50
 )
 
-// paginateByID slices all by distinct session ID, returning the rows for the
-// requested page and the total number of distinct IDs. Input order is
-// preserved; all rows sharing an ID travel together.
-func paginateByID(all []monitor.SessionMetric, page, perPage int) (rows []monitor.SessionMetric, total int) {
+// distinctSessionIDs returns session IDs in order of first appearance.
+func distinctSessionIDs(sessions []monitor.SessionMetric) []string {
 	seen := map[string]struct{}{}
 	var ids []string
-	for _, s := range all {
+	for _, s := range sessions {
 		if _, ok := seen[s.ID]; !ok {
 			seen[s.ID] = struct{}{}
 			ids = append(ids, s.ID)
 		}
 	}
+	return ids
+}
+
+// paginateByID slices all by distinct session ID, returning the rows for the
+// requested page and the total number of distinct IDs. Input order is
+// preserved; all rows sharing an ID travel together.
+func paginateByID(all []monitor.SessionMetric, page, perPage int) (rows []monitor.SessionMetric, total int) {
+	ids := distinctSessionIDs(all)
 	total = len(ids)
 	start := (page - 1) * perPage
 	end := start + perPage

@@ -20,6 +20,7 @@ type logsFlags struct {
 	SessionsDir    string
 	LogsDir        string
 	IDESessionsDir string
+	SQLiteDBPath   string
 	Since          time.Duration
 	CwdFilter      string // empty = global (show all sessions)
 }
@@ -69,7 +70,7 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag, ideSessionsDir
 	home, _ := os.UserHomeDir()
 	sessionsDir := sessionsDirFlag
 	if sessionsDir == "" && home != "" {
-		sessionsDir = filepath.Join(home, ".kiro", "sessions", "cli")
+		sessionsDir = filepath.Join(home, paths.KiroDir, paths.SessionsSubdir, paths.CLISubdir)
 	}
 	ideSessionsDir := ideSessionsDirFlag
 	if ideSessionsDir == "" {
@@ -83,7 +84,7 @@ func resolveLogsFlags(since, logsDir, targetDir, sessionsDirFlag, ideSessionsDir
 		}
 		cwdFilter = abs
 	}
-	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, IDESessionsDir: ideSessionsDir, Since: d, CwdFilter: cwdFilter}, nil
+	return logsFlags{SessionsDir: sessionsDir, LogsDir: resolved, IDESessionsDir: ideSessionsDir, SQLiteDBPath: paths.CLIDataPath(), Since: d, CwdFilter: cwdFilter}, nil
 }
 
 // runLogsCommand returns a command handler that sets up flags, parses args,

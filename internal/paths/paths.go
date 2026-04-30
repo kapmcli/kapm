@@ -19,6 +19,8 @@ const (
 	PromptsSubdir   = "prompts"
 	SteeringSubdir  = "steering"
 	SettingsSubdir  = "settings"
+	SessionsSubdir  = "sessions"
+	CLISubdir       = "cli"
 
 	// .kapm hierarchy
 	KapmDir    = ".kapm"
@@ -34,6 +36,25 @@ const (
 )
 
 const ideStorageSuffix = "Kiro/User/globalStorage/kiro.kiroagent"
+
+const cliDBFile = "kiro-cli/data.sqlite3"
+
+// CLIDataPath returns the path to the v1 SQLite database file for the current OS.
+// Returns empty string if the home directory cannot be determined or on Windows (TODO).
+func CLIDataPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", cliDBFile)
+	case "linux":
+		return filepath.Join(home, ".local", "share", cliDBFile)
+	default:
+		return ""
+	}
+}
 
 // IDEBaseDir returns the default Kiro IDE globalStorage directory for the
 // current OS. Returns empty string if the home directory cannot be determined.

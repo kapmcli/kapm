@@ -66,6 +66,13 @@ func truncateUTF8(s string, maxBytes int) string {
 	return s[:maxBytes]
 }
 
+// FileChange command constants.
+const (
+	CommandCreate     = "create"
+	CommandStrReplace = "strReplace"
+	CommandInsert     = "insert"
+)
+
 // FileChange captures a single file modification via the write tool.
 // Diff is NOT stored — rendered on demand by template helper to avoid
 // re-computing on every AggregateDetail call.

@@ -40,22 +40,22 @@ func Install(ctx context.Context, opts InstallOptions) (*Result, error) {
 	tempDir, commit, cleanup, err := fetchPowerPackage(ctx, opts)
 	defer cleanup()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("install fetch: %w", err)
 	}
 
 	manifest, hasMCP, hasHooks, warnings, err := validateManifest(tempDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("install validate: %w", err)
 	}
 
 	installedDir, skipped, err := installPowerPackage(tempDir, manifest, opts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("install copy: %w", err)
 	}
 
 	resourcePaths, err := listInstalledResourcePaths(installedDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("install list resources: %w", err)
 	}
 	if skipped {
 		return &Result{
@@ -97,7 +97,7 @@ func fetchPowerPackage(ctx context.Context, opts InstallOptions) (tempDir, commi
 	cleanup = func() {}
 	fetcher, err := fetcherForSource(opts.Source)
 	if err != nil {
-		return "", "", cleanup, err
+		return "", "", cleanup, fmt.Errorf("install resolve source: %w", err)
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	slog.Info("fetching power", "source", sourceLabel(opts.Source))
@@ -165,7 +165,7 @@ func readPower(dir string) (*PowerManifest, error) {
 	data, err := readFileNoFollow(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("POWER.md not found in %s", dir)
+			return nil, fmt.Errorf("power.md not found in %s", dir)
 		}
 		return nil, fmt.Errorf("read %q: %w", path, err)
 	}
@@ -362,7 +362,7 @@ func listInstalledResourcePaths(powerDir string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("install list resources walk: %w", err)
 	}
 	slices.Sort(steeringPaths)
 	return append(resourcePaths, steeringPaths...), nil
@@ -371,7 +371,7 @@ func listInstalledResourcePaths(powerDir string) ([]string, error) {
 func isManagedPowerDir(powerDir, expectedName string) (bool, error) {
 	manifest, err := readPower(powerDir)
 	if err != nil {
-		if strings.Contains(err.Error(), "POWER.md not found") {
+		if strings.Contains(err.Error(), "power.md not found") {
 			return false, nil
 		}
 		return false, err
