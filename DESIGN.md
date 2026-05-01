@@ -32,3 +32,16 @@ kapm WebUI は deep navy 背景に purple accent を重ねた dark theme。
 - **text (#FAFAFA)**: 本文。warm off-white
 - **muted (#6B6B6B)**: セカンダリテキスト、timestamp 等
 - **chart (#61AFEF)**: echarts bar の色
+
+## serve Security Model
+
+`kapm serve` binds to `127.0.0.1` (localhost only) and does not implement authentication.
+
+**Design rationale:**
+- The dashboard is a local developer tool, not a network service.
+- Binding to localhost prevents remote access by default.
+- No sensitive credentials are stored or transmitted — only session metadata and agent activity logs.
+
+**Limitations:**
+- On multi-user systems, any local user can access the dashboard on the configured port.
+- If localhost binding is changed (e.g., via reverse proxy), authentication should be added at the proxy layer.
