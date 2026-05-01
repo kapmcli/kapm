@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -54,7 +55,7 @@ func waitForPathState(path string, wantExists bool) error {
 		if wantExists && err == nil {
 			return nil
 		}
-		if !wantExists && os.IsNotExist(err) {
+		if !wantExists && errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -81,7 +82,7 @@ func TestRotateBasic(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Errorf("unexpected stderr: %s", stderr.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, "old.jsonl")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "old.jsonl")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("old.jsonl should be removed after rotation")
 	}
 	got := readGzip(t, filepath.Join(dir, "old.jsonl.gz"))
@@ -127,7 +128,7 @@ func TestRotateCurrentSessionNotRotated(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "curr.jsonl")); err != nil {
 		t.Error("curr.jsonl should still exist")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "curr.jsonl.gz")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "curr.jsonl.gz")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("curr.jsonl.gz should not be created")
 	}
 }
@@ -171,7 +172,7 @@ func TestRotateFailureRecovery(t *testing.T) {
 	if _, err := os.Stat(src); err != nil {
 		t.Error("original .jsonl should be intact after failure")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "old.jsonl.gz")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "old.jsonl.gz")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("old.jsonl.gz should not exist after failure")
 	}
 	if !strings.Contains(buf.String(), "rotate compress") {
@@ -212,7 +213,7 @@ func TestRotateRetriesAfterRestoredFailure(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("expected 2 compression attempts, got %d", calls)
 	}
-	if _, err := os.Stat(src); !os.IsNotExist(err) {
+	if _, err := os.Stat(src); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("old.jsonl should be removed after successful retry")
 	}
 	got := readGzip(t, src+".gz")
@@ -271,7 +272,7 @@ func TestRotateSkipsRecentFiles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "recent.jsonl")); err != nil {
 		t.Error("recent.jsonl should still exist (mtime too recent)")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "recent.jsonl.gz")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "recent.jsonl.gz")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("recent.jsonl.gz should not be created")
 	}
 }

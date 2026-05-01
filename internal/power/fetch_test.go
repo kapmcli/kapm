@@ -2,6 +2,8 @@ package power
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -154,7 +156,7 @@ func TestGitFetcher_CleanupRemovesTempDir(t *testing.T) {
 	}
 	root := filepath.Dir(localDir)
 	cleanup()
-	if _, err := os.Stat(root); !os.IsNotExist(err) {
+	if _, err := os.Stat(root); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("cleanup did not remove %q, stat err = %v", root, err)
 	}
 }
@@ -300,7 +302,7 @@ func TestGitFetcher_InvalidRefNotInvokeGit(t *testing.T) {
 	}
 
 	// fake git log must not exist (git was never invoked)
-	if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(logPath); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Errorf("fake git was invoked for invalid ref; log exists at %q", logPath)
 	}
 }
