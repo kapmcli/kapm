@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -168,19 +169,10 @@ func pairPromptsWithTimeline(details []SessionDetail) ([]string, []string) {
 	}
 
 	slices.SortStableFunc(prompts, func(a, b tsPrompt) int {
-		if a.ts != b.ts {
-			if a.ts < b.ts {
-				return -1
-			}
-			return 1
+		if c := cmp.Compare(a.ts, b.ts); c != 0 {
+			return c
 		}
-		if a.seq < b.seq {
-			return -1
-		}
-		if a.seq > b.seq {
-			return 1
-		}
-		return 0
+		return cmp.Compare(a.seq, b.seq)
 	})
 
 	outP := make([]string, len(prompts))
