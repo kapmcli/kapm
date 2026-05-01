@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -24,7 +25,7 @@ func LoadSessionsSQLite(ctx context.Context, dbPath string, since time.Time, cwd
 
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro&_busy_timeout=1000")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
 	defer func() { _ = db.Close() }()
 
@@ -38,7 +39,7 @@ ORDER BY updated_at DESC`
 	sinceMS := since.UnixMilli()
 	rows, err := db.QueryContext(ctx, query, sinceMS, cwdFilter, cwdFilter, cwdFilter)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query conversations_v2: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -57,7 +58,7 @@ ORDER BY updated_at DESC`
 		sessions = append(sessions, ps)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate conversations_v2: %w", err)
 	}
 
 	if sessions == nil {

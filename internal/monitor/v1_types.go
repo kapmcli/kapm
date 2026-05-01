@@ -1,6 +1,9 @@
 package monitor
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // v1Row is one row from the v1 SQLite conversations_v2 table.
 type v1Row struct {
@@ -37,18 +40,18 @@ func (e *v1HistoryEntry) UnmarshalJSON(b []byte) error {
 		// Old format: array of items
 		var items []json.RawMessage
 		if err := json.Unmarshal(b, &items); err != nil {
-			return err
+			return fmt.Errorf("unmarshal history array: %w", err)
 		}
 		// item[0] is the user message (has "content" field)
 		// item[1] is the assistant message (has "Response" or "ToolUse" field)
 		if len(items) > 0 {
 			if err := json.Unmarshal(items[0], &e.User); err != nil {
-				return err
+				return fmt.Errorf("unmarshal history array user turn: %w", err)
 			}
 		}
 		if len(items) > 1 {
 			if err := json.Unmarshal(items[1], &e.Assistant); err != nil {
-				return err
+				return fmt.Errorf("unmarshal history array assistant turn: %w", err)
 			}
 		}
 		return nil
@@ -60,7 +63,7 @@ func (e *v1HistoryEntry) UnmarshalJSON(b []byte) error {
 		RequestMetadata v1RequestMeta   `json:"request_metadata"`
 	}
 	if err := json.Unmarshal(b, &obj); err != nil {
-		return err
+		return fmt.Errorf("unmarshal history object: %w", err)
 	}
 	e.User = obj.User
 	e.Assistant = obj.Assistant
