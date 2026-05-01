@@ -118,7 +118,7 @@ func fetchGitSource(ctx context.Context, tempDir string, src PowerSource) (repoD
 }
 
 func fetchSparseCheckout(ctx context.Context, repoDir string, src PowerSource) (string, error) {
-	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+	if err := os.MkdirAll(repoDir, 0o700); err != nil {
 		return "", fmt.Errorf("create sparse checkout dir %q: %w", repoDir, err)
 	}
 
