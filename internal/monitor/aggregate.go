@@ -139,6 +139,9 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 	if r.SubAgent != nil {
 		s.subAgentCalls = append(s.subAgentCalls, *r.SubAgent)
 	}
+	if len(r.SubAgents) > 0 {
+		s.subAgentCalls = append(s.subAgentCalls, r.SubAgents...)
+	}
 
 	if r.ToolUseID != "" {
 		if s.pendingToolUse == nil {
@@ -190,6 +193,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	if !postTs.IsZero() && !preTs.IsZero() {
 		s.timeline[matchIdx].Duration = JSONDuration(postTs.Sub(preTs))
 	}
+	appendResolvedSubAgents(s, r, preTs, s.timeline[matchIdx].Duration)
 
 	td := toolEntry(st.tools, s.timeline[matchIdx].Tool)
 	call := ToolCall{
@@ -208,6 +212,28 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	} else {
 		s.timeline[matchIdx].matched = true
 		td.RecentCalls = append(td.RecentCalls, call)
+	}
+}
+
+func appendResolvedSubAgents(s *sessionState, r MergedRecord, ts time.Time, dur JSONDuration) {
+	if r.SubAgent != nil {
+		call := *r.SubAgent
+		if call.Ts.IsZero() {
+			call.Ts = ts
+		}
+		if call.Duration == 0 {
+			call.Duration = dur
+		}
+		s.subAgentCalls = append(s.subAgentCalls, call)
+	}
+	for _, call := range r.SubAgents {
+		if call.Ts.IsZero() {
+			call.Ts = ts
+		}
+		if call.Duration == 0 {
+			call.Duration = dur
+		}
+		s.subAgentCalls = append(s.subAgentCalls, call)
 	}
 }
 

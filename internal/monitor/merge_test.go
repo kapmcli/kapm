@@ -746,6 +746,9 @@ func TestKindConstants_WireFormat(t *testing.T) {
 	if ContentKindText != "text" {
 		t.Errorf("ContentKindText = %q, want %q", ContentKindText, "text")
 	}
+	if ContentKindJSON != "json" {
+		t.Errorf("ContentKindJSON = %q, want %q", ContentKindJSON, "json")
+	}
 	if ContentKindToolUse != "toolUse" {
 		t.Errorf("ContentKindToolUse = %q, want %q", ContentKindToolUse, "toolUse")
 	}
@@ -838,6 +841,8 @@ func TestMergeSessionDetails_TwoAgents(t *testing.T) {
 	// Add timeline entries out of order across agents.
 	d1.Timeline = []EventEntry{{Ts: t2, Event: "postToolUse"}, {Ts: t0, Event: "agentSpawn"}}
 	d2.Timeline = []EventEntry{{Ts: t1, Event: "userPromptSubmit"}, {Ts: t3, Event: "stop"}}
+	d1.SubAgentCalls = []SubAgentCall{{AgentName: "researcher", Ts: t2}}
+	d2.SubAgentCalls = []SubAgentCall{{AgentName: "explorer", Ts: t1}}
 
 	merged, refs := MergeSessionDetails([]SessionDetail{d1, d2})
 
@@ -885,6 +890,12 @@ func TestMergeSessionDetails_TwoAgents(t *testing.T) {
 		if !ev.Ts.Equal(wantOrder[i]) {
 			t.Errorf("Timeline[%d].Ts = %v, want %v", i, ev.Ts, wantOrder[i])
 		}
+	}
+	if len(merged.SubAgentCalls) != 2 {
+		t.Fatalf("len(SubAgentCalls) = %d, want 2", len(merged.SubAgentCalls))
+	}
+	if merged.SubAgentCalls[0].AgentName != "explorer" || merged.SubAgentCalls[1].AgentName != "researcher" {
+		t.Errorf("SubAgentCalls order = %+v, want explorer then researcher", merged.SubAgentCalls)
 	}
 
 	// AgentRefs in input order

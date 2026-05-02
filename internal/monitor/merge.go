@@ -75,6 +75,7 @@ func MergeSessionDetails(details []SessionDetail) (SessionDetail, []AgentRef) {
 	merged.PromptHistory, merged.AssistantResponses = pairPromptsWithTimeline(src)
 	merged.ToolSummary = mergeToolSummary(src)
 	merged.AssistantResponse = mergeAssistantResponse(src)
+	merged.SubAgentCalls = mergeSubAgentCalls(src)
 	return merged, refs
 }
 
@@ -124,6 +125,17 @@ func mergeSessionContent(src []SessionDetail) (timeline []EventEntry, changes []
 		slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
 	}
 	return
+}
+
+func mergeSubAgentCalls(src []SessionDetail) []SubAgentCall {
+	var calls []SubAgentCall
+	for _, sd := range src {
+		calls = append(calls, sd.SubAgentCalls...)
+	}
+	if len(calls) > 0 {
+		slices.SortStableFunc(calls, func(a, b SubAgentCall) int { return a.Ts.Compare(b.Ts) })
+	}
+	return calls
 }
 
 // pairPromptsWithTimeline pairs each prompt in history (oldest-first) with
@@ -281,10 +293,11 @@ type MergedRecord struct {
 	TotalOutputTokens int
 	TotalCredits      float64
 	// IDE-only: pre-aggregated counts (CLI derives these from individual records)
-	PromptTexts    []string
-	ToolCalls      int
-	// IDE-only: sub-agent invocation data (set on invokeSubAgent toolUse records)
-	SubAgent *SubAgentCall
+	PromptTexts []string
+	ToolCalls   int
+	// sub-agent invocation data (IDE invokeSubAgent or CLI use_subagent records)
+	SubAgent  *SubAgentCall
+	SubAgents []SubAgentCall
 }
 
 // parseHookRecords reads hook JSONL in the new minimal format.
@@ -481,6 +494,7 @@ type messageProcessorState struct {
 	updatedAt     time.Time
 	toolUseIdx    int
 	promptIdx     int
+	subAgentsByID map[string][]SubAgentCall
 }
 
 // base returns the common MergedRecord fields.
@@ -542,6 +556,13 @@ func (s *messageProcessorState) processAssistantMessage(msg SessionMessage, out 
 			if !ok {
 				continue
 			}
+			subAgents := parseUseSubagentInput(tu.Input)
+			if len(subAgents) > 0 && tu.ToolUseID != "" {
+				if s.subAgentsByID == nil {
+					s.subAgentsByID = make(map[string][]SubAgentCall)
+				}
+				s.subAgentsByID[tu.ToolUseID] = subAgents
+			}
 			var preTs time.Time
 			if s.toolUseIdx < len(s.preHooks) {
 				preTs = s.preHooks[s.toolUseIdx].Ts
@@ -589,9 +610,76 @@ func (s *messageProcessorState) processToolResults(msg SessionMessage, out []Mer
 		rec.ToolUseID = tr.ToolUseID
 		rec.ToolStatus = tr.Status
 		rec.ErrorDetail = errorDetail
+		if len(s.subAgentsByID) > 0 {
+			if calls, ok := s.subAgentsByID[tr.ToolUseID]; ok {
+				rec.SubAgents = attachSubagentResults(calls, tr.Content)
+				delete(s.subAgentsByID, tr.ToolUseID)
+			}
+		}
 		out = append(out, rec)
 	}
 	return out
+}
+
+func parseUseSubagentInput(raw json.RawMessage) []SubAgentCall {
+	var inp struct {
+		Content struct {
+			Subagents []struct {
+				AgentName       string `json:"agent_name"`
+				Query           string `json:"query"`
+				RelevantContext string `json:"relevant_context"`
+			} `json:"subagents"`
+		} `json:"content"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &inp) != nil || len(inp.Content.Subagents) == 0 {
+		return nil
+	}
+	calls := make([]SubAgentCall, 0, len(inp.Content.Subagents))
+	for _, sa := range inp.Content.Subagents {
+		calls = append(calls, SubAgentCall{
+			AgentName:   sa.AgentName,
+			Explanation: sa.RelevantContext,
+			Prompt:      sa.Query,
+		})
+	}
+	return calls
+}
+
+func attachSubagentResults(calls []SubAgentCall, content []ContentItem) []SubAgentCall {
+	summaries := subagentResultSummaries(content)
+	for i := range calls {
+		if i >= len(summaries) {
+			continue
+		}
+		if summaries[i].TaskDescription != "" {
+			calls[i].Explanation = summaries[i].TaskDescription
+		}
+		calls[i].Response = summaries[i].TaskResult
+	}
+	return calls
+}
+
+type subagentSummary struct {
+	TaskDescription string `json:"taskDescription"`
+	ContextSummary  string `json:"contextSummary"`
+	TaskResult      string `json:"taskResult"`
+}
+
+func subagentResultSummaries(content []ContentItem) []subagentSummary {
+	var summaries []subagentSummary
+	for _, ci := range content {
+		if ci.Kind != ContentKindJSON {
+			continue
+		}
+		var payload struct {
+			Summaries []subagentSummary `json:"summaries"`
+		}
+		if err := json.Unmarshal(ci.Data, &payload); err != nil {
+			continue
+		}
+		summaries = append(summaries, payload.Summaries...)
+	}
+	return summaries
 }
 
 // processSessionMessages iterates over messages and appends MergedRecords to out.

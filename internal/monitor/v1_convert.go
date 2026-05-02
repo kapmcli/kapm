@@ -121,17 +121,26 @@ func buildUserMessage(e v1HistoryEntry) (*SessionMessage, error) {
 			if r.Status == "Error" || r.Status == "error" {
 				status = "error"
 			}
+			var resultContent []ContentItem
 			text := ""
 			for _, tc := range r.Content {
-				text += tc.Text
+				if tc.Text != "" {
+					text += tc.Text
+				}
+				if len(tc.JSON) > 0 && string(tc.JSON) != "null" {
+					resultContent = append(resultContent, ContentItem{Kind: ContentKindJSON, Data: tc.JSON})
+				}
 			}
-			textData, err := json.Marshal(text)
-			if err != nil {
-				return nil, err
+			if text != "" || len(resultContent) == 0 {
+				textData, err := json.Marshal(text)
+				if err != nil {
+					return nil, err
+				}
+				resultContent = append([]ContentItem{{Kind: ContentKindText, Data: json.RawMessage(textData)}}, resultContent...)
 			}
 			trd := ToolResultData{
 				ToolUseID: r.ToolUseID,
-				Content:   []ContentItem{{Kind: "text", Data: json.RawMessage(textData)}},
+				Content:   resultContent,
 				Status:    status,
 			}
 			d, err := json.Marshal(trd)
@@ -140,7 +149,10 @@ func buildUserMessage(e v1HistoryEntry) (*SessionMessage, error) {
 			}
 			items[i] = ContentItem{Kind: "toolResult", Data: d}
 		}
-		data, err := json.Marshal(items)
+		trs := struct {
+			Content []ContentItem `json:"content"`
+		}{Content: items}
+		data, err := json.Marshal(trs)
 		if err != nil {
 			return nil, err
 		}
@@ -174,9 +186,9 @@ func buildAssistantMessage(e v1HistoryEntry) (*SessionMessage, error) {
 		items := make([]ContentItem, len(a.ToolUse.ToolUses))
 		for i, tc := range a.ToolUse.ToolUses {
 			tud := ToolUseData{
-				ToolUseID: tc.ToolUseID,
-				Name:      tc.Name,
-				Input:     tc.Input,
+				ToolUseID: firstNonEmpty(tc.ToolUseID, tc.ID),
+				Name:      firstNonEmpty(tc.Name, tc.OrigName),
+				Input:     firstNonEmptyRaw(tc.Input, tc.Args, tc.OrigArgs),
 			}
 			d, err := json.Marshal(tud)
 			if err != nil {
@@ -194,6 +206,24 @@ func buildAssistantMessage(e v1HistoryEntry) (*SessionMessage, error) {
 	default:
 		return nil, nil
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyRaw(values ...json.RawMessage) json.RawMessage {
+	for _, v := range values {
+		if len(v) > 0 && string(v) != "null" {
+			return v
+		}
+	}
+	return nil
 }
 
 // parseTimestamp converts an RFC3339 timestamp string to unix seconds.

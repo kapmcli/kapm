@@ -28,6 +28,7 @@ const (
 // ContentItem.Kind values (wire format from Kiro; do not change).
 const (
 	ContentKindText       = "text"
+	ContentKindJSON       = "json"
 	ContentKindToolUse    = "toolUse"
 	ContentKindToolResult = "toolResult"
 )
@@ -183,13 +184,13 @@ type SessionToolSummary struct {
 // SessionDetail is the per-session drill-down payload.
 type SessionDetail struct {
 	SessionMetric
-	PromptHistory     []string             // raw prompts, oldest first
-	Timeline          []EventEntry         // full ordered event list for this session
-	ToolSummary       []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
+	PromptHistory      []string             // raw prompts, oldest first
+	Timeline           []EventEntry         // full ordered event list for this session
+	ToolSummary        []SessionToolSummary // per-tool breakdown, sorted by CallCount desc
 	AssistantResponse  string               // LLM final response from stop event (max 2KB); kept for backward compat
 	AssistantResponses []string             // all assistant responses per turn, oldest first
 	Changes            []FileChange         // chronological order (sorted by Ts ascending)
-	SubAgentCalls     []SubAgentCall       // IDE sub-agent invocations
+	SubAgentCalls      []SubAgentCall       // IDE sub-agent invocations
 }
 
 // SubAgentCall represents a sub-agent invocation from an IDE session.

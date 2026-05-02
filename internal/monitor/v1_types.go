@@ -78,9 +78,9 @@ type v1UserTurn struct {
 
 // v1UserContent holds exactly one of Prompt, ToolUseResults, or CancelledToolUses.
 type v1UserContent struct {
-	Prompt            *v1Prompt        `json:"Prompt,omitempty"`
+	Prompt            *v1Prompt         `json:"Prompt,omitempty"`
 	ToolUseResults    *v1ToolUseResults `json:"ToolUseResults,omitempty"`
-	CancelledToolUses *json.RawMessage `json:"CancelledToolUses,omitempty"`
+	CancelledToolUses *json.RawMessage  `json:"CancelledToolUses,omitempty"`
 }
 
 type v1Prompt struct {
@@ -94,13 +94,14 @@ type v1ToolUseResults struct {
 
 // v1ToolResult content is [{Text: "..."}] in both formats.
 type v1ToolResult struct {
-	ToolUseID string           `json:"tool_use_id"`
-	Content   []v1ToolContent  `json:"content"`
-	Status    string           `json:"status"`
+	ToolUseID string          `json:"tool_use_id"`
+	Content   []v1ToolContent `json:"content"`
+	Status    string          `json:"status"`
 }
 
 type v1ToolContent struct {
-	Text string `json:"Text"`
+	Text string          `json:"Text"`
+	JSON json.RawMessage `json:"Json"`
 }
 
 // v1AssistantTurn holds exactly one of Response or ToolUse.
@@ -121,8 +122,12 @@ type v1ToolUse struct {
 
 type v1ToolCall struct {
 	Name      string          `json:"name"`
+	OrigName  string          `json:"orig_name"`
+	ID        string          `json:"id"`
 	ToolUseID string          `json:"tool_use_id"`
 	Input     json.RawMessage `json:"input"`
+	Args      json.RawMessage `json:"args"`
+	OrigArgs  json.RawMessage `json:"orig_args"`
 }
 
 type v1RequestMeta struct {
