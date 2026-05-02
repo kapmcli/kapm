@@ -22,7 +22,7 @@
 
 kapm helps you understand and maintain Kiro agent workspaces.
 
-- **Monitor Kiro sessions**: read CLI session logs (`~/.kiro/sessions/cli/`), Kiro IDE session logs (auto-detected), and v1 SQLite session stores, supplemented by optional hook logs under `.kapm/logs/` for tool-call timestamps, agent attribution, and shell exit status. Inspect sessions, tool calls, failures, durations, agents, prompts, responses, file changes, and skill reads in a terminal UI or WebUI.
+- **Monitor Kiro sessions**: read Kiro CLI v2 JSONL session logs (`~/.kiro/sessions/cli/`), Kiro IDE session logs (auto-detected), and Kiro CLI v1 SQLite session stores, supplemented by optional hook logs under `.kapm/logs/` for tool-call timestamps, agent attribution, and shell exit status. Inspect sessions, tool calls, failures, durations, agents, prompts, responses, file changes, and skill reads in a terminal UI or WebUI.
 - **Manage Kiro agents**: create and update `.kiro/agents/*.json` and `.kiro/agent-prompts/*.md` interactively.
 - **Bridge package formats**: sync APM packages and Kiro Powers into project-local `.kiro/` files.
 
@@ -56,7 +56,7 @@ kapm init-hook
 
 ## Monitoring
 
-kapm reads Kiro's session files (`~/.kiro/sessions/cli/{uuid}.jsonl` and `{uuid}.json`) as its primary data source. Kiro IDE session logs are also loaded automatically when available. v1 SQLite session stores (`conversations_v2`) are read as a fallback for older IDE data. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata (credits).
+kapm reads Kiro CLI v2 session data (`~/.kiro/sessions/cli/{uuid}.jsonl` logs with `{uuid}.json` metadata) as its primary data source. Kiro IDE session logs are also loaded automatically when available. Kiro CLI v1 SQLite session stores (`conversations_v2`) are also read when present. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata (credits).
 
 `kapm init-hook` optionally adds hook entries to `.kiro/agents/*.json` for supplementary data. Hooks record `agentSpawn`, `preToolUse`, `postToolUse`, and `stop` events as minimal JSONL under `.kapm/logs/{session_id}.jsonl`, providing per-tool-call timestamps (for duration calculation), agent names (for delegation tracking), and shell exit status.
 

@@ -60,7 +60,7 @@ kapm init-hook
 
 ## 监控
 
-kapm 以 Kiro 的会话文件（`~/.kiro/sessions/cli/{uuid}.jsonl` 和 `{uuid}.json`）作为主要数据源，同时在有 IDE 会话日志时自动加载。对于旧版 IDE 数据，还会回退读取 v1 SQLite 会话存储（`conversations_v2`）。基本监控无需安装 hook——会话文件已包含提示、助手响应、工具调用、工具结果以及每轮的元数据（token 数、积分、耗时）。
+kapm 以 Kiro CLI v2 的会话数据（`~/.kiro/sessions/cli/{uuid}.jsonl` 日志和 `{uuid}.json` 元数据）作为主要数据源，同时在有 IDE 会话日志时自动加载。存在 Kiro CLI v1 SQLite 会话存储（`conversations_v2`）时也会读取。基本监控无需安装 hook——会话文件已包含提示、助手响应、工具调用、工具结果以及每轮的元数据（token 数、积分、耗时）。
 
 `kapm init-hook` 可选地向 `.kiro/agents/*.json` 添加 hook 条目，以获取补充数据。Hook 会将 `agentSpawn`、`preToolUse`、`postToolUse` 和 `stop` 事件以精简 JSONL 格式写入 `.kapm/logs/{session_id}.jsonl`，提供每次工具调用的时间戳（用于计算耗时）、Agent 名称（用于追踪委派关系）和 shell 退出状态。
 

@@ -60,7 +60,7 @@ kapm init-hook
 
 ## 모니터링
 
-kapm은 Kiro의 세션 파일(`~/.kiro/sessions/cli/{uuid}.jsonl` 및 `{uuid}.json`)을 기본 데이터 소스로 읽습니다. Kiro IDE 세션 로그도 사용 가능한 경우 자동으로 불러옵니다. 이전 IDE 데이터를 위해 v1 SQLite 세션 스토어(`conversations_v2`)도 폴백으로 읽습니다. 기본 모니터링에는 hook 설치가 필요 없으며, 세션 파일에는 프롬프트, 어시스턴트 응답, 도구 호출, 도구 결과, 턴별 메타데이터(토큰, 크레딧, 소요 시간)가 포함됩니다.
+kapm은 Kiro CLI v2 세션 데이터(`~/.kiro/sessions/cli/{uuid}.jsonl` 로그와 `{uuid}.json` 메타데이터)를 기본 데이터 소스로 읽습니다. Kiro IDE 세션 로그도 사용 가능한 경우 자동으로 불러옵니다. Kiro CLI v1 SQLite 세션 스토어(`conversations_v2`)도 있으면 읽습니다. 기본 모니터링에는 hook 설치가 필요 없으며, 세션 파일에는 프롬프트, 어시스턴트 응답, 도구 호출, 도구 결과, 턴별 메타데이터(토큰, 크레딧, 소요 시간)가 포함됩니다.
 
 `kapm init-hook`은 선택적으로 `.kiro/agents/*.json`에 hook 항목을 추가해 보조 데이터를 수집합니다. hook은 `agentSpawn`·`preToolUse`·`postToolUse`·`stop` 이벤트를 `.kapm/logs/{session_id}.jsonl`에 최소한의 JSONL로 기록하며, 도구 호출별 타임스탬프(소요 시간 계산용), 에이전트 이름(위임 추적용), 셸 종료 상태를 제공합니다.
 
