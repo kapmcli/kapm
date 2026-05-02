@@ -38,12 +38,6 @@ brew install --cask kapmcli/tap/kapm
 
 [GitHub Releases](https://github.com/kapmcli/kapm/releases) から利用するプラットフォーム向けのアーカイブをダウンロードし、展開した `kapm` または `kapm.exe` を `PATH` に配置してください。
 
-### Nix (Nightly)
-
-```bash
-nix profile add github:kapmcli/kapm#kapm
-```
-
 ### ソースからビルド
 
 ```bash
