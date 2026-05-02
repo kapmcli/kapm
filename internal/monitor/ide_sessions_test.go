@@ -135,6 +135,19 @@ func TestLoadIDESessions_MissingDir(t *testing.T) {
 	}
 }
 
+func TestLoadWorkspaceSessions_MissingSessionsJSON(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	got, err := loadWorkspaceSessions(context.Background(), dir, "/home/user/project-empty", time.Time{})
+	if err != nil {
+		t.Fatalf("want nil error, got %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("want empty, got %v", got)
+	}
+}
+
 func TestDecodeWorkspacePath(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -146,7 +159,6 @@ func TestDecodeWorkspacePath(t *testing.T) {
 		{base64.RawURLEncoding.EncodeToString([]byte("/home/user/project-alpha")), "/home/user/project-alpha"},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
 			got, err := decodeWorkspacePath(tc.input)

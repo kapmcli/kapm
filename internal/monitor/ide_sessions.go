@@ -93,6 +93,9 @@ func decodeWorkspacePath(name string) (string, error) {
 func loadWorkspaceSessions(ctx context.Context, dir, workspacePath string, since time.Time) ([]IDEParsedSession, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "sessions.json"))
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var entries []IDESessionEntry
