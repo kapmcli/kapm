@@ -1,57 +1,4 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-────────────────────────────────────────────────────────────────────────────────
-
+$
 
 
 
@@ -104,60 +51,7 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-────────────────────────────────────────────────────────────────────────────────
-
+$
 
 
 
@@ -210,7 +104,113 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
+$
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+$
 
 
 
@@ -392,11 +392,11 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 
 ╭────────────────────────────────────────╮ ╭────────────────────────────────────────╮
 │ ▸ Summary                              │ │ ▸ Activity                             │
-│   logs dir: testdata/monitor/logs      │ │         ▁           ▅ ▃   █ ▅ ▃        │
-│   sessions:   16     active: 0         │ │   11    18    03    01    15    09     │
-│   agents:     9      errors: 2         │ │   max: 171 events/hour                 │
-│   tool calls: 303    prompts: 23       │ ╰────────────────────────────────────────╯
-│   credits:    11.16                    │
+│   logs dir: testdata/monitor/logs      │ │     ▁           ▅ ▃ █ ▅ ▃              │
+│   sessions:   12     active: 0         │ │   11    02    00    15                 │
+│   agents:     8      errors: 2         │ │   max: 171 events/hour                 │
+│   tool calls: 303    prompts: 17       │ ╰────────────────────────────────────────╯
+│   credits:    10.05                    │
 ╰────────────────────────────────────────╯
 ╭──────────────────────────╮ ╭──────────────────────────╮ ╭─────────────────────────╮
 │ ▸ Top tools              │ │ ▸ Top agents             │ │ ▸ Skills (reads)        │
@@ -423,11 +423,11 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 
 ╭────────────────────────────────────────╮ ╭────────────────────────────────────────╮
 │ ▸ Summary                              │ │ ▸ Activity                             │
-│   logs dir: testdata/monitor/logs      │ │         ▁           ▅ ▃   █ ▅ ▃        │
-│   sessions:   16     active: 0         │ │   11    18    03    01    15    09     │
-│   agents:     9      errors: 2         │ │   max: 171 events/hour                 │
-│   tool calls: 303    prompts: 23       │ ╰────────────────────────────────────────╯
-│   credits:    11.16                    │
+│   logs dir: testdata/monitor/logs      │ │     ▁           ▅ ▃ █ ▅ ▃              │
+│   sessions:   12     active: 0         │ │   11    02    00    15                 │
+│   agents:     8      errors: 2         │ │   max: 171 events/hour                 │
+│   tool calls: 303    prompts: 17       │ ╰────────────────────────────────────────╯
+│   credits:    10.05                    │
 ╰────────────────────────────────────────╯
 ╭──────────────────────────╮ ╭──────────────────────────╮ ╭─────────────────────────╮
 │ ▸ Top tools              │ │ ▸ Top agents             │ │ ▸ Skills (reads)        │
@@ -454,11 +454,11 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 
 ╭────────────────────────────────────────╮ ╭────────────────────────────────────────╮
 │ ▸ Summary                              │ │ ▸ Activity                             │
-│   logs dir: testdata/monitor/logs      │ │         ▁           ▅ ▃   █ ▅ ▃        │
-│   sessions:   16     active: 0         │ │   11    18    03    01    15    09     │
-│   agents:     9      errors: 2         │ │   max: 171 events/hour                 │
-│   tool calls: 303    prompts: 23       │ ╰────────────────────────────────────────╯
-│   credits:    11.16                    │
+│   logs dir: testdata/monitor/logs      │ │     ▁           ▅ ▃ █ ▅ ▃              │
+│   sessions:   12     active: 0         │ │   11    02    00    15                 │
+│   agents:     8      errors: 2         │ │   max: 171 events/hour                 │
+│   tool calls: 303    prompts: 17       │ ╰────────────────────────────────────────╯
+│   credits:    10.05                    │
 ╰────────────────────────────────────────╯
 ╭──────────────────────────╮ ╭──────────────────────────╮ ╭─────────────────────────╮
 │ ▸ Top tools              │ │ ▸ Top agents             │ │ ▸ Skills (reads)        │
@@ -485,11 +485,11 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 
 ╭────────────────────────────────────────╮ ╭────────────────────────────────────────╮
 │ ▸ Summary                              │ │ ▸ Activity                             │
-│   logs dir: testdata/monitor/logs      │ │         ▁           ▅ ▃   █ ▅ ▃        │
-│   sessions:   16     active: 0         │ │   11    18    03    01    15    09     │
-│   agents:     9      errors: 2         │ │   max: 171 events/hour                 │
-│   tool calls: 303    prompts: 23       │ ╰────────────────────────────────────────╯
-│   credits:    11.16                    │
+│   logs dir: testdata/monitor/logs      │ │     ▁           ▅ ▃ █ ▅ ▃              │
+│   sessions:   12     active: 0         │ │   11    02    00    15                 │
+│   agents:     8      errors: 2         │ │   max: 171 events/hour                 │
+│   tool calls: 303    prompts: 17       │ ╰────────────────────────────────────────╯
+│   credits:    10.05                    │
 ╰────────────────────────────────────────╯
 ╭──────────────────────────╮ ╭──────────────────────────╮ ╭─────────────────────────╮
 │ ▸ Top tools              │ │ ▸ Top agents             │ │ ▸ Skills (reads)        │
@@ -518,11 +518,7 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   ID           Agent      Title                                    Dur            │
 │ Status    Tool Prompt Files Credits Last act                                      │
 │ ───────────────────────────────────────────────────────────────────────────────── │
-│ ▸ 3449e766-8b8 kiro-ide   何ができるの？                           23m44s   ○     │
-│ done       0     2     0    0.50 09:47:42                                         │
-│   0feeb1d9-64f kiro-ide   ちは                                     5d17h    ○     │
-│ done       0     2     0    0.48 09:23:15                                         │
-│   cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
+│ ▸ cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
 │ done      39     1     0       — 04-24 23:50                                      │
 │   72f643cf-7fc frontend   "## Delegation Brief\n\n### TASK\nImple… 7m08s    ○     │
 │ done      60     1     3       — 04-24 20:17                                      │
@@ -541,6 +537,10 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   session-def4 explorer   "explore the codebase"                   5m00s    ○     │
 │ done       5     2     0       — 04-21 03:00                                      │
 │   def67890     explorer   "find files"                             10m00s   ○     │
+│ done       3     1     0       — 04-20 19:10                                      │
+│   abc12345     coder      "implement feature"                      5m00s    ○     │
+│ done       4     1     0       — 04-20 18:05                                      │
+│   session-abc1 coder      "implement the feature"                  1m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -549,11 +549,7 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   ID           Agent      Title                                    Dur            │
 │ Status    Tool Prompt Files Credits Last act                                      │
 │ ───────────────────────────────────────────────────────────────────────────────── │
-│ ▸ 3449e766-8b8 kiro-ide   何ができるの？                           23m44s   ○     │
-│ done       0     2     0    0.50 09:47:42                                         │
-│   0feeb1d9-64f kiro-ide   ちは                                     5d17h    ○     │
-│ done       0     2     0    0.48 09:23:15                                         │
-│   cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
+│ ▸ cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
 │ done      39     1     0       — 04-24 23:50                                      │
 │   72f643cf-7fc frontend   "## Delegation Brief\n\n### TASK\nImple… 7m08s    ○     │
 │ done      60     1     3       — 04-24 20:17                                      │
@@ -572,6 +568,10 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   session-def4 explorer   "explore the codebase"                   5m00s    ○     │
 │ done       5     2     0       — 04-21 03:00                                      │
 │   def67890     explorer   "find files"                             10m00s   ○     │
+│ done       3     1     0       — 04-20 19:10                                      │
+│   abc12345     coder      "implement feature"                      5m00s    ○     │
+│ done       4     1     0       — 04-20 18:05                                      │
+│   session-abc1 coder      "implement the feature"                  1m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -580,11 +580,7 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   ID           Agent      Title                                    Dur            │
 │ Status    Tool Prompt Files Credits Last act                                      │
 │ ───────────────────────────────────────────────────────────────────────────────── │
-│ ▸ 3449e766-8b8 kiro-ide   何ができるの？                           23m44s   ○     │
-│ done       0     2     0    0.50 09:47:42                                         │
-│   0feeb1d9-64f kiro-ide   ちは                                     5d17h    ○     │
-│ done       0     2     0    0.48 09:23:15                                         │
-│   cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
+│ ▸ cd75bf13-61b researcher "Research GoReleaser v2 (latest stable … 365d12h  ○     │
 │ done      39     1     0       — 04-24 23:50                                      │
 │   72f643cf-7fc frontend   "## Delegation Brief\n\n### TASK\nImple… 7m08s    ○     │
 │ done      60     1     3       — 04-24 20:17                                      │
@@ -603,6 +599,10 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   session-def4 explorer   "explore the codebase"                   5m00s    ○     │
 │ done       5     2     0       — 04-21 03:00                                      │
 │   def67890     explorer   "find files"                             10m00s   ○     │
+│ done       3     1     0       — 04-20 19:10                                      │
+│   abc12345     coder      "implement feature"                      5m00s    ○     │
+│ done       4     1     0       — 04-20 18:05                                      │
+│   session-abc1 coder      "implement the feature"                  1m00s    ○     │
 ────────────────────────────────────────────────────────────────────────────────
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
@@ -618,42 +618,11 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh
 │   qa                                               1       37         1         0 │
 │   orchestrator                                     2       20         6         0 │
 │   coder                                            2        9         3         1 │
-│   kiro-ide                                         4        0         6         0 │
 │                                                                                   │
-│ showing  9/9                                                                      │
+│ showing  8/8                                                                      │
 ╰───────────────────────────────────────────────────────────────────────────────────╯
 tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select · enter: open
 
-
-
-
-
-
-
-
-
-
-
-────────────────────────────────────────────────────────────────────────────────
-  kapm monitor    period: last 365d0h  updated: 12:00:00
-  1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
-
-╭───────────────────────────────────────────────────────────────────────────────────╮
-│   Name                                      Sessions    Tools   Prompts    Errors │
-│ ───────────────────────────────────────────────────────────────────────────────── │
-│ ▸ frontend                                         1       60         1         0 │
-│   reviewer                                         1       48         1         0 │
-│   lead                                             1       47         0         0 │
-│   explorer                                         3       43         4         1 │
-│   researcher                                       1       39         1         0 │
-│   qa                                               1       37         1         0 │
-│   orchestrator                                     2       20         6         0 │
-│   coder                                            2        9         3         1 │
-│   kiro-ide                                         4        0         6         0 │
-│                                                                                   │
-│ showing  9/9                                                                      │
-╰───────────────────────────────────────────────────────────────────────────────────╯
-tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select · enter: open
 
 
 
@@ -680,11 +649,42 @@ tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select ·
 │   qa                                               1       37         1         0 │
 │   orchestrator                                     2       20         6         0 │
 │   coder                                            2        9         3         1 │
-│   kiro-ide                                         4        0         6         0 │
 │                                                                                   │
-│ showing  9/9                                                                      │
+│ showing  8/8                                                                      │
 ╰───────────────────────────────────────────────────────────────────────────────────╯
 tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select · enter: open
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  kapm monitor    period: last 365d0h  updated: 12:00:00
+  1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
+
+╭───────────────────────────────────────────────────────────────────────────────────╮
+│   Name                                      Sessions    Tools   Prompts    Errors │
+│ ───────────────────────────────────────────────────────────────────────────────── │
+│ ▸ frontend                                         1       60         1         0 │
+│   reviewer                                         1       48         1         0 │
+│   lead                                             1       47         0         0 │
+│   explorer                                         3       43         4         1 │
+│   researcher                                       1       39         1         0 │
+│   qa                                               1       37         1         0 │
+│   orchestrator                                     2       20         6         0 │
+│   coder                                            2        9         3         1 │
+│                                                                                   │
+│ showing  8/8                                                                      │
+╰───────────────────────────────────────────────────────────────────────────────────╯
+tab/←→: switch · 1-5: jump · q: quit · r: refresh · ↑↓/jk: select · enter: open
+
 
 
 

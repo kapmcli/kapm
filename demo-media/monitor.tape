@@ -7,7 +7,7 @@ Set Height 900
 Set WaitTimeout 15s
 
 Hide
-Type "export PS1='$ '; clear"
+Type "rm -rf /tmp/kapm-vhs-home; mkdir -p /tmp/kapm-vhs-home; export HOME=/tmp/kapm-vhs-home; export PS1='$ '; clear"
 Enter
 Sleep 200ms
 Show
