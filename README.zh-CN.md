@@ -38,12 +38,6 @@ brew install --cask kapmcli/tap/kapm
 
 从 [GitHub Releases](https://github.com/kapmcli/kapm/releases) 下载适合你平台的归档文件，解压后将 `kapm` 或 `kapm.exe` 放到 `PATH` 中。
 
-### Nix (Nightly)
-
-```bash
-nix profile add github:kapmcli/kapm#kapm
-```
-
 ### 从源码构建
 
 ```bash
