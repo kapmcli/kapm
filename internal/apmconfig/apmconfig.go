@@ -71,11 +71,16 @@ func ValidateIdentifier(value string) (string, error) {
 // Hook event names consumed by Kiro. These are the wire-format strings that
 // appear in .kiro/agents/*.json and hook-event JSON payloads.
 const (
-	EventAgentSpawn       = "agentSpawn"
-	EventUserPromptSubmit = "userPromptSubmit"
-	EventPreToolUse       = "preToolUse"
-	EventPostToolUse      = "postToolUse"
-	EventStop             = "stop"
+	EventAgentSpawn        = "agentSpawn"
+	EventUserPromptSubmit  = "userPromptSubmit"
+	EventPreToolUse        = "preToolUse"
+	EventPostToolUse       = "postToolUse"
+	EventStop              = "stop"
+	EventFileCreated       = "fileCreated"
+	EventFileEdited        = "fileEdited"
+	EventFileDeleted       = "fileDeleted"
+	EventPreTaskExecution  = "preTaskExecution"
+	EventPostTaskExecution = "postTaskExecution"
 )
 
 // HookEvents is the canonical ordered list of events kapm init-hook registers.
