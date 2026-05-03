@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -243,6 +244,66 @@ func TestMergeSessions_OrphanHooks(t *testing.T) {
 	}
 	if !recs[0].PreToolTs.IsZero() {
 		t.Errorf("orphan hook should not match: PreToolTs = %v", recs[0].PreToolTs)
+	}
+}
+
+func TestMergeSessions_MatchesUnknownHooksToSessionByWindowAndTool(t *testing.T) {
+	input := map[string]any{
+		"command": "InvokeSubagents",
+		"content": map[string]any{
+			"subagents": []map[string]string{
+				{
+					"agent_name":       "explorer",
+					"query":            "inspect the repo",
+					"relevant_context": "cwd=/proj",
+				},
+			},
+		},
+	}
+	session := makeSession("conv-v1", []SessionMessage{
+		toolUseMsg("tu-subagent", "use_subagent", input),
+		toolResultMsg("tu-subagent", "success"),
+	})
+	session.Meta.CreatedAt = rfc3339Time(time.Date(2026, 5, 2, 3, 0, 33, 790_000_000, time.UTC))
+	session.Meta.UpdatedAt = rfc3339Time(time.Date(2026, 5, 2, 3, 1, 5, 378_000_000, time.UTC))
+
+	preTs := time.Date(2026, 5, 2, 3, 0, 33, 863_444_000, time.UTC)
+	postTs := time.Date(2026, 5, 2, 3, 0, 58, 447_033_000, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "unknown-1777690833863161000", Event: apmconfig.EventPreToolUse, Agent: "lead", Tool: "use_subagent"},
+		{Ts: time.Date(2026, 5, 2, 3, 0, 36, 156_010_000, time.UTC), Session: "43f211a4-7207-4032-9554-2bafa21ff04b", Event: apmconfig.EventPreToolUse, Agent: "explorer", Tool: "read"},
+		{Ts: postTs, Session: "unknown-1777690858447015000", Event: apmconfig.EventPostToolUse, Agent: "lead", Tool: "use_subagent"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+	if len(recs) != 2 {
+		t.Fatalf("len(recs) = %d, want 2", len(recs))
+	}
+	if !recs[0].PreToolTs.Equal(preTs) {
+		t.Fatalf("toolUse PreToolTs = %v, want %v", recs[0].PreToolTs, preTs)
+	}
+	if recs[0].Agent != "lead" {
+		t.Fatalf("toolUse Agent = %q, want lead", recs[0].Agent)
+	}
+	if !recs[1].PostToolTs.Equal(postTs) {
+		t.Fatalf("toolResult PostToolTs = %v, want %v", recs[1].PostToolTs, postTs)
+	}
+
+	detail, err := AggregateDetail(context.Background(), recs, postTs.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("AggregateDetail: %v", err)
+	}
+	if len(detail.Sessions) != 1 {
+		t.Fatalf("len(Sessions) = %d, want 1", len(detail.Sessions))
+	}
+	if got := time.Duration(detail.Sessions[0].Timeline[0].Duration); got != postTs.Sub(preTs) {
+		t.Fatalf("timeline duration = %v, want %v", got, postTs.Sub(preTs))
+	}
+	if len(detail.Sessions[0].SubAgentCalls) != 1 {
+		t.Fatalf("len(SubAgentCalls) = %d, want 1", len(detail.Sessions[0].SubAgentCalls))
+	}
+	if got := time.Duration(detail.Sessions[0].SubAgentCalls[0].Duration); got != postTs.Sub(preTs) {
+		t.Fatalf("subagent duration = %v, want %v", got, postTs.Sub(preTs))
 	}
 }
 

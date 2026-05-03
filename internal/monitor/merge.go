@@ -369,9 +369,15 @@ func extractTextContent(ci ContentItem) (string, bool) {
 // used and hook fields are zero values.
 func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedRecord {
 	hookBySession := make(map[string][]HookRecord, len(hookLogs))
+	var unknownHooks []HookRecord
 	for _, h := range hookLogs {
+		if isUnknownHookSession(h.Session) {
+			unknownHooks = append(unknownHooks, h)
+			continue
+		}
 		hookBySession[h.Session] = append(hookBySession[h.Session], h)
 	}
+	unknownUsed := make([]bool, len(unknownHooks))
 
 	var out []MergedRecord
 	for _, s := range sessions {
@@ -380,6 +386,9 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		updatedAt := time.Time(meta.UpdatedAt)
 
 		sessionHooks := hookBySession[meta.SessionID]
+		if len(unknownHooks) > 0 {
+			sessionHooks = append(sessionHooks, matchUnknownHooks(s, unknownHooks, unknownUsed)...)
+		}
 		preHooks, postHooks, spawnHooks, stopHooks := groupHooksByEvent(sessionHooks)
 		currentAgent := resolveInitialAgent(meta, sessionHooks)
 		turnResponses := collectTurnResponses(s.Messages, meta.SessionID)
@@ -423,6 +432,92 @@ func groupHooksByEvent(hooks []HookRecord) (pre, post, spawn, stop []HookRecord)
 		}
 	}
 	return
+}
+
+const unknownHookMatchSlack = 5 * time.Second
+
+func isUnknownHookSession(sessionID string) bool {
+	return strings.HasPrefix(sessionID, "unknown-")
+}
+
+func matchUnknownHooks(session ParsedSession, unknownHooks []HookRecord, used []bool) []HookRecord {
+	toolNames := sessionToolNames(session.Messages, session.Meta.SessionID)
+	if len(toolNames) == 0 {
+		return nil
+	}
+	createdAt := time.Time(session.Meta.CreatedAt)
+	updatedAt := time.Time(session.Meta.UpdatedAt)
+	if createdAt.IsZero() || updatedAt.IsZero() || updatedAt.Before(createdAt) {
+		return nil
+	}
+	start := createdAt.Add(-unknownHookMatchSlack)
+	end := updatedAt.Add(unknownHookMatchSlack)
+
+	var matched []HookRecord
+	searchAfter := start
+	for _, toolName := range toolNames {
+		preIdx := findUnknownHook(unknownHooks, used, apmconfig.EventPreToolUse, toolName, searchAfter, end)
+		if preIdx < 0 {
+			continue
+		}
+		used[preIdx] = true
+		preHook := unknownHooks[preIdx]
+		matched = append(matched, preHook)
+
+		postIdx := findUnknownHook(unknownHooks, used, apmconfig.EventPostToolUse, toolName, preHook.Ts, end)
+		if postIdx >= 0 {
+			used[postIdx] = true
+			matched = append(matched, unknownHooks[postIdx])
+		}
+		searchAfter = preHook.Ts
+	}
+	return matched
+}
+
+func sessionToolNames(messages []SessionMessage, sessionID string) []string {
+	var names []string
+	for _, msg := range messages {
+		if msg.Kind != MessageKindAssistantMessage {
+			continue
+		}
+		ad, ok := decodeOrSkip[AssistantData](msg.Data, "assistantMessage:toolNames", sessionID)
+		if !ok {
+			continue
+		}
+		for _, ci := range ad.Content {
+			if ci.Kind != ContentKindToolUse {
+				continue
+			}
+			tu, ok := decodeOrSkip[ToolUseData](ci.Data, "toolUse:toolNames", sessionID)
+			if ok && tu.Name != "" {
+				names = append(names, tu.Name)
+			}
+		}
+	}
+	return names
+}
+
+func findUnknownHook(
+	hooks []HookRecord,
+	used []bool,
+	event string,
+	toolName string,
+	start time.Time,
+	end time.Time,
+) int {
+	bestIdx := -1
+	for i, hook := range hooks {
+		if used[i] || hook.Event != event || hook.Tool != toolName {
+			continue
+		}
+		if hook.Ts.Before(start) || hook.Ts.After(end) {
+			continue
+		}
+		if bestIdx < 0 || hook.Ts.Before(hooks[bestIdx].Ts) {
+			bestIdx = i
+		}
+	}
+	return bestIdx
 }
 
 // resolveInitialAgent returns the active agent name for a session.
