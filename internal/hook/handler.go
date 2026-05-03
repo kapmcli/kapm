@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,16 @@ import (
 const maxHookEvent = 10 << 20 // 10 MiB
 
 var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// HandlerInputOptions configures hook-handler stdin normalization.
+type HandlerInputOptions struct {
+	Stdin     io.Reader
+	Agent     string
+	Event     string
+	SessionID string
+	Tool      string
+	Getenv    func(string) string
+}
 
 func isSafeSessionID(s string) bool {
 	if s == "" || s == "." || s == ".." {
@@ -78,6 +89,35 @@ func extractShellExitStatus(raw json.RawMessage) string {
 
 func reportHookErr(stderr io.Writer, op string, err error) {
 	_, _ = fmt.Fprintf(stderr, "hook-handler: %s: %v\n", op, err)
+}
+
+// PrepareHandlerInput resolves the agent name and synthesizes a minimal hook
+// event when Kiro IDE invokes hook-handler with fallback flags and empty stdin.
+func PrepareHandlerInput(opts HandlerInputOptions) (io.Reader, string, error) {
+	agentName := opts.Agent
+	if agentName == "" && opts.Getenv != nil {
+		agentName = opts.Getenv("AGENT")
+	}
+	if opts.Event == "" {
+		return opts.Stdin, agentName, nil
+	}
+
+	data, err := io.ReadAll(opts.Stdin)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		fallback := map[string]string{
+			"hook_event_name": opts.Event,
+			"session_id":      opts.SessionID,
+			"tool_name":       opts.Tool,
+		}
+		data, err = json.Marshal(fallback)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return bytes.NewReader(data), agentName, nil
 }
 
 // Handle reads a Kiro hook event from in, appends a JSONL record to logs under rootDir,

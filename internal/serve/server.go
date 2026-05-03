@@ -32,13 +32,13 @@ type loadedMetrics struct {
 
 // Options configures a Server.
 type Options struct {
-	Port        int
-	SessionsDir string
-	LogsDir     string
-	IDEBaseDir  string
-	CwdFilter   string
-	Since       time.Duration
-	MetricsTTL  time.Duration // 0 means default 1s
+	Port         int
+	SessionsDir  string
+	LogsDir      string
+	IDEBaseDir   string
+	CwdFilter    string
+	Since        time.Duration
+	MetricsTTL   time.Duration // 0 means default 1s
 	SQLiteDBPath string
 	// MaxSSE caps concurrent SSE connections. 0 means default 64.
 	MaxSSE int
@@ -186,40 +186,22 @@ func securityHeaders(h http.Handler) http.Handler {
 func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 	now := s.now()
 
-	s.metricsMu.Lock()
-	if s.metricsCache != nil && now.Sub(s.metricsCache.storedAt) < s.ttl {
-		entry := s.metricsCache
-		s.metricsMu.Unlock()
-		return loadedMetrics{dm: entry.dm, sessions: entry.dashboardSessions}, nil
+	if lm, ok := s.cachedMetrics(now); ok {
+		return lm, nil
 	}
-	s.metricsMu.Unlock()
 
 	v, err, _ := s.metricsSF.Do("metrics", func() (any, error) {
 		// Re-check: another goroutine may have populated the cache while we waited.
-		s.metricsMu.Lock()
-		if s.metricsCache != nil && now.Sub(s.metricsCache.storedAt) < s.ttl {
-			entry := s.metricsCache
-			s.metricsMu.Unlock()
-			return loadedMetrics{dm: entry.dm, sessions: entry.dashboardSessions}, nil
+		if lm, ok := s.cachedMetrics(now); ok {
+			return lm, nil
 		}
-		s.metricsMu.Unlock()
 
-		recs, nextCache, err := monitor.LoadAll(ctx, s.opts.SessionsDir, s.opts.LogsDir, s.opts.IDEBaseDir, s.opts.SQLiteDBPath, now.Add(-s.opts.Since), s.opts.CwdFilter, s.cache, s.sqliteCache)
+		lm, err := s.loadFreshMetrics(ctx, now)
 		if err != nil {
-			return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
+			return loadedMetrics{}, err
 		}
-		s.cache = nextCache
-		dm, err := aggregateDetailFn(ctx, recs, now)
-		if err != nil {
-			return loadedMetrics{}, fmt.Errorf("serve aggregate records: %w", err)
-		}
-		sessions := computeDashboardSessions(dm.Overview.Sessions)
-
-		s.metricsMu.Lock()
-		s.metricsCache = &metricsCacheEntry{dm: dm, dashboardSessions: sessions, storedAt: now}
-		s.metricsMu.Unlock()
-
-		return loadedMetrics{dm: dm, sessions: sessions}, nil
+		s.storeMetrics(now, lm)
+		return lm, nil
 	})
 	if err != nil {
 		return loadedMetrics{}, err
@@ -229,6 +211,53 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 		return loadedMetrics{}, fmt.Errorf("unexpected metrics type %T", v)
 	}
 	return lm, nil
+}
+
+func (s *Server) cachedMetrics(now time.Time) (loadedMetrics, bool) {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+
+	if s.metricsCache == nil || now.Sub(s.metricsCache.storedAt) >= s.ttl {
+		return loadedMetrics{}, false
+	}
+	entry := s.metricsCache
+	return loadedMetrics{dm: entry.dm, sessions: entry.dashboardSessions}, true
+}
+
+func (s *Server) loadFreshMetrics(ctx context.Context, now time.Time) (loadedMetrics, error) {
+	recs, nextCache, err := monitor.LoadAll(
+		ctx,
+		s.opts.SessionsDir,
+		s.opts.LogsDir,
+		s.opts.IDEBaseDir,
+		s.opts.SQLiteDBPath,
+		now.Add(-s.opts.Since),
+		s.opts.CwdFilter,
+		s.cache,
+		s.sqliteCache,
+	)
+	if err != nil {
+		return loadedMetrics{}, fmt.Errorf("serve load records: %w", err)
+	}
+	s.cache = nextCache
+
+	dm, err := aggregateDetailFn(ctx, recs, now)
+	if err != nil {
+		return loadedMetrics{}, fmt.Errorf("serve aggregate records: %w", err)
+	}
+	sessions := computeDashboardSessions(dm.Overview.Sessions)
+	return loadedMetrics{dm: dm, sessions: sessions}, nil
+}
+
+func (s *Server) storeMetrics(now time.Time, lm loadedMetrics) {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+
+	s.metricsCache = &metricsCacheEntry{
+		dm:                lm.dm,
+		dashboardSessions: lm.sessions,
+		storedAt:          now,
+	}
 }
 
 // computeDashboardSessions groups sessions by ID for the dashboard's Recent

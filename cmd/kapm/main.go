@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -709,7 +708,7 @@ func runHookHandler(args []string) error {
 		return err
 	}
 
-	input, resolvedAgent, err := prepareHookHandlerInput(hookHandlerInputOptions{
+	input, resolvedAgent, err := hook.PrepareHandlerInput(hook.HandlerInputOptions{
 		Stdin:     os.Stdin,
 		Agent:     *agentName,
 		Event:     *eventName,
@@ -722,42 +721,6 @@ func runHookHandler(args []string) error {
 	}
 	hook.Handle(input, os.Stdout, os.Stderr, time.Now, ".", resolvedAgent)
 	return nil
-}
-
-type hookHandlerInputOptions struct {
-	Stdin     io.Reader
-	Agent     string
-	Event     string
-	SessionID string
-	Tool      string
-	Getenv    func(string) string
-}
-
-func prepareHookHandlerInput(opts hookHandlerInputOptions) (io.Reader, string, error) {
-	agentName := opts.Agent
-	if agentName == "" && opts.Getenv != nil {
-		agentName = opts.Getenv("AGENT")
-	}
-	if opts.Event == "" {
-		return opts.Stdin, agentName, nil
-	}
-
-	data, err := io.ReadAll(opts.Stdin)
-	if err != nil {
-		return nil, "", err
-	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		fallback := map[string]string{
-			"hook_event_name": opts.Event,
-			"session_id":      opts.SessionID,
-			"tool_name":       opts.Tool,
-		}
-		data, err = json.Marshal(fallback)
-		if err != nil {
-			return nil, "", err
-		}
-	}
-	return bytes.NewReader(data), agentName, nil
 }
 
 func runHookDump(args []string) error {

@@ -36,26 +36,16 @@ func WriteFileAtomic(path string, data []byte, force bool) (written bool, err er
 		return true, nil
 	}
 
-	tempFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	tempPath, err := writeTempFile(path, data)
 	if err != nil {
-		return false, fmt.Errorf("create temp %q: %w", path, err)
+		return false, err
 	}
-	tempPath := tempFile.Name()
 	defer func() {
 		if removeErr := os.Remove(tempPath); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) && err == nil {
 			err = fmt.Errorf("remove temp %q: %w", tempPath, removeErr)
 		}
 	}()
 
-	if _, err := tempFile.Write(data); err != nil {
-		return false, errors.Join(fmt.Errorf("write temp %q: %w", tempPath, err), tempFile.Close())
-	}
-	if err := tempFile.Chmod(0o644); err != nil {
-		return false, errors.Join(fmt.Errorf("chmod temp %q: %w", tempPath, err), tempFile.Close())
-	}
-	if err := tempFile.Close(); err != nil {
-		return false, fmt.Errorf("close temp %q: %w", tempPath, err)
-	}
 	if err := os.Rename(tempPath, path); err != nil {
 		return false, fmt.Errorf("rename %q: %w", path, err)
 	}
