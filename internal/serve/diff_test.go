@@ -88,6 +88,34 @@ func TestRenderDiff_HappyPath(t *testing.T) {
 	}
 }
 
+func TestRenderDiff_Delete(t *testing.T) {
+	t.Parallel()
+	t.Run("with_original_content", func(t *testing.T) {
+		t.Parallel()
+		fc := monitor.FileChange{Path: "gone.txt", Command: monitor.CommandDelete, OldStr: "old\n"}
+		out := string(renderDiff(fc))
+		if !strings.Contains(out, "diff-del") || strings.Contains(out, "no textual change") {
+			t.Errorf("want delete diff, got: %s", out)
+		}
+	})
+	t.Run("without_original_content", func(t *testing.T) {
+		t.Parallel()
+		fc := monitor.FileChange{Path: "gone.txt", Command: monitor.CommandDelete}
+		out := string(renderDiff(fc))
+		if !strings.Contains(out, "delete content unavailable") {
+			t.Errorf("want unavailable placeholder, got: %s", out)
+		}
+	})
+}
+
+func TestDiffStats_DeleteWithoutContentUnavailable(t *testing.T) {
+	t.Parallel()
+	r := diffStats([]monitor.FileChange{{Command: monitor.CommandDelete}})
+	if r.HasCounts || r.OversizedCount != 1 {
+		t.Fatalf("diffStats = %+v, want no counts and one unavailable edit", r)
+	}
+}
+
 func TestRenderDiff_OmitsFileHeaders(t *testing.T) {
 	t.Parallel()
 	fc := monitor.FileChange{

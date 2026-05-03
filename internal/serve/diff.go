@@ -36,6 +36,11 @@ func renderDiff(fc monitor.FileChange) template.HTML {
 		diffStr = udiff.Unified(fc.Path, fc.Path, "", fc.Content)
 	case "strReplace":
 		diffStr = udiff.Unified(fc.Path, fc.Path, fc.OldStr, fc.NewStr)
+	case monitor.CommandDelete:
+		if fc.OldStr == "" {
+			return `<pre class="diff"><em class="muted">(delete content unavailable)</em></pre>`
+		}
+		diffStr = udiff.Unified(fc.Path, fc.Path, fc.OldStr, "")
 	}
 	if diffStr == "" {
 		return `<pre class="diff"><em class="muted">(no textual change)</em></pre>`
