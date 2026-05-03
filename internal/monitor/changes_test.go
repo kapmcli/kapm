@@ -228,6 +228,72 @@ func TestParseWriteInput(t *testing.T) {
 	}
 }
 
+func TestParseIDEFileChange(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		tool        string
+		raw         string
+		wantOk      bool
+		wantCommand string
+		wantPath    string
+		wantContent string
+		wantOldStr  string
+		wantNewStr  string
+		wantPurpose string
+	}{
+		{
+			name:        "create with content",
+			tool:        ActionCreate,
+			raw:         `{"file":"tmp-test.txt","originalContent":"","modifiedContent":"hello\n"}`,
+			wantOk:      true,
+			wantCommand: CommandCreate,
+			wantPath:    "/repo/tmp-test.txt",
+			wantContent: "hello\n",
+		},
+		{
+			name:        "write with before after",
+			tool:        ActionWrite,
+			raw:         `{"file":"a.txt","originalContent":"old\n","modifiedContent":"new\n"}`,
+			wantOk:      true,
+			wantCommand: CommandStrReplace,
+			wantPath:    "/repo/a.txt",
+			wantOldStr:  "old\n",
+			wantNewStr:  "new\n",
+		},
+		{
+			name:        "delete without original content still records file",
+			tool:        ActionDelete,
+			raw:         `{"file":"tmp-test.txt","why":"cleanup"}`,
+			wantOk:      true,
+			wantCommand: CommandDelete,
+			wantPath:    "/repo/tmp-test.txt",
+			wantPurpose: "cleanup",
+		},
+		{
+			name:   "missing file",
+			tool:   ActionCreate,
+			raw:    `{"modifiedContent":"x"}`,
+			wantOk: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			fc, ok := parseIDEFileChange(json.RawMessage(c.raw), c.tool, changeTs, "/repo")
+			if ok != c.wantOk {
+				t.Fatalf("ok = %v, want %v", ok, c.wantOk)
+			}
+			if !ok {
+				return
+			}
+			if fc.Command != c.wantCommand || fc.Path != c.wantPath || fc.Content != c.wantContent || fc.OldStr != c.wantOldStr || fc.NewStr != c.wantNewStr || fc.Purpose != c.wantPurpose {
+				t.Fatalf("FileChange = %#v", fc)
+			}
+		})
+	}
+}
+
 func TestNormalizeChangePath(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -327,6 +393,16 @@ func TestDiffLineCounts(t *testing.T) {
 			name:     "strReplace with modification",
 			fc:       FileChange{Command: "strReplace", OldStr: "foo\nbar\n", NewStr: "foo\nbaz\nqux\n"},
 			wantAdds: 2, wantDels: 1, wantOk: true,
+		},
+		{
+			name:     "delete with original content",
+			fc:       FileChange{Command: CommandDelete, OldStr: "a\nb\n"},
+			wantAdds: 0, wantDels: 2, wantOk: true,
+		},
+		{
+			name:   "delete without original content unavailable",
+			fc:     FileChange{Command: CommandDelete},
+			wantOk: false,
 		},
 		{
 			name:   "oversized returns ok=false",

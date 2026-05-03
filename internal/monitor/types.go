@@ -16,6 +16,7 @@ const (
 	RecordKindSessionMeta   = "sessionMeta"
 	RecordKindAgentSpawn    = "agentSpawn"
 	RecordKindStop          = "stop"
+	RecordKindHookEvent     = "hookEvent"
 )
 
 // SessionMessage.Kind values (wire format from Kiro; do not change).
@@ -72,6 +73,7 @@ const (
 	CommandCreate     = "create"
 	CommandStrReplace = "strReplace"
 	CommandInsert     = "insert"
+	CommandDelete     = "delete"
 )
 
 // FileChange captures a single file modification via the write tool.
@@ -153,6 +155,7 @@ type EventEntry struct {
 	ErrorDetail  string       // exit code + stderr excerpt (max 256 chars), empty if no error
 	InputSummary string       // short human-readable summary of tool_input (preToolUse only)
 	ToolInput    string       // full tool input text for expand view
+	ToolResult   string       // full tool result text for expand view, when available
 	Duration     JSONDuration // postToolUse.Ts - preToolUse.Ts (preToolUse only, 0 for errors)
 
 	toolUseID string // unexported: used for toolUse/toolResult pairing

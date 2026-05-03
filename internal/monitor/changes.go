@@ -24,6 +24,15 @@ type writeInput struct {
 	Purpose string `json:"__tool_use_purpose"`
 }
 
+type ideFileInput struct {
+	File            string `json:"file"`
+	Path            string `json:"path"`
+	Local           string `json:"local"`
+	OriginalContent string `json:"originalContent"`
+	ModifiedContent string `json:"modifiedContent"`
+	Why             string `json:"why"`
+}
+
 // parseWriteInput extracts a FileChange from a preToolUse write record.
 // Returns ok=false on malformed JSON, unknown command, or missing path.
 // Normalizes Path at extraction time using cwd; truncates oversized content
@@ -68,6 +77,53 @@ func parseWriteInput(raw json.RawMessage, ts time.Time, cwd string) (FileChange,
 	fc.OldStr = in.OldStr
 	fc.NewStr = in.NewStr
 
+	return fc, true
+}
+
+func parseIDEFileChange(raw json.RawMessage, tool string, ts time.Time, cwd string) (FileChange, bool) {
+	if len(raw) == 0 {
+		return FileChange{}, false
+	}
+	var in ideFileInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return FileChange{}, false
+	}
+	p := in.File
+	if p == "" {
+		p = in.Path
+	}
+	if p == "" {
+		return FileChange{}, false
+	}
+
+	fc := FileChange{Path: normalizeChangePath(p, cwd), Ts: ts, Purpose: in.Why}
+	switch tool {
+	case ActionCreate:
+		fc.Command = CommandCreate
+		fc.Content = in.ModifiedContent
+	case ActionWrite:
+		fc.Command = CommandStrReplace
+		fc.OldStr = in.OriginalContent
+		fc.NewStr = in.ModifiedContent
+	case ActionDelete:
+		fc.Command = CommandDelete
+		fc.OldStr = in.OriginalContent
+	default:
+		return FileChange{}, false
+	}
+
+	if len(fc.Content) > maxWriteFieldBytes {
+		fc.Content = ""
+		fc.Oversized = true
+	}
+	if len(fc.OldStr) > maxWriteFieldBytes {
+		fc.OldStr = ""
+		fc.Oversized = true
+	}
+	if len(fc.NewStr) > maxWriteFieldBytes {
+		fc.NewStr = ""
+		fc.Oversized = true
+	}
 	return fc, true
 }
 
@@ -177,6 +233,15 @@ func DiffLineCounts(fc FileChange) (adds, dels int, ok bool) {
 			n++
 		}
 		return n, 0, true
+	case CommandDelete:
+		if fc.OldStr == "" {
+			return 0, 0, false
+		}
+		n := strings.Count(fc.OldStr, "\n")
+		if !strings.HasSuffix(fc.OldStr, "\n") {
+			n++
+		}
+		return 0, n, true
 	case CommandStrReplace:
 		diffStr := udiff.Unified("", "", fc.OldStr, fc.NewStr)
 		for line := range strings.SplitSeq(diffStr, "\n") {
