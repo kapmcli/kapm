@@ -73,7 +73,7 @@ func recordSortTs(r MergedRecord) time.Time {
 		if !r.PostToolTs.IsZero() {
 			return r.PostToolTs
 		}
-	case RecordKindAgentSpawn, RecordKindStop:
+	case RecordKindAgentSpawn, RecordKindStop, RecordKindHookEvent:
 		if !r.PreToolTs.IsZero() {
 			return r.PreToolTs
 		}
@@ -116,6 +116,14 @@ func processRecord(st *aggState, r MergedRecord) {
 		if r.AssistantText != "" {
 			s.assistantResponse = truncateUTF8(r.AssistantText, maxAssistantResponseLength)
 		}
+	case RecordKindHookEvent:
+		s.timeline = append(s.timeline, EventEntry{
+			Ts:           ts,
+			Event:        r.EventName,
+			InputSummary: inputSummary(r.ToolInput, r.EventName, s.cwd),
+			ToolInput:    formatToolInput(r.ToolInput),
+			ToolResult:   r.ToolResult,
+		})
 	}
 }
 
@@ -163,8 +171,18 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 		}
 	}
 
+	if r.ActionState == "Rejected" || r.ActionState == "Error" {
+		return
+	}
 	if toolName == apmconfig.ToolWrite {
 		if fc, ok := parseWriteInput(r.ToolInput, ts, s.cwd); ok {
+			s.changes = append(s.changes, fc)
+		} else if fc, ok := parseIDEFileChange(r.ToolInput, toolName, ts, s.cwd); ok {
+			s.changes = append(s.changes, fc)
+		}
+	}
+	if toolName == ActionCreate || toolName == ActionDelete {
+		if fc, ok := parseIDEFileChange(r.ToolInput, toolName, ts, s.cwd); ok {
 			s.changes = append(s.changes, fc)
 		}
 	}
@@ -192,6 +210,12 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	postTs := r.PostToolTs
 	if !postTs.IsZero() && !preTs.IsZero() {
 		s.timeline[matchIdx].Duration = JSONDuration(postTs.Sub(preTs))
+	}
+	if r.ToolResult != "" {
+		s.timeline[matchIdx].ToolResult = r.ToolResult
+		if s.timeline[matchIdx].InputSummary == "" {
+			s.timeline[matchIdx].InputSummary = cleanSummary(r.ToolResult)
+		}
 	}
 	appendResolvedSubAgents(s, r, preTs, s.timeline[matchIdx].Duration)
 

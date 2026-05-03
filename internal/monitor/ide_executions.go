@@ -173,7 +173,6 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 			TotalInputTokens:  0,
 			TotalOutputTokens: 0,
 			PromptTexts:       s.PromptTexts,
-			ToolCalls:         res.ToolCalls,
 		})
 		// Generate toolUse + toolResult pairs from IDE actions for Timeline.
 		var lastInvokeTs int64
@@ -201,14 +200,15 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 			}
 
 			rec := MergedRecord{
-				SessionID: s.SessionID,
-				Kind:      RecordKindToolUse,
-				Agent:     "kiro-ide",
-				Cwd:       s.WorkspaceDirectory,
-				ToolName:  toolName,
-				ToolUseID: a.ActionID,
-				ToolInput: a.Input,
-				PreToolTs: preTs,
+				SessionID:   s.SessionID,
+				Kind:        RecordKindToolUse,
+				Agent:       "kiro-ide",
+				Cwd:         s.WorkspaceDirectory,
+				ToolName:    toolName,
+				ToolUseID:   a.ActionID,
+				ToolInput:   a.Input,
+				PreToolTs:   preTs,
+				ActionState: a.ActionState,
 			}
 
 			// Parse sub-agent invocation data.
@@ -225,7 +225,9 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 				ToolUseID:   a.ActionID,
 				ToolStatus:  ideActionStatus(a.ActionState),
 				ErrorDetail: a.ErrorMessage,
+				ToolResult:  string(a.Output),
 				PostToolTs:  postTs,
+				ActionState: a.ActionState,
 			})
 		}
 	}

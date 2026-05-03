@@ -315,6 +315,11 @@ func renderEditPreview(fc FileChange, maxLines int) string {
 		old, new = "", fc.Content
 	case CommandStrReplace:
 		old, new = fc.OldStr, fc.NewStr
+	case CommandDelete:
+		if fc.OldStr == "" {
+			return previewIndent + mutedStyle.Render("(delete content unavailable)") + "\n"
+		}
+		old, new = fc.OldStr, ""
 	default:
 		return ""
 	}
@@ -449,6 +454,12 @@ func (m *model) renderSessionTimeline(s *SessionDetail) string {
 			mutedStyle.Render(truncateVisible(summary, summaryW)))
 		if m.timelineExpanded && e.ToolInput != "" {
 			for line := range strings.SplitSeq(e.ToolInput, "\n") {
+				fmt.Fprintf(&b, "    %s\n", mutedStyle.Render(line))
+			}
+		}
+		if m.timelineExpanded && e.ToolResult != "" {
+			fmt.Fprintf(&b, "    %s\n", mutedStyle.Render("result:"))
+			for line := range strings.SplitSeq(e.ToolResult, "\n") {
 				fmt.Fprintf(&b, "    %s\n", mutedStyle.Render(line))
 			}
 		}
