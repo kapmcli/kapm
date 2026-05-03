@@ -12,6 +12,7 @@ type toolFormatter func(in toolInput, cwd string) (summary string, ok bool)
 
 var toolFormatters = map[string]toolFormatter{
 	apmconfig.ToolRead:  formatReadSummary,
+	ActionReadFiles:     formatReadSummary,
 	apmconfig.ToolGrep:  formatGrepSummary,
 	apmconfig.ToolGlob:  formatGlobSummary,
 	apmconfig.ToolShell: formatShellSummary,
@@ -19,6 +20,12 @@ var toolFormatters = map[string]toolFormatter{
 }
 
 func formatReadSummary(in toolInput, _ string) (string, bool) {
+	if len(in.Paths) > 0 && in.Paths[0] != "" {
+		if len(in.Paths) > 1 {
+			return in.Paths[0] + " (+" + strconv.Itoa(len(in.Paths)-1) + " more)", true
+		}
+		return in.Paths[0], true
+	}
 	if len(in.Operations) == 0 {
 		return "", false
 	}

@@ -266,11 +266,14 @@ type MergedRecord struct {
 	// sessions-derived
 	SessionID     string
 	Kind          string // "prompt", "toolUse", "toolResult", "assistantText"
+	EventName     string // raw lifecycle hook event name for Kind=="hookEvent"
 	ToolUseID     string // toolUse/toolResult pairing
 	ToolName      string
 	ToolInput     json.RawMessage // raw JSON from toolUse.input
 	ToolStatus    string          // toolResult status ("success"/"error")
 	ErrorDetail   string          // toolResult status=="error": content[0].data
+	ToolResult    string          // toolResult content/output when available
+	ActionState   string          // IDE action state, when available
 	PromptText    string
 	AssistantText string
 	TurnResponse  string    // final assistant text for the preceding turn (file-order)

@@ -116,7 +116,16 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDB
 			if execErr != nil {
 				slog.Warn("load ide executions", "err", execErr)
 			}
-			records = append(records, BuildIDEMergedRecords(ideSessions, execResults)...)
+			ideRecords := BuildIDEMergedRecords(ideSessions, execResults)
+			if hookLogsDir != "" {
+				ideHooks, hookErr := LoadIDEHookInputs(ctx, hookLogsDir)
+				if hookErr != nil {
+					slog.Warn("load ide hook inputs", "err", hookErr)
+				} else {
+					ideRecords = AppendIDEHookMergedRecords(ideRecords, ideSessions, ideHooks)
+				}
+			}
+			records = append(records, ideRecords...)
 		}
 	}
 
