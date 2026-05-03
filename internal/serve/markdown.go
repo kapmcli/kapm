@@ -17,6 +17,8 @@ import (
 // linkRelRenderer adds rel="noopener nofollow" to all <a> tags via goldmark NodeRenderer.
 type linkRelRenderer struct{ gmhtml.Config }
 
+type escapedRawHTMLRenderer struct{}
+
 func (r *linkRelRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindLink, r.renderLink)
 	reg.Register(ast.KindAutoLink, r.renderAutoLink)
@@ -72,6 +74,49 @@ func (r *linkRelRenderer) renderLink(w util.BufWriter, source []byte, n ast.Node
 	return ast.WalkContinue, nil
 }
 
+func (r *escapedRawHTMLRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindHTMLBlock, r.renderHTMLBlock)
+	reg.Register(ast.KindRawHTML, r.renderRawHTML)
+}
+
+func (r *escapedRawHTMLRenderer) renderHTMLBlock(
+	w util.BufWriter,
+	source []byte,
+	node ast.Node,
+	entering bool,
+) (ast.WalkStatus, error) {
+	n := node.(*ast.HTMLBlock)
+	if entering {
+		for i := range n.Lines().Len() {
+			line := n.Lines().At(i)
+			_, _ = w.Write(util.EscapeHTML(line.Value(source)))
+		}
+		return ast.WalkContinue, nil
+	}
+	if n.HasClosure() {
+		closure := n.ClosureLine
+		_, _ = w.Write(util.EscapeHTML(closure.Value(source)))
+	}
+	return ast.WalkContinue, nil
+}
+
+func (r *escapedRawHTMLRenderer) renderRawHTML(
+	w util.BufWriter,
+	source []byte,
+	node ast.Node,
+	entering bool,
+) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkSkipChildren, nil
+	}
+	n := node.(*ast.RawHTML)
+	for i := range n.Segments.Len() {
+		segment := n.Segments.At(i)
+		_, _ = w.Write(util.EscapeHTML(segment.Value(source)))
+	}
+	return ast.WalkSkipChildren, nil
+}
+
 var mdRenderer = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
 	goldmark.WithRendererOptions(gmhtml.WithHardWraps()),
@@ -79,12 +124,13 @@ var mdRenderer = goldmark.New(
 		renderer.WithNodeRenderers(
 			util.Prioritized(gmhtml.NewRenderer(), 1000),
 			util.Prioritized(&linkRelRenderer{}, 100),
+			util.Prioritized(&escapedRawHTMLRenderer{}, 100),
 		),
 	)),
 )
 
-// renderMarkdown converts markdown s to safe HTML. Raw HTML is escaped because
-// goldmark WithUnsafe is OFF. Empty input returns a placeholder element.
+// renderMarkdown converts markdown s to safe HTML. Raw HTML is rendered as
+// escaped text, never executable HTML. Empty input returns a placeholder element.
 func renderMarkdown(s string) template.HTML {
 	if strings.TrimSpace(s) == "" {
 		return `<em class="muted">(empty)</em>`
@@ -93,6 +139,6 @@ func renderMarkdown(s string) template.HTML {
 	if err := mdRenderer.Convert([]byte(s), &buf); err != nil {
 		return template.HTML(html.EscapeString(s))
 	}
-	//nolint:gosec // goldmark WithUnsafe OFF keeps raw HTML escaped
+	//nolint:gosec // raw HTML nodes are escaped by escapedRawHTMLRenderer
 	return template.HTML(buf.String())
 }

@@ -1084,8 +1084,14 @@ func TestRenderMarkdown(t *testing.T) {
 		{
 			name:     "raw-script-escape",
 			input:    "<script>alert(1)</script>",
-			contains: "<!-- raw HTML omitted -->",
+			contains: "&lt;script&gt;alert(1)&lt;/script&gt;",
 			excludes: "<script>",
+		},
+		{
+			name:     "raw-thinking-escape",
+			input:    "<thinking>private notes</thinking>\n\nvisible",
+			contains: "&lt;thinking&gt;private notes&lt;/thinking&gt;",
+			excludes: "<thinking>",
 		},
 		{
 			name:     "link-with-rel",
