@@ -56,17 +56,22 @@ kapm agent generate
 
 # 为选中的 Agent 安装 kapm hook。
 kapm init-hook
+# 为 Kiro IDE 安装 kapm hook 文件。
+kapm init-ide-hook
 ```
 
 ## 监控
 
 kapm 以 Kiro CLI v2 的会话数据（`~/.kiro/sessions/cli/{uuid}.jsonl` 日志和 `{uuid}.json` 元数据）作为主要数据源，同时在有 IDE 会话日志时自动加载。存在 Kiro CLI v1 SQLite 会话存储（`conversations_v2`）时也会读取。基本监控无需安装 hook——会话文件已包含提示、助手响应、工具调用、工具结果以及每轮的元数据（token 数、积分、耗时）。
 
-`kapm init-hook` 可选地向 `.kiro/agents/*.json` 添加 hook 条目，以获取补充数据。Hook 会将 `agentSpawn`、`preToolUse`、`postToolUse` 和 `stop` 事件以精简 JSONL 格式写入 `.kapm/logs/{session_id}.jsonl`，提供每次工具调用的时间戳（用于计算耗时）、Agent 名称（用于追踪委派关系）和 shell 退出状态。
+`kapm init-hook` 可选地向 `.kiro/agents/*.json` 添加 hook 条目，以获取补充 CLI Agent 数据。`kapm init-ide-hook` 会将 Kiro IDE hook 文件写入 `.kiro/hooks/*.kiro.hook`。CLI hook 记录 `agentSpawn`、`preToolUse`、`postToolUse` 和 `stop`；IDE hook 会在 `preToolUse`、`postToolUse` 和 `stop` 调用 `kapm hook-dump`，把 raw stdin 和部分 Kiro 环境变量写入 `.kapm/logs/hook-input.jsonl`，以便先确认哪些 IDE telemetry 值可用。
 
 ```bash
 kapm init-hook             # 交互式选择 Agent
+kapm init-hook --global    # 选择 ~/.kiro/agents 下的全局 Agent
 kapm init-hook --remove    # 移除 kapm 管理的 hook 条目
+kapm init-ide-hook         # 安装工作区 Kiro IDE hook 文件
+kapm init-ide-hook --remove # 移除 kapm 管理的 IDE hook 文件
 
 kapm monitor
 kapm monitor --json

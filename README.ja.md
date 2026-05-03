@@ -56,17 +56,22 @@ kapm agent generate
 
 # 選択したエージェントに kapm hook を追加
 kapm init-hook
+# Kiro IDE 用の kapm hook ファイルを追加
+kapm init-ide-hook
 ```
 
 ## 監視
 
 kapm は Kiro CLI v2 のセッションデータ (`~/.kiro/sessions/cli/{uuid}.jsonl` ログと `{uuid}.json` メタデータ) をメインのデータソースとして読み込みます。利用可能な場合は Kiro IDE のセッションログも自動的に読み込まれます。Kiro CLI v1 の SQLite セッションストア (`conversations_v2`) も、存在する場合に読み込みます。基本的な監視には hook のインストールは不要で、セッションファイルにはプロンプト、アシスタント応答、ツール呼び出し、ツール結果、ターンごとのメタデータ (トークン数、クレジット、所要時間) が含まれています。
 
-`kapm init-hook` は補足データのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。hook は `agentSpawn` / `preToolUse` / `postToolUse` / `stop` イベントを最小限の JSONL として `.kapm/logs/{session_id}.jsonl` に記録し、ツール呼び出しごとのタイムスタンプ (所要時間の計算用)、エージェント名 (委譲の追跡用)、シェル終了ステータスを提供します。
+`kapm init-hook` は補足 CLI エージェントデータのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。`kapm init-ide-hook` は Kiro IDE hook ファイルを `.kiro/hooks/*.kiro.hook` に書き込みます。CLI hook は `agentSpawn` / `preToolUse` / `postToolUse` / `stop` を記録し、IDE hook は `preToolUse` / `postToolUse` / `stop` で `kapm hook-dump` を呼び、IDE テレメトリとして取り込む範囲を決める前に raw stdin と一部の Kiro 環境変数を `.kapm/logs/hook-input.jsonl` で確認できるようにします。
 
 ```bash
 kapm init-hook             # エージェントを対話的に選択
+kapm init-hook --global    # ~/.kiro/agents 以下のグローバルエージェントを選択
 kapm init-hook --remove    # kapm 管理の hook を削除
+kapm init-ide-hook         # ワークスペースの Kiro IDE hook ファイルを追加
+kapm init-ide-hook --remove # kapm 管理の IDE hook ファイルを削除
 
 kapm monitor
 kapm monitor --json

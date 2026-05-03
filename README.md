@@ -52,17 +52,22 @@ kapm agent generate
 
 # Install kapm hook entries for selected agents.
 kapm init-hook
+# Install kapm hook files for Kiro IDE.
+kapm init-ide-hook
 ```
 
 ## Monitoring
 
 kapm reads Kiro CLI v2 session data (`~/.kiro/sessions/cli/{uuid}.jsonl` logs with `{uuid}.json` metadata) as its primary data source. Kiro IDE session logs are also loaded automatically when available. Kiro CLI v1 SQLite session stores (`conversations_v2`) are also read when present. No hook installation is required for basic monitoring — sessions contain prompts, assistant responses, tool calls, tool results, and per-turn metadata (credits).
 
-`kapm init-hook` optionally adds hook entries to `.kiro/agents/*.json` for supplementary data. Hooks record `agentSpawn`, `preToolUse`, `postToolUse`, and `stop` events as minimal JSONL under `.kapm/logs/{session_id}.jsonl`, providing per-tool-call timestamps (for duration calculation), agent names (for delegation tracking), and shell exit status.
+`kapm init-hook` optionally adds hook entries to `.kiro/agents/*.json` for supplementary CLI agent data. `kapm init-ide-hook` writes Kiro IDE hook files under `.kiro/hooks/*.kiro.hook`. CLI hooks record `agentSpawn`, `preToolUse`, `postToolUse`, and `stop`; IDE hooks call `kapm hook-dump` for `preToolUse`, `postToolUse`, and `stop` so you can inspect the raw stdin and selected Kiro environment variables in `.kapm/logs/hook-input.jsonl` before deciding how much IDE telemetry to ingest.
 
 ```bash
 kapm init-hook             # select agents interactively
+kapm init-hook --global    # select global agents under ~/.kiro/agents
 kapm init-hook --remove    # remove kapm-managed hook entries
+kapm init-ide-hook         # install workspace Kiro IDE hook files
+kapm init-ide-hook --remove # remove kapm-managed IDE hook files
 
 kapm monitor
 kapm monitor --json
