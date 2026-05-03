@@ -36,6 +36,12 @@ type updateDetails struct {
 	Resources    []string
 }
 
+type existingAgent struct {
+	Path  string
+	Raw   map[string]json.RawMessage
+	Known agentKnownFields
+}
+
 // Update interactively updates an existing .kiro agent config.
 func Update(opts UpdateOptions) error {
 	if err := update(opts); err != nil {
@@ -53,42 +59,65 @@ func update(opts UpdateOptions) error {
 		return fmt.Errorf("validate agent name: %w", err)
 	}
 
-	agentPath := AgentFile(root, name)
-	if err := validatePath(root, filepath.Join(root, paths.KiroDir)); err != nil {
-		return fmt.Errorf("validate .kiro dir: %w", err)
-	}
-	if err := validatePath(root, filepath.Join(root, paths.KiroDir, paths.AgentsSubdir)); err != nil {
-		return fmt.Errorf("validate agents subdir: %w", err)
-	}
-	if err := validatePath(root, agentPath); err != nil {
-		return fmt.Errorf("validate agent path: %w", err)
-	}
-	rawMap, existingData, err := readAgentRawJSON(agentPath)
+	existing, err := loadExistingAgent(root, name)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("agent %q does not exist; use `kapm agent generate` to create it", name)
-		}
-		return fmt.Errorf("read %q: %w", agentPath, err)
-	}
-
-	var known agentKnownFields
-	if err := json.Unmarshal(existingData, &known); err != nil {
-		return fmt.Errorf("unmarshal known fields %q: %w", agentPath, err)
+		return err
 	}
 
 	p := cli.NewPrompter(opts.In, opts.Out)
-	details, err := promptUpdateDetails(p, opts.Out, known)
+	details, err := promptUpdateDetails(p, opts.Out, existing.Known)
 	if err != nil {
 		return fmt.Errorf("prompt update details: %w", err)
 	}
 
-	if details.Model == known.Model && slices.Equal(details.Tools, known.Tools) && slices.Equal(details.AllowedTools, known.AllowedTools) && slices.Equal(details.Resources, known.Resources) {
+	if updateDetailsMatchKnown(details, existing.Known) {
 		if _, err := fmt.Fprintln(opts.Out, "No changes."); err != nil {
 			return fmt.Errorf("write no changes: %w", err)
 		}
 		return nil
 	}
 
+	if err := applyUpdateDetails(existing.Raw, existing.Known, details); err != nil {
+		return err
+	}
+	return writeAgentRawJSON(existing.Path, existing.Raw)
+}
+
+func loadExistingAgent(root, name string) (existingAgent, error) {
+	agentPath := AgentFile(root, name)
+	if err := validatePath(root, filepath.Join(root, paths.KiroDir)); err != nil {
+		return existingAgent{}, fmt.Errorf("validate .kiro dir: %w", err)
+	}
+	if err := validatePath(root, filepath.Join(root, paths.KiroDir, paths.AgentsSubdir)); err != nil {
+		return existingAgent{}, fmt.Errorf("validate agents subdir: %w", err)
+	}
+	if err := validatePath(root, agentPath); err != nil {
+		return existingAgent{}, fmt.Errorf("validate agent path: %w", err)
+	}
+
+	rawMap, existingData, err := readAgentRawJSON(agentPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return existingAgent{}, fmt.Errorf("agent %q does not exist; use `kapm agent generate` to create it", name)
+		}
+		return existingAgent{}, fmt.Errorf("read %q: %w", agentPath, err)
+	}
+
+	var known agentKnownFields
+	if err := json.Unmarshal(existingData, &known); err != nil {
+		return existingAgent{}, fmt.Errorf("unmarshal known fields %q: %w", agentPath, err)
+	}
+	return existingAgent{Path: agentPath, Raw: rawMap, Known: known}, nil
+}
+
+func updateDetailsMatchKnown(details updateDetails, known agentKnownFields) bool {
+	return details.Model == known.Model &&
+		slices.Equal(details.Tools, known.Tools) &&
+		slices.Equal(details.AllowedTools, known.AllowedTools) &&
+		slices.Equal(details.Resources, known.Resources)
+}
+
+func applyUpdateDetails(rawMap map[string]json.RawMessage, known agentKnownFields, details updateDetails) error {
 	if details.Model != known.Model {
 		if err := setRawJSONField(rawMap, "model", details.Model); err != nil {
 			return fmt.Errorf("set model field: %w", err)
@@ -111,8 +140,7 @@ func update(opts UpdateOptions) error {
 			return fmt.Errorf("set resources field: %w", err)
 		}
 	}
-
-	return writeAgentRawJSON(agentPath, rawMap)
+	return nil
 }
 
 func promptUpdateDetails(p *cli.Prompter, out io.Writer, known agentKnownFields) (updateDetails, error) {

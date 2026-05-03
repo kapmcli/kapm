@@ -1,7 +1,6 @@
 package convert
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,26 +65,17 @@ func ConvertMCP(srcDir, dstDir string, force bool) error {
 // ConvertMCPWithReport converts MCP dependencies and reports converted or skipped servers.
 func ConvertMCPWithReport(srcDir, dstDir string, force bool) (Report, error) {
 	manifestPath := filepath.Join(filepath.Dir(srcDir), paths.APMManifest)
-	info, statErr := os.Stat(manifestPath)
-	if statErr != nil {
-		if errors.Is(statErr, fs.ErrNotExist) {
-			return Report{}, nil
-		}
-		return Report{}, wrapConvertError("mcp", manifestPath, statErr)
-	}
-	if info.Size() > apmconfig.MaxManifestBytes {
-		return Report{}, fmt.Errorf("manifest %q too large (%d bytes, limit %d)", manifestPath, info.Size(), apmconfig.MaxManifestBytes)
-	}
-	manifestData, err := os.ReadFile(manifestPath)
+	manifest, ok, err := apmconfig.LoadStrictYAMLManifest[mcpManifest](
+		manifestPath,
+		os.ReadFile,
+		func(path string, err error) error { return wrapConvertError("mcp", path, err) },
+		func(path string, err error) error { return wrapConvertError("mcp", path, err) },
+	)
 	if err != nil {
-		return Report{}, wrapConvertError("mcp", manifestPath, err)
+		return Report{}, err
 	}
-
-	var manifest mcpManifest
-	dec := yaml.NewDecoder(bytes.NewReader(manifestData))
-	dec.KnownFields(true)
-	if err := dec.Decode(&manifest); err != nil {
-		return Report{}, fmt.Errorf("parse apm.yml: %w", err)
+	if !ok {
+		return Report{}, nil
 	}
 	return convertMCPDeps(manifest.Dependencies.MCP, dstDir, force, manifestPath)
 }

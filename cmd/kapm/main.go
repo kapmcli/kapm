@@ -164,8 +164,7 @@ func (e usageError) Error() string {
 }
 
 func exitCodeOf(err error) int {
-	var usage usageError
-	if errors.As(err, &usage) {
+	if _, ok := errors.AsType[usageError](err); ok {
 		return 2
 	}
 	return 1
@@ -330,45 +329,64 @@ func runPowerInstall(args []string) error {
 	if !ok {
 		return nil
 	}
-	if len(fs.Args()) == 0 {
-		return usageError{msg: "power install requires exactly one argument: <url-or-path>"}
-	}
-	if len(fs.Args()) != 1 {
-		return usageError{msg: "power install requires exactly one argument: <url-or-path>"}
-	}
 
-	targetDir, err := expandTarget(*targetDirFlag)
+	installOpts, err := powerInstallOptionsFromFlagSet(fs, *targetDirFlag, *refFlag, *force, *timeoutFlag)
 	if err != nil {
 		return err
+	}
+
+	result, err := powerInstallRun(context.Background(), installOpts)
+	if err != nil {
+		return err
+	}
+	printPowerInstallResult(os.Stdout, result)
+	return nil
+}
+
+func powerInstallOptionsFromFlagSet(
+	fs *flag.FlagSet,
+	targetDirFlag string,
+	refFlag string,
+	force bool,
+	timeout time.Duration,
+) (power.InstallOptions, error) {
+	if len(fs.Args()) == 0 {
+		return power.InstallOptions{}, usageError{msg: "power install requires exactly one argument: <url-or-path>"}
+	}
+	if len(fs.Args()) != 1 {
+		return power.InstallOptions{}, usageError{msg: "power install requires exactly one argument: <url-or-path>"}
+	}
+
+	targetDir, err := expandTarget(targetDirFlag)
+	if err != nil {
+		return power.InstallOptions{}, err
 	}
 
 	source, err := power.ParsePowerSource(fs.Args()[0])
 	if err != nil {
-		return err
+		return power.InstallOptions{}, err
 	}
-	if *refFlag != "" && source.Kind != power.SourceLocal {
-		source.Ref = *refFlag
+	if refFlag != "" && source.Kind != power.SourceLocal {
+		source.Ref = refFlag
 	}
 
-	result, err := powerInstallRun(context.Background(), power.InstallOptions{
+	return power.InstallOptions{
 		Source:    source,
 		TargetDir: targetDir,
-		Force:     *force,
-		Timeout:   *timeoutFlag,
-	})
-	if err != nil {
-		return err
-	}
+		Force:     force,
+		Timeout:   timeout,
+	}, nil
+}
 
-	_, _ = fmt.Fprintf(os.Stdout, "Installed power %q to %s\n", result.Name, result.PowerDir)
+func printPowerInstallResult(w io.Writer, result *power.Result) {
+	_, _ = fmt.Fprintf(w, "Installed power %q to %s\n", result.Name, result.PowerDir)
 	if result.ResolvedCommit != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "Resolved commit: %s\n", result.ResolvedCommit)
+		_, _ = fmt.Fprintf(w, "Resolved commit: %s\n", result.ResolvedCommit)
 	}
-	printPowerInstallSuggestions(os.Stdout, result)
+	printPowerInstallSuggestions(w, result)
 	for _, warning := range result.Warnings {
-		_, _ = fmt.Fprintf(os.Stdout, "Warning: %s\n", warning)
+		_, _ = fmt.Fprintf(w, "Warning: %s\n", warning)
 	}
-	return nil
 }
 
 func printPowerInstallSuggestions(w io.Writer, result *power.Result) {
@@ -691,30 +709,55 @@ func runHookHandler(args []string) error {
 		return err
 	}
 
-	if *agentName == "" {
-		*agentName = os.Getenv("AGENT")
+	input, resolvedAgent, err := prepareHookHandlerInput(hookHandlerInputOptions{
+		Stdin:     os.Stdin,
+		Agent:     *agentName,
+		Event:     *eventName,
+		SessionID: *sessionID,
+		Tool:      *toolName,
+		Getenv:    os.Getenv,
+	})
+	if err != nil {
+		return err
 	}
-	input := io.Reader(os.Stdin)
-	if *eventName != "" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return err
-		}
-		if len(bytes.TrimSpace(data)) == 0 {
-			fallback := map[string]string{
-				"hook_event_name": *eventName,
-				"session_id":      *sessionID,
-				"tool_name":       *toolName,
-			}
-			data, err = json.Marshal(fallback)
-			if err != nil {
-				return err
-			}
-		}
-		input = bytes.NewReader(data)
-	}
-	hook.Handle(input, os.Stdout, os.Stderr, time.Now, ".", *agentName)
+	hook.Handle(input, os.Stdout, os.Stderr, time.Now, ".", resolvedAgent)
 	return nil
+}
+
+type hookHandlerInputOptions struct {
+	Stdin     io.Reader
+	Agent     string
+	Event     string
+	SessionID string
+	Tool      string
+	Getenv    func(string) string
+}
+
+func prepareHookHandlerInput(opts hookHandlerInputOptions) (io.Reader, string, error) {
+	agentName := opts.Agent
+	if agentName == "" && opts.Getenv != nil {
+		agentName = opts.Getenv("AGENT")
+	}
+	if opts.Event == "" {
+		return opts.Stdin, agentName, nil
+	}
+
+	data, err := io.ReadAll(opts.Stdin)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		fallback := map[string]string{
+			"hook_event_name": opts.Event,
+			"session_id":      opts.SessionID,
+			"tool_name":       opts.Tool,
+		}
+		data, err = json.Marshal(fallback)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return bytes.NewReader(data), agentName, nil
 }
 
 func runHookDump(args []string) error {

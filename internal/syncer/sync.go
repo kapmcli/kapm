@@ -1,7 +1,6 @@
 package syncer
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -98,27 +97,13 @@ func Run(opts Options) error {
 // loadManifest reads and parses apm.yml at manifestPath.
 // Returns a zero-value manifest (no error) if the file does not exist.
 func loadManifest(manifestPath string) (projectManifest, error) {
-	info, err := os.Stat(manifestPath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return projectManifest{}, nil
-		}
-		return projectManifest{}, fmt.Errorf("sync stat %q: %w", manifestPath, err)
-	}
-	if info.Size() > apmconfig.MaxManifestBytes {
-		return projectManifest{}, fmt.Errorf("manifest %q too large (%d bytes, limit %d)", manifestPath, info.Size(), apmconfig.MaxManifestBytes)
-	}
-	data, err := readFileFunc(manifestPath)
-	if err != nil {
-		return projectManifest{}, fmt.Errorf("sync read %q: %w", manifestPath, err)
-	}
-	var manifest projectManifest
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&manifest); err != nil {
-		return projectManifest{}, fmt.Errorf("parse apm.yml: %w", err)
-	}
-	return manifest, nil
+	manifest, _, err := apmconfig.LoadStrictYAMLManifest[projectManifest](
+		manifestPath,
+		readFileFunc,
+		func(path string, err error) error { return fmt.Errorf("sync stat %q: %w", path, err) },
+		func(path string, err error) error { return fmt.Errorf("sync read %q: %w", path, err) },
+	)
+	return manifest, err
 }
 
 func sourceAPMDirs(root string, force bool, manifest projectManifest) ([]string, error) {

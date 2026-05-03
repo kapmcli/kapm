@@ -2,13 +2,18 @@
 package apmconfig
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // DefaultAgentTools is the canonical list of tools exposed to agents.
@@ -26,6 +31,54 @@ const DefaultSkillsResource = "skill://.kiro/skills/**/SKILL.md"
 // MaxManifestBytes is the upper bound on manifest file size, shared by
 // the installer (sync.go) and MCP converter (mcp.go). 1 MiB.
 const MaxManifestBytes = 1 << 20
+
+// ManifestErrorWrapper formats stat/read errors for package-specific callers.
+type ManifestErrorWrapper func(path string, err error) error
+
+// LoadStrictYAMLManifest reads manifestPath, enforces the shared size limit,
+// and decodes YAML with KnownFields enabled. Missing files return ok=false.
+func LoadStrictYAMLManifest[T any](
+	manifestPath string,
+	readFile func(string) ([]byte, error),
+	wrapStatError ManifestErrorWrapper,
+	wrapReadError ManifestErrorWrapper,
+) (manifest T, ok bool, err error) {
+	info, err := os.Stat(manifestPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return manifest, false, nil
+		}
+		return manifest, false, wrapManifestError(wrapStatError, manifestPath, err)
+	}
+	if info.Size() > MaxManifestBytes {
+		return manifest, false, fmt.Errorf(
+			"manifest %q too large (%d bytes, limit %d)",
+			manifestPath,
+			info.Size(),
+			MaxManifestBytes,
+		)
+	}
+	if readFile == nil {
+		readFile = os.ReadFile
+	}
+	data, err := readFile(manifestPath)
+	if err != nil {
+		return manifest, false, wrapManifestError(wrapReadError, manifestPath, err)
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&manifest); err != nil {
+		return manifest, false, fmt.Errorf("parse apm.yml: %w", err)
+	}
+	return manifest, true, nil
+}
+
+func wrapManifestError(wrap ManifestErrorWrapper, path string, err error) error {
+	if wrap == nil {
+		return err
+	}
+	return wrap(path, err)
+}
 
 // SafeIdentifierPattern restricts values used as filenames and agent names.
 var SafeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
