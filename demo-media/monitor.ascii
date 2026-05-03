@@ -359,7 +359,7 @@ $ KAPM_UPDATED_AT=12:00:00 ./kapm monitor --since 8760h --logs-dir testdata/moni
   kapm monitor    period: last 365d0h  updated: 12:00:00
   1 Overview    2 Sessions    3 Agents    4 Tools    5 Skills
 
-No log data found in testdata/monitor/sessions
+Waiting for session data in testdata/monitor/sessions
 tab/←→: switch · 1-5: jump · q: quit · r: refresh
 
 

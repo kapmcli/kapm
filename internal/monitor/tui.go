@@ -356,7 +356,7 @@ func (m *model) renderTabs() string {
 
 func (m *model) renderBody() string {
 	if len(m.metrics.Overview.Sessions) == 0 {
-		return mutedStyle.Render("No log data found in " + m.sessionsDir)
+		return mutedStyle.Render("Waiting for session data in " + m.sessionsDir)
 	}
 	switch m.tab {
 	case tabOverview:
