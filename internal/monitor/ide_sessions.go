@@ -127,7 +127,36 @@ func loadWorkspaceSessions(ctx context.Context, dir, workspacePath string, since
 			PromptTexts:        promptTexts,
 		})
 	}
-	return result, nil
+	return filterKapmIDEHookSessions(result), nil
+}
+
+func filterKapmIDEHookSessions(sessions []IDEParsedSession) []IDEParsedSession {
+	out := sessions[:0]
+	for _, s := range sessions {
+		if isKapmIDEHookTitle(s.Title) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func isKapmIDEHookTitle(title string) bool {
+	switch title {
+	case "kapm Manual Hook Dump",
+		"kapm Prompt Submit Logger",
+		"kapm Pre Tool Use Logger",
+		"kapm Post Tool Use Logger",
+		"kapm Stop Logger",
+		"kapm File Created Logger",
+		"kapm File Edited Logger",
+		"kapm File Deleted Logger",
+		"kapm Pre Task Execution Logger",
+		"kapm Post Task Execution Logger":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseUnixMillis(s string) time.Time {

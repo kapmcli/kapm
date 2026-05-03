@@ -86,6 +86,27 @@ func TestLoadIDESessions_CwdFilter(t *testing.T) {
 	}
 }
 
+func TestLoadIDESessions_FiltersKapmHookLoggerSessions(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sessions := []IDESessionEntry{
+		{SessionID: "real-session", Title: "User request", DateCreated: "1777435222255"},
+		{SessionID: "hook-session", Title: "kapm File Edited Logger", DateCreated: "1777435222256"},
+	}
+	buildIDEFixture(t, dir, "/home/user/project-alpha", sessions, map[string]IDESessionHistory{
+		"real-session": makeHistory("exec-real"),
+		"hook-session": makeHistory("exec-hook"),
+	})
+
+	got, err := LoadIDESessions(context.Background(), dir, time.Time{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SessionID != "real-session" {
+		t.Fatalf("want only real-session, got %#v", got)
+	}
+}
+
 func TestLoadIDESessions_SinceFilter(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
