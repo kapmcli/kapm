@@ -104,8 +104,10 @@ func TestRunCommandHelpOutputsToStdout(t *testing.T) {
 		{name: "sync help", args: []string{"sync", "--help"}, want: "Usage: kapm sync [flags]"},
 		{name: "monitor help", args: []string{"monitor", "--help"}, want: "Usage: kapm monitor [flags]"},
 		{name: "serve help", args: []string{"serve", "--help"}, want: "Usage: kapm serve [flags]"},
-		{name: "init-hook help", args: []string{"init-hook", "--help"}, want: "Usage: kapm init-hook [--remove]"},
+		{name: "init-hook help", args: []string{"init-hook", "--help"}, want: "Usage: kapm init-hook [flags]"},
+		{name: "init-ide-hook help", args: []string{"init-ide-hook", "--help"}, want: "Usage: kapm init-ide-hook [flags]"},
 		{name: "hook-handler help", args: []string{"hook-handler", "--help"}, want: "Usage: kapm hook-handler [flags]"},
+		{name: "hook-dump help", args: []string{"hook-dump", "--help"}, want: "Usage: kapm hook-dump [flags]"},
 		{name: "power help", args: []string{"power", "--help"}, want: "Usage: kapm power <subcommand>"},
 		{name: "power install help", args: []string{"power", "install", "--help"}, want: "Usage: kapm power install <url-or-path> [flags]"},
 		{name: "agent generate help", args: []string{"agent", "generate", "--help"}, want: "Usage: kapm agent generate [flags]"},
@@ -182,9 +184,19 @@ func TestRunArgumentValidation(t *testing.T) {
 			wantErr: "init-hook does not accept positional arguments",
 		},
 		{
+			name:    "init-ide-hook rejects positional args",
+			args:    []string{"init-ide-hook", "extra"},
+			wantErr: "init-ide-hook does not accept positional arguments",
+		},
+		{
 			name:    "hook-handler rejects positional args",
 			args:    []string{"hook-handler", "extra"},
 			wantErr: "hook-handler does not accept positional arguments",
+		},
+		{
+			name:    "hook-dump rejects positional args",
+			args:    []string{"hook-dump", "extra"},
+			wantErr: "hook-dump does not accept positional arguments",
 		},
 	}
 
@@ -492,12 +504,121 @@ func TestRunInitHookAgentsDirIsFile(t *testing.T) {
 	}
 }
 
+func TestRunInitHookGlobalUsesHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	}
+
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	if err := os.MkdirAll(".kiro", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(".kiro/agents", []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"init-hook", "--global"})
+	})
+	if err != nil {
+		t.Fatalf("run(init-hook --global) error = %v, want nil", err)
+	}
+	if !strings.Contains(stdout, "No agents found") {
+		t.Fatalf("stdout = %q, want 'No agents found'", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+}
+
+func TestRunInitHookGlobalTargetDirExclusive(t *testing.T) {
+	_, _, err := captureOutput(t, func() error {
+		return run([]string{"init-hook", "--global", "--target-dir", "/tmp/foo"})
+	})
+	if err == nil {
+		t.Fatal("expected error for --global + --target-dir, got nil")
+	}
+	if !strings.Contains(err.Error(), "--global") || !strings.Contains(err.Error(), "--target-dir") {
+		t.Fatalf("error = %q, want message mentioning --global and --target-dir", err.Error())
+	}
+}
+
 func TestRunInitHookUnknownFlag(t *testing.T) {
 	_, _, err := captureOutput(t, func() error {
 		return runInitHook([]string{"--unknown"})
 	})
 	if err == nil {
 		t.Fatal("runInitHook(--unknown) error = nil, want non-nil error")
+	}
+}
+
+func TestRunInitIDEHookInstallAndRemove(t *testing.T) {
+	dir := t.TempDir()
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"init-ide-hook", "--target-dir", dir})
+	})
+	if err != nil {
+		t.Fatalf("run(init-ide-hook) error = %v", err)
+	}
+	if !strings.Contains(stdout, "kapm-manual-dump.kiro.hook") {
+		t.Fatalf("stdout = %q, want installed hook path", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	hookPath := filepath.Join(dir, ".kiro", "hooks", "kapm-manual-dump.kiro.hook")
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", hookPath, err)
+	}
+	if !bytes.Contains(data, []byte(`"type": "userTriggered"`)) {
+		t.Fatalf("hook file = %s, want userTriggered trigger", data)
+	}
+	if !bytes.Contains(data, []byte(`hook-dump --agent ide`)) {
+		t.Fatalf("hook file = %s, want hook-dump command", data)
+	}
+	if !bytes.Contains(data, []byte(`--event manual`)) {
+		t.Fatalf("hook file = %s, want event flag", data)
+	}
+
+	stdout, stderr, err = captureOutput(t, func() error {
+		return run([]string{"init-ide-hook", "--target-dir", dir, "--remove"})
+	})
+	if err != nil {
+		t.Fatalf("run(init-ide-hook --remove) error = %v", err)
+	}
+	if !strings.Contains(stdout, "kapm-manual-dump.kiro.hook") {
+		t.Fatalf("stdout = %q, want removed hook path", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
+		t.Fatalf("hook should be removed, stat err = %v", err)
+	}
+}
+
+func TestRunInitIDEHookUnknownFlag(t *testing.T) {
+	_, _, err := captureOutput(t, func() error {
+		return runInitIDEHook([]string{"--unknown"})
+	})
+	if err == nil {
+		t.Fatal("runInitIDEHook(--unknown) error = nil, want non-nil error")
 	}
 }
 
@@ -588,6 +709,103 @@ func TestRunHookHandlerFlagOverridesEnv(t *testing.T) {
 	}
 	if rec.Agent != "flag-agent" {
 		t.Fatalf("agent = %q, want flag-agent", rec.Agent)
+	}
+}
+
+func TestRunHookHandlerFallbackEventWhenStdinEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	origStdin := os.Stdin
+	stdinReader, stdinWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe(stdin): %v", err)
+	}
+	if err := stdinWriter.Close(); err != nil {
+		t.Fatalf("stdinWriter.Close(): %v", err)
+	}
+	os.Stdin = stdinReader
+	t.Cleanup(func() { os.Stdin = origStdin })
+	t.Cleanup(func() { _ = stdinReader.Close() })
+
+	_, stderr, err := captureOutput(t, func() error {
+		return run([]string{"hook-handler", "--agent", "ide", "--event", "preToolUse", "--session", "ide"})
+	})
+	if err != nil {
+		t.Fatalf("run(hook-handler fallback) error = %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".kapm", "logs", "ide.jsonl"))
+	if err != nil {
+		t.Fatalf("ReadFile(fallback log): %v", err)
+	}
+	var rec struct {
+		Agent   string `json:"agent"`
+		Session string `json:"session"`
+		Event   string `json:"event"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &rec); err != nil {
+		t.Fatalf("Unmarshal(log): %v", err)
+	}
+	if rec.Agent != "ide" || rec.Session != "ide" || rec.Event != "preToolUse" {
+		t.Fatalf("record = %#v, want ide/preToolUse fallback", rec)
+	}
+}
+
+func TestRunHookDumpWritesInputLog(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("USER_PROMPT", "prompt from env")
+
+	origStdin := os.Stdin
+	stdinReader, stdinWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe(stdin): %v", err)
+	}
+	if _, err := io.WriteString(stdinWriter, `{"from":"stdin"}`); err != nil {
+		t.Fatalf("WriteString(stdin): %v", err)
+	}
+	if err := stdinWriter.Close(); err != nil {
+		t.Fatalf("stdinWriter.Close(): %v", err)
+	}
+	os.Stdin = stdinReader
+	t.Cleanup(func() { os.Stdin = origStdin })
+	t.Cleanup(func() { _ = stdinReader.Close() })
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		return run([]string{"hook-dump", "--agent", "ide", "--event", "preToolUse"})
+	})
+	if err != nil {
+		t.Fatalf("run(hook-dump) error = %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	logPath := filepath.Join(dir, ".kapm", "logs", "hook-input.jsonl")
+	if !strings.Contains(stdout, filepath.Join(".kapm", "logs", "hook-input.jsonl")) {
+		t.Fatalf("stdout = %q, want hook input log path", stdout)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(hook-input): %v", err)
+	}
+	var rec struct {
+		Event string            `json:"event"`
+		Agent string            `json:"agent"`
+		Stdin string            `json:"stdin"`
+		Env   map[string]string `json:"env"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &rec); err != nil {
+		t.Fatalf("Unmarshal(hook-input): %v", err)
+	}
+	if rec.Event != "preToolUse" || rec.Agent != "ide" || rec.Stdin != `{"from":"stdin"}` {
+		t.Fatalf("record = %#v", rec)
+	}
+	if rec.Env["USER_PROMPT"] != "prompt from env" {
+		t.Fatalf("env = %#v", rec.Env)
 	}
 }
 

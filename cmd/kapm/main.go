@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/kapmcli/kapm/internal/agent"
 	"github.com/kapmcli/kapm/internal/hook"
+	"github.com/kapmcli/kapm/internal/hookdump"
+	"github.com/kapmcli/kapm/internal/idehook"
 	"github.com/kapmcli/kapm/internal/install"
 	"github.com/kapmcli/kapm/internal/power"
 	"github.com/kapmcli/kapm/internal/syncer"
@@ -80,6 +83,11 @@ func run(args []string) error {
 			description: "interactively add monitoring hooks to agents",
 			run:         runInitHook,
 		},
+		"init-ide-hook": {
+			name:        "init-ide-hook",
+			description: "add monitoring hooks to Kiro IDE",
+			run:         runInitIDEHook,
+		},
 		"power": {
 			name:        "power",
 			description: "install Kiro Power packages into .kiro/powers/",
@@ -89,6 +97,11 @@ func run(args []string) error {
 			name:        "hook-handler",
 			description: "handle a Kiro hook event and append logs",
 			run:         runHookHandler,
+		},
+		"hook-dump": {
+			name:        "hook-dump",
+			description: "dump raw hook input for debugging",
+			run:         runHookDump,
 		},
 		"monitor": {
 			name:        "monitor",
@@ -534,9 +547,9 @@ func printUsage(w io.Writer, commands map[string]command) {
 	_, _ = fmt.Fprintln(w, "  kapm <command> [arguments]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Available commands:")
-	for _, name := range []string{"sync", "install", "power", "agent", "init-hook", "hook-handler", "monitor", "serve", "version"} {
+	for _, name := range []string{"sync", "install", "power", "agent", "init-hook", "init-ide-hook", "hook-handler", "hook-dump", "monitor", "serve", "version"} {
 		cmd := commands[name]
-		_, _ = fmt.Fprintf(w, "  %-8s %s\n", cmd.name, cmd.description)
+		_, _ = fmt.Fprintf(w, "  %-13s %s\n", cmd.name, cmd.description)
 	}
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Use \"kapm <command> --help\" for more information about a command.")
@@ -570,9 +583,10 @@ func runInitHook(args []string) error {
 	fs := flag.NewFlagSet("init-hook", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	remove := fs.Bool("remove", false, "remove kapm hook entries instead of adding them")
+	global := fs.Bool("global", false, "use the home directory as the target directory")
 	targetDirFlag := fs.String("target-dir", ".", "target directory (default: current directory)")
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm init-hook [--remove]\n\n")
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm init-hook [flags]\n\n")
 		_, _ = fmt.Fprintln(fs.Output(), "Interactively add (or remove) kapm monitoring hooks to .kiro/agents/*.json.")
 		fs.PrintDefaults()
 	}
@@ -588,9 +602,26 @@ func runInitHook(args []string) error {
 		return err
 	}
 
+	targetDirSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "target-dir" {
+			targetDirSet = true
+		}
+	})
+	if *global && targetDirSet {
+		return errors.New("--global and --target-dir cannot be used together")
+	}
+
 	targetDir, err := expandTarget(*targetDirFlag)
 	if err != nil {
 		return err
+	}
+	if *global {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		targetDir = home
 	}
 
 	return agent.InitHook(agent.InitHookOptions{
@@ -602,10 +633,47 @@ func runInitHook(args []string) error {
 	})
 }
 
+func runInitIDEHook(args []string) error {
+	fs := flag.NewFlagSet("init-ide-hook", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	remove := fs.Bool("remove", false, "remove kapm IDE hook files instead of adding them")
+	targetDirFlag := fs.String("target-dir", ".", "target directory (default: current directory)")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm init-ide-hook [flags]\n\n")
+		_, _ = fmt.Fprintln(fs.Output(), "Add (or remove) kapm monitoring hook files under .kiro/hooks/ for Kiro IDE.")
+		fs.PrintDefaults()
+	}
+
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "init-ide-hook"); err != nil {
+		return err
+	}
+
+	targetDir, err := expandTarget(*targetDirFlag)
+	if err != nil {
+		return err
+	}
+
+	return idehook.Init(idehook.Options{
+		Root:   targetDir,
+		Remove: *remove,
+		Out:    os.Stdout,
+	})
+}
+
 func runHookHandler(args []string) error {
 	fs := flag.NewFlagSet("hook-handler", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	agentName := fs.String("agent", "", "agent name to attach to hook log records")
+	eventName := fs.String("event", "", "fallback hook event name when stdin is empty")
+	sessionID := fs.String("session", "", "fallback session id when stdin is empty")
+	toolName := fs.String("tool", "", "fallback tool name when stdin is empty")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm hook-handler [flags]\n\n")
 		_, _ = fmt.Fprintln(fs.Output(), "Handle a Kiro hook event from stdin and append a JSONL log record.")
@@ -626,6 +694,59 @@ func runHookHandler(args []string) error {
 	if *agentName == "" {
 		*agentName = os.Getenv("AGENT")
 	}
-	hook.Handle(os.Stdin, os.Stdout, os.Stderr, time.Now, ".", *agentName)
+	input := io.Reader(os.Stdin)
+	if *eventName != "" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		if len(bytes.TrimSpace(data)) == 0 {
+			fallback := map[string]string{
+				"hook_event_name": *eventName,
+				"session_id":      *sessionID,
+				"tool_name":       *toolName,
+			}
+			data, err = json.Marshal(fallback)
+			if err != nil {
+				return err
+			}
+		}
+		input = bytes.NewReader(data)
+	}
+	hook.Handle(input, os.Stdout, os.Stderr, time.Now, ".", *agentName)
 	return nil
+}
+
+func runHookDump(args []string) error {
+	fs := flag.NewFlagSet("hook-dump", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	agentName := fs.String("agent", "", "agent name to attach to hook input dump records")
+	eventName := fs.String("event", "", "hook event name to attach to hook input dump records")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: kapm hook-dump [flags]\n\n")
+		_, _ = fmt.Fprintln(fs.Output(), "Dump raw hook stdin and selected Kiro environment variables to .kapm/logs/hook-input.jsonl.")
+		fs.PrintDefaults()
+	}
+
+	ok, err := parseFlagSet(fs, args)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if err := rejectPositionalArgs(fs, "hook-dump"); err != nil {
+		return err
+	}
+	if *agentName == "" {
+		*agentName = os.Getenv("AGENT")
+	}
+	return hookdump.Dump(hookdump.Options{
+		Root:  ".",
+		Event: *eventName,
+		Agent: *agentName,
+		In:    os.Stdin,
+		Out:   os.Stdout,
+		Err:   os.Stderr,
+	})
 }
