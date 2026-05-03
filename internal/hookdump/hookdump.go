@@ -95,7 +95,7 @@ func Dump(opts Options) error {
 	if err != nil {
 		return fmt.Errorf("open %q: %w", logPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("write %q: %w", logPath, err)
 	}
