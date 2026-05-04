@@ -361,20 +361,7 @@ func powerInstallOptionsFromFlagSet(
 		return power.InstallOptions{}, err
 	}
 
-	source, err := power.ParsePowerSource(fs.Args()[0])
-	if err != nil {
-		return power.InstallOptions{}, err
-	}
-	if refFlag != "" && source.Kind != power.SourceLocal {
-		source.Ref = refFlag
-	}
-
-	return power.InstallOptions{
-		Source:    source,
-		TargetDir: targetDir,
-		Force:     force,
-		Timeout:   timeout,
-	}, nil
+	return power.NewInstallOptions(fs.Args()[0], targetDir, refFlag, force, timeout)
 }
 
 func printPowerInstallResult(w io.Writer, result *power.Result) {

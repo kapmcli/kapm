@@ -521,13 +521,9 @@ func foldSessionIntoAgents(st *aggState) {
 				ta = &toolAgg{}
 				tm[ev.Tool] = ta
 			}
-			ta.callCount++
+			ta.addCall(ev.IsError, time.Duration(ev.Duration))
 			if ev.IsError {
-				ta.errorCount++
 				a.ToolErrorCnt++
-			} else if ev.Duration > 0 {
-				ta.durSum += time.Duration(ev.Duration)
-				ta.durCount++
 			}
 		}
 	}
@@ -538,17 +534,10 @@ func foldSessionIntoAgents(st *aggState) {
 			}
 			return cmp.Compare(x.AgentKey, y.AgentKey)
 		})
-		tm := agentTools[name]
-		out := make([]SessionToolSummary, 0, len(tm))
-		for tool, ta := range tm {
-			out = append(out, toolAggToSummary(tool, ta))
+		out := finalizeToolAgg(agentTools[name])
+		if out == nil {
+			out = []SessionToolSummary{}
 		}
-		slices.SortFunc(out, func(a, b SessionToolSummary) int {
-			if c := cmp.Compare(b.CallCount, a.CallCount); c != 0 {
-				return c
-			}
-			return cmp.Compare(a.Tool, b.Tool)
-		})
 		a.ToolSummary = out
 	}
 }

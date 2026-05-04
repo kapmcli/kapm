@@ -37,6 +37,25 @@ type InstallOptions struct {
 	Timeout   time.Duration
 }
 
+// NewInstallOptions builds InstallOptions from a user source and Power-specific
+// flags. CLI packages remain responsible for parsing flags, target expansion,
+// and user-facing output.
+func NewInstallOptions(sourceArg, targetDir, ref string, force bool, timeout time.Duration) (InstallOptions, error) {
+	source, err := ParsePowerSource(sourceArg)
+	if err != nil {
+		return InstallOptions{}, err
+	}
+	if ref != "" && source.Kind != SourceLocal {
+		source.Ref = ref
+	}
+	return InstallOptions{
+		Source:    source,
+		TargetDir: targetDir,
+		Force:     force,
+		Timeout:   timeout,
+	}, nil
+}
+
 type Result struct {
 	Name           string
 	PowerDir       string

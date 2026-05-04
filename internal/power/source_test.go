@@ -219,6 +219,57 @@ func TestParsePowerSource(t *testing.T) {
 	}
 }
 
+func TestNewInstallOptionsRefOverride(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		ref     string
+		wantRef string
+	}{
+		{
+			name:    "git source uses ref override",
+			source:  "https://github.com/o/r",
+			ref:     "v1.2.3",
+			wantRef: "v1.2.3",
+		},
+		{
+			name:    "github subdir uses ref override",
+			source:  "o/r/tree/main/sub",
+			ref:     "feature",
+			wantRef: "feature",
+		},
+		{
+			name:    "local source ignores ref override",
+			source:  "./local",
+			ref:     "v1.2.3",
+			wantRef: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := NewInstallOptions(tc.source, "/workspace", tc.ref, true, DefaultTimeout)
+			if err != nil {
+				t.Fatalf("NewInstallOptions() error = %v", err)
+			}
+			if got.Source.Ref != tc.wantRef {
+				t.Fatalf("Source.Ref = %q, want %q", got.Source.Ref, tc.wantRef)
+			}
+			if got.TargetDir != "/workspace" {
+				t.Fatalf("TargetDir = %q, want /workspace", got.TargetDir)
+			}
+			if !got.Force {
+				t.Fatal("Force = false, want true")
+			}
+			if got.Timeout != DefaultTimeout {
+				t.Fatalf("Timeout = %v, want %v", got.Timeout, DefaultTimeout)
+			}
+		})
+	}
+}
+
 func TestParseGitHubURL_PathTraversal(t *testing.T) {
 	cases := []string{
 		"https://github.com/o/r/tree/main/../secret",
