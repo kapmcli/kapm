@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -50,6 +51,47 @@ func TestReadPower(t *testing.T) {
 			t.Fatalf("readPower() error = %v, want missing description/displayName", err)
 		}
 	})
+}
+
+func TestWriteInstallResult(t *testing.T) {
+	powerDir := filepath.Join(t.TempDir(), ".kiro", "powers", "sample-power")
+	if err := os.MkdirAll(filepath.Join(powerDir, "hooks"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(hooks): %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(powerDir, "steering"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(steering): %v", err)
+	}
+	mcpPath := filepath.Join(powerDir, "mcp.json")
+	if err := os.WriteFile(mcpPath, []byte(`{"mcpServers":{"fetch":{"type":"http","url":"https://example.com/mcp"}}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile(mcp): %v", err)
+	}
+	hookPath := filepath.Join(powerDir, "hooks", "agent-spawn.kiro.hook")
+	if err := os.WriteFile(hookPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(hook): %v", err)
+	}
+
+	var out strings.Builder
+	WriteInstallResult(&out, &Result{
+		Name:          "sample-power",
+		PowerDir:      powerDir,
+		ResourcePaths: []string{filepath.Join(powerDir, "POWER.md"), filepath.Join(powerDir, "steering", "style.md")},
+		MCPConfigPath: mcpPath,
+		HooksDir:      filepath.Join(powerDir, "hooks"),
+	})
+	stdout := out.String()
+	for _, want := range []string{
+		`Installed power "sample-power"`,
+		"Suggested custom agent config:",
+		fmt.Sprintf(`"file://%s"`, filepath.ToSlash(filepath.Join(powerDir, "POWER.md"))),
+		`"mcpServers":`,
+		`"fetch"`,
+		filepath.ToSlash(hookPath),
+		fmt.Sprintf("Remove: rm -rf %s", powerDir),
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout = %q, want contains %q", stdout, want)
+		}
+	}
 }
 
 func TestReadPower_SymlinkRejected(t *testing.T) {

@@ -289,15 +289,15 @@ func TestSplitInstallArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotForce, gotTargetDir, gotInstallArgs := splitInstallArgs(tt.args)
+			gotForce, gotTargetDir, gotInstallArgs := install.SplitArgs(tt.args)
 			if gotForce != tt.wantForce {
-				t.Fatalf("splitInstallArgs(%v) force = %v, want %v", tt.args, gotForce, tt.wantForce)
+				t.Fatalf("SplitArgs(%v) force = %v, want %v", tt.args, gotForce, tt.wantForce)
 			}
 			if gotTargetDir != tt.wantTargetDir {
-				t.Fatalf("splitInstallArgs(%v) targetDir = %q, want %q", tt.args, gotTargetDir, tt.wantTargetDir)
+				t.Fatalf("SplitArgs(%v) targetDir = %q, want %q", tt.args, gotTargetDir, tt.wantTargetDir)
 			}
 			if !reflect.DeepEqual(gotInstallArgs, tt.wantInstallArgs) {
-				t.Fatalf("splitInstallArgs(%v) install args = %v, want %v", tt.args, gotInstallArgs, tt.wantInstallArgs)
+				t.Fatalf("SplitArgs(%v) install args = %v, want %v", tt.args, gotInstallArgs, tt.wantInstallArgs)
 			}
 		})
 	}

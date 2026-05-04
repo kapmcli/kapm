@@ -3,6 +3,7 @@ package install_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -11,6 +12,57 @@ import (
 	"github.com/kapmcli/kapm/internal/install"
 	"github.com/kapmcli/kapm/internal/testutil"
 )
+
+func TestSplitArgs(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		wantForce       bool
+		wantTargetDir   string
+		wantInstallArgs []string
+	}{
+		{
+			name:            "passes through apm flags",
+			args:            []string{"--update", "owner/repo"},
+			wantTargetDir:   ".",
+			wantInstallArgs: []string{"--update", "owner/repo"},
+		},
+		{
+			name:            "extracts sync force",
+			args:            []string{"--sync-force", "--update", "owner/repo"},
+			wantForce:       true,
+			wantTargetDir:   ".",
+			wantInstallArgs: []string{"--update", "owner/repo"},
+		},
+		{
+			name:            "plain force is forwarded to apm",
+			args:            []string{"--force", "owner/repo"},
+			wantTargetDir:   ".",
+			wantInstallArgs: []string{"--force", "owner/repo"},
+		},
+		{
+			name:            "extracts target-dir equals form",
+			args:            []string{"--target-dir=/tmp/y", "owner/repo"},
+			wantTargetDir:   "/tmp/y",
+			wantInstallArgs: []string{"owner/repo"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotForce, gotTargetDir, gotInstallArgs := install.SplitArgs(tt.args)
+			if gotForce != tt.wantForce {
+				t.Fatalf("SplitArgs(%v) force = %v, want %v", tt.args, gotForce, tt.wantForce)
+			}
+			if gotTargetDir != tt.wantTargetDir {
+				t.Fatalf("SplitArgs(%v) targetDir = %q, want %q", tt.args, gotTargetDir, tt.wantTargetDir)
+			}
+			if !reflect.DeepEqual(gotInstallArgs, tt.wantInstallArgs) {
+				t.Fatalf("SplitArgs(%v) install args = %v, want %v", tt.args, gotInstallArgs, tt.wantInstallArgs)
+			}
+		})
+	}
+}
 
 func TestInstallPrefersApmWhenAvailable(t *testing.T) {
 	root := installFixtureRoot(t, "manifest-project")

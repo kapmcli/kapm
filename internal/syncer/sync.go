@@ -168,31 +168,24 @@ func moduleAPMDirs(root string, manifest projectManifest) ([]string, error) {
 		return nil, fmt.Errorf("sync stat %q: %w", modulesRoot, err)
 	}
 
-	packageRoots, err := discoverPackageRoots(modulesRoot)
+	packageSources, err := discoverPackageSources(modulesRoot)
 	if err != nil {
 		return nil, fmt.Errorf("discover package roots: %w", err)
 	}
-	if len(packageRoots) == 0 {
+	if len(packageSources) == 0 {
 		return nil, nil
 	}
 
-	orderedPackageRoots, err := orderedModulePackageRoots(manifest, packageRoots)
+	orderedSources, err := orderedModuleSources(manifest, packageSources)
 	if err != nil {
 		return nil, fmt.Errorf("sync module apm dirs: %w", err)
 	}
-
-	paths := make([]string, 0, len(orderedPackageRoots))
-	for _, packageRoot := range orderedPackageRoots {
-		if src := pickSourceDir(packageRoot); src != "" {
-			paths = append(paths, src)
-		}
-	}
-	return paths, nil
+	return orderedSources, nil
 }
 
-// discoverPackageRoots returns packageKey -> packageRoot for every
+// discoverPackageSources returns packageKey -> selected source dir for every
 // apm_modules/<org>/<repo>/ directory that looks like an APM package.
-func discoverPackageRoots(modulesRoot string) (map[string]string, error) {
+func discoverPackageSources(modulesRoot string) (map[string]string, error) {
 	orgs, err := os.ReadDir(modulesRoot)
 	if err != nil {
 		return nil, fmt.Errorf("sync read %q: %w", modulesRoot, err)
@@ -212,19 +205,20 @@ func discoverPackageRoots(modulesRoot string) (map[string]string, error) {
 				continue
 			}
 			packageRoot := filepath.Join(orgPath, repo.Name())
-			if pickSourceDir(packageRoot) == "" {
+			sourceDir := pickSourceDir(packageRoot)
+			if sourceDir == "" {
 				continue
 			}
 			key := toSlashJoin(org.Name(), repo.Name())
-			out[key] = packageRoot
+			out[key] = sourceDir
 		}
 	}
 	return out, nil
 }
 
-func orderedModulePackageRoots(manifest projectManifest, packageRoots map[string]string) ([]string, error) {
-	orderedKeys := make([]string, 0, len(packageRoots))
-	for key := range packageRoots {
+func orderedModuleSources(manifest projectManifest, packageSources map[string]string) ([]string, error) {
+	orderedKeys := make([]string, 0, len(packageSources))
+	for key := range packageSources {
 		orderedKeys = append(orderedKeys, key)
 	}
 	slices.Sort(orderedKeys)
@@ -236,14 +230,14 @@ func orderedModulePackageRoots(manifest projectManifest, packageRoots map[string
 		}
 	}
 
-	ordered := make([]string, 0, len(packageRoots))
-	used := make(map[string]bool, len(packageRoots))
+	ordered := make([]string, 0, len(packageSources))
+	used := make(map[string]bool, len(packageSources))
 	for _, cands := range candidates {
 		key, ok := matchDependencyPackage(cands, orderedKeys, used)
 		if !ok {
 			continue
 		}
-		ordered = append(ordered, packageRoots[key])
+		ordered = append(ordered, packageSources[key])
 		used[key] = true
 	}
 
@@ -251,7 +245,7 @@ func orderedModulePackageRoots(manifest projectManifest, packageRoots map[string
 		if used[key] {
 			continue
 		}
-		ordered = append(ordered, packageRoots[key])
+		ordered = append(ordered, packageSources[key])
 	}
 
 	return ordered, nil
@@ -294,11 +288,11 @@ func (d apmDependency) moduleCandidates() []string {
 	}
 
 	if localPath := strings.TrimSpace(d.Path); localPath != "" && strings.TrimSpace(d.Git) == "" {
-		base := filepath.Base(filepath.Clean(localPath))
-		if base == "." || base == string(filepath.Separator) || base == "" {
+		key, ok := localDependencyKey(localPath)
+		if !ok {
 			return nil
 		}
-		return []string{toSlashJoin("_local", base)}
+		return []string{key}
 	}
 
 	gitRef := strings.TrimSpace(d.Git)
@@ -337,11 +331,7 @@ func normalizeDependencyReference(ref string) (string, bool) {
 
 	switch {
 	case strings.HasPrefix(trimmed, "./"), strings.HasPrefix(trimmed, "../"), strings.HasPrefix(trimmed, "/"), strings.HasPrefix(trimmed, "~/"):
-		base := filepath.Base(filepath.Clean(trimmed))
-		if base == "." || base == string(filepath.Separator) || base == "" {
-			return "", false
-		}
-		return filepath.ToSlash(filepath.Join("_local", base)), true
+		return localDependencyKey(trimmed)
 	case strings.HasPrefix(trimmed, "https://"), strings.HasPrefix(trimmed, "http://"), strings.HasPrefix(trimmed, "ssh://"):
 		trimmed = stripURLScheme(trimmed)
 	case strings.HasPrefix(trimmed, "git@"):
@@ -357,6 +347,14 @@ func normalizeDependencyReference(ref string) (string, bool) {
 	}
 
 	return filepath.ToSlash(filepath.Clean(filepath.FromSlash(trimmed))), true
+}
+
+func localDependencyKey(path string) (string, bool) {
+	base := filepath.Base(filepath.Clean(path))
+	if base == "." || base == string(filepath.Separator) || base == "" {
+		return "", false
+	}
+	return toSlashJoin("_local", base), true
 }
 
 func stripURLScheme(value string) string {
