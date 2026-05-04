@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 )
 
 // defaultMaxSSE is the default cap for concurrent SSE connections.
@@ -61,9 +63,14 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSSEFrames computes SSE payload bytes from loaded metrics.
-func buildSSEFrames(lm loadedMetrics) (summaryHTML, overviewJSON []byte, err error) {
+func buildSSEFrames(lm loadedMetrics, usage *kirocliusage.Usage, usageEnabled, usageChecked bool) (summaryHTML, overviewJSON []byte, err error) {
 	var htmlBuf bytes.Buffer
-	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", lm.dm.Overview); err != nil {
+	summaryOverview := lm.dm.Overview
+	if lm.sessions != nil {
+		capped, _ := paginateByID(lm.sessions, 1, dashboardSessionLimit)
+		summaryOverview.Sessions = capped
+	}
+	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", newOverviewSummary(summaryOverview, usage, usageEnabled, usageChecked)); err != nil {
 		return nil, nil, fmt.Errorf("serve sse render summary: %w", err)
 	}
 	summaryHTML = bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
@@ -84,8 +91,9 @@ func (s *Server) sendOverview(w io.Writer, flusher http.Flusher, r *http.Request
 		slog.Warn("serve sse load metrics", "err", err)
 		return false
 	}
+	usage, usageChecked := s.currentKiroUsage(s.now())
 
-	htmlFrame, jsonFrame, err := buildSSEFrames(lm)
+	htmlFrame, jsonFrame, err := buildSSEFrames(lm, usage, s.kiroUsageRead != nil, usageChecked)
 	if err != nil {
 		slog.Warn("serve sse build frames", "err", err)
 		return false

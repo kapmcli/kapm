@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
@@ -127,6 +128,290 @@ func TestAPIMetricsJSON(t *testing.T) {
 	}
 	if legacy.Overview.Tools[0].Name != dm.Overview.Tools[0].Name || legacy.Overview.Tools[0].CallCount != dm.Overview.Tools[0].CallCount || legacy.Overview.Tools[0].ErrorCount != dm.Overview.Tools[0].ErrorCount {
 		t.Fatalf("legacy metrics tool = %+v; want %+v", legacy.Overview.Tools[0], dm.Overview.Tools[0])
+	}
+}
+
+func TestHandleDashboardRendersKiroUsageCard(t *testing.T) {
+	t.Parallel()
+	baseDir := setupTestSessionsDir(t)
+	srv := New(Options{
+		Port:        0,
+		SessionsDir: filepath.Join(baseDir, "sessions"),
+		LogsDir:     filepath.Join(baseDir, "hooks"),
+		Since:       365 * 24 * time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13, Overages: "Disabled"}, true, nil
+		},
+	})
+	srv.storeKiroUsage(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), &kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13, Overages: "Disabled"})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	for _, want := range []string{"Kiro Usage", "6.72 / 50", "13%", "reset 2026-06-01", "KIRO FREE · overages disabled"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("dashboard body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestHandleDashboardDoesNotBlockOnColdKiroUsage(t *testing.T) {
+	t.Parallel()
+	baseDir := setupTestSessionsDir(t)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	srv := New(Options{
+		Port:        0,
+		SessionsDir: filepath.Join(baseDir, "sessions"),
+		LogsDir:     filepath.Join(baseDir, "hooks"),
+		Since:       365 * 24 * time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			close(started)
+			<-release
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13}, true, nil
+		},
+	})
+	t.Cleanup(func() { close(release) })
+
+	begin := time.Now()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if elapsed := time.Since(begin); elapsed > 50*time.Millisecond {
+		t.Fatalf("dashboard render blocked for %s", elapsed)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Kiro Usage") || !strings.Contains(body, "checking…") {
+		t.Fatalf("cold dashboard render should show non-blocking Kiro Usage placeholder: %s", body)
+	}
+	if strings.Contains(body, "6.72 / 50") {
+		t.Fatalf("cold dashboard render should not wait for usage value: %s", body)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background Kiro Usage refresh was not started")
+	}
+}
+
+func TestBuildSSEFramesUsesKiroUsageInsteadOfAggregateCreditsCard(t *testing.T) {
+	t.Parallel()
+	lm := loadedMetrics{dm: monitor.DetailedMetrics{Overview: monitor.Metrics{Sessions: []monitor.SessionMetric{{ID: "s1", Agent: "kiro", TotalCredits: 42}}}}}
+	usage := &kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13, Overages: "Disabled"}
+
+	summaryHTML, _, err := buildSSEFrames(lm, usage, true, true)
+	if err != nil {
+		t.Fatalf("buildSSEFrames() error = %v", err)
+	}
+	body := string(summaryHTML)
+	if !strings.Contains(body, "Kiro Usage") || !strings.Contains(body, "6.72 / 50") {
+		t.Fatalf("summary body missing Kiro Usage card: %s", body)
+	}
+	if strings.Contains(body, `<div class="card-title">Credits</div>`) || strings.Contains(body, ">42.00<") {
+		t.Fatalf("summary body still contains aggregate Credits card: %s", body)
+	}
+}
+
+func TestBuildSSEFramesCapsSummarySessions(t *testing.T) {
+	t.Parallel()
+	sessions := make([]monitor.SessionMetric, dashboardSessionLimit+1)
+	for i := range sessions {
+		sessions[i] = monitor.SessionMetric{ID: fmt.Sprintf("s-%02d", i), Agent: "kiro", LastActivity: time.Unix(int64(i), 0)}
+	}
+	lm := loadedMetrics{dm: monitor.DetailedMetrics{Overview: monitor.Metrics{Sessions: sessions}}, sessions: computeDashboardSessions(sessions)}
+
+	summaryHTML, _, err := buildSSEFrames(lm, nil, false, false)
+	if err != nil {
+		t.Fatalf("buildSSEFrames() error = %v", err)
+	}
+	if body := string(summaryHTML); !strings.Contains(body, `<div class="card-title">Sessions</div><div class="card-value">50</div>`) {
+		t.Fatalf("summary Sessions card not capped to 50: %s", body)
+	}
+}
+
+func TestRefreshKiroUsageCachesSuccess(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			calls.Add(1)
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
+		},
+	})
+
+	first := srv.refreshKiroUsage(context.Background(), now)
+	second, _ := srv.currentKiroUsage(now.Add(time.Minute))
+	if first == nil || second == nil {
+		t.Fatalf("refresh/current Kiro usage returned nil: first=%v second=%v", first, second)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("usage reader calls = %d, want 1", calls.Load())
+	}
+	third := srv.refreshKiroUsage(context.Background(), now.Add(2*time.Hour))
+	if third == nil {
+		t.Fatal("refreshKiroUsage() after TTL returned nil")
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("usage reader calls after TTL = %d, want 2", calls.Load())
+	}
+}
+
+func TestRefreshKiroUsageCachesUnavailableAndErrors(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			calls.Add(1)
+			return kirocliusage.Usage{}, false, errors.New("usage unavailable")
+		},
+	})
+
+	if got := srv.refreshKiroUsage(context.Background(), now); got != nil {
+		t.Fatalf("refreshKiroUsage() = %+v, want nil", got)
+	}
+	if got, _ := srv.currentKiroUsage(now.Add(time.Minute)); got != nil {
+		t.Fatalf("cached loadKiroUsage() = %+v, want nil", got)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("usage reader calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestRefreshKiroUsageSingleflight(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			calls.Add(1)
+			time.Sleep(20 * time.Millisecond)
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
+		},
+	})
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got := srv.refreshKiroUsage(context.Background(), time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)); got == nil {
+				t.Error("refreshKiroUsage() = nil, want usage")
+			}
+		}()
+	}
+	wg.Wait()
+	if calls.Load() != 1 {
+		t.Fatalf("usage reader calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestCurrentKiroUsageDoesNotBlockOnColdRefresh(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			calls.Add(1)
+			close(started)
+			<-release
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
+		},
+	})
+
+	begin := time.Now()
+	if got, checked := srv.currentKiroUsage(now); got != nil || checked {
+		t.Fatalf("currentKiroUsage() = %+v, want nil before background refresh completes", got)
+	}
+	if elapsed := time.Since(begin); elapsed > 20*time.Millisecond {
+		t.Fatalf("currentKiroUsage() blocked for %s", elapsed)
+	}
+
+	<-started
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if got, _ := srv.currentKiroUsage(now.Add(time.Minute)); got != nil {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("background Kiro Usage refresh did not populate cache")
+}
+
+func TestCurrentKiroUsageReturnsStaleWhileRefreshing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			calls.Add(1)
+			if calls.Load() == 2 {
+				close(started)
+				<-release
+				return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO POWER", UsedCredits: 2, TotalCredits: 10000, Percent: 0.02}, true, nil
+			}
+			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
+		},
+	})
+	if got := srv.refreshKiroUsage(context.Background(), now); got == nil || got.Plan != "KIRO FREE" {
+		t.Fatalf("initial refresh = %+v", got)
+	}
+
+	got, _ := srv.currentKiroUsage(now.Add(2 * time.Hour))
+	if got == nil || got.Plan != "KIRO FREE" {
+		t.Fatalf("currentKiroUsage() stale = %+v, want old usage", got)
+	}
+	<-started
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if got, _ := srv.currentKiroUsage(now.Add(2*time.Hour + time.Minute)); got != nil && got.Plan == "KIRO POWER" {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("background Kiro Usage refresh did not replace stale cache")
+}
+
+func TestRefreshKiroUsageKeepsStaleOnFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	var calls atomic.Int32
+	srv := New(Options{
+		KiroUsageTTL: time.Hour,
+		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
+			if calls.Add(1) == 1 {
+				return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
+			}
+			return kirocliusage.Usage{}, false, errors.New("temporary failure")
+		},
+	})
+	if got := srv.refreshKiroUsage(context.Background(), now); got == nil || got.Plan != "KIRO FREE" {
+		t.Fatalf("initial refresh = %+v", got)
+	}
+	if got := srv.refreshKiroUsage(context.Background(), now.Add(2*time.Hour)); got != nil {
+		t.Fatalf("failed refresh = %+v, want nil result", got)
+	}
+	if got, _ := srv.currentKiroUsage(now.Add(2*time.Hour + time.Minute)); got == nil || got.Plan != "KIRO FREE" {
+		t.Fatalf("stale usage after failed refresh = %+v, want old usage", got)
+	}
+	if got, _ := srv.currentKiroUsage(now.Add(2*time.Hour + 2*time.Minute)); got == nil || got.Plan != "KIRO FREE" {
+		t.Fatalf("cached stale usage after failed refresh = %+v, want old usage", got)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("usage reader calls = %d, want 2", calls.Load())
 	}
 }
 

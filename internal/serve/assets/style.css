@@ -78,8 +78,8 @@ main > * { min-width: 0; }
 
 /* Summary cards row */
 .cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
 }
 
@@ -96,6 +96,8 @@ main > * { min-width: 0; }
   border-radius: 6px;
   padding: 1rem;
   border: 1px solid rgba(125, 86, 244, 0.2);
+  flex: 1 1 150px;
+  min-width: 150px;
 }
 
 .card-title {
@@ -109,6 +111,70 @@ main > * { min-width: 0; }
 .card-value {
   font-size: 1.75rem;
   font-weight: 600;
+}
+
+.card-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.usage-card {
+  flex: 2 1 fit-content;
+  min-width: min(100%, 24rem);
+}
+
+.usage-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.usage-card-head .card-title {
+  margin-bottom: 0;
+}
+
+.usage-reset {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.usage-card-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.usage-percent {
+  border: 1px solid rgba(125, 86, 244, 0.35);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.35rem 0.55rem;
+  white-space: nowrap;
+}
+
+.usage-percent-muted {
+  color: var(--muted);
+}
+
+.usage-placeholder {
+  color: var(--muted);
+  font-size: 1.45rem;
+}
+
+.usage-meta {
+  margin-top: 0.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Session title under heading */

@@ -50,14 +50,12 @@ func (m *model) renderSummaryBox(width int) string {
 	active := 0
 	totalTools := 0
 	totalPrompts := 0
-	var totalCredits float64
 	for _, s := range ov.Sessions {
 		if s.Active {
 			active++
 		}
 		totalTools += s.ToolCalls
 		totalPrompts += s.Prompts
-		totalCredits += s.TotalCredits
 	}
 	totalErrors := 0
 	for _, t := range ov.Tools {
@@ -80,8 +78,16 @@ func (m *model) renderSummaryBox(width int) string {
 		len(ov.Agents), errorCountText(totalErrors))
 	fmt.Fprintf(&b, "  tool calls: %-5d  prompts: %d",
 		totalTools, totalPrompts)
-	if totalCredits > 0 {
-		fmt.Fprintf(&b, "\n  credits:    %.2f", totalCredits)
+	if m.kiroUsage != nil {
+		fmt.Fprintf(&b, "\n  kiro usage: %s", m.kiroUsage.CreditLabel())
+		fmt.Fprintf(&b, "\n  usage:      %s · resets %s", m.kiroUsage.PercentLabel(), m.kiroUsage.ResetDate)
+		fmt.Fprintf(&b, "\n  plan:       %s", m.kiroUsage.MetaLabel())
+	} else if m.kiroUsageRead != nil {
+		status := "checking…"
+		if !m.kiroUsageFetchedAt.IsZero() {
+			status = "unavailable"
+		}
+		fmt.Fprintf(&b, "\n  kiro usage: %s", mutedStyle.Render(status))
 	}
 	return borderStyle.Width(width).Render(b.String())
 }

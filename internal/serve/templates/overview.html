@@ -2,7 +2,7 @@
 {{- $o := .Overview -}}
 <section class="summary" hx-ext="sse" sse-connect="/sse">
   <div id="summary-cards" sse-swap="summary" hx-swap="innerHTML">
-    {{template "summary-cards" $o}}
+    {{template "summary-cards" .Summary}}
   </div>
 </section>
 
@@ -138,17 +138,40 @@
 {{end}}
 
 {{define "summary-cards"}}
-{{- $active := 0 -}}{{- $tools := 0 -}}{{- $prompts := 0 -}}{{- $errors := 0 -}}{{- $files := 0 -}}{{- $credits := 0.0 -}}
-{{- range .Sessions}}{{if .Active}}{{$active = add $active 1}}{{end}}{{$tools = add $tools .ToolCalls}}{{$prompts = add $prompts .Prompts}}{{$files = add $files .FilesChanged}}{{$credits = addf $credits .TotalCredits}}{{end}}
+{{- $tools := 0 -}}{{- $prompts := 0 -}}{{- $errors := 0 -}}{{- $files := 0 -}}
+{{- range .Sessions}}{{$tools = add $tools .ToolCalls}}{{$prompts = add $prompts .Prompts}}{{$files = add $files .FilesChanged}}{{end}}
 {{- range .Tools}}{{$errors = add $errors .ErrorCount}}{{end}}
 <div class="cards">
+  {{- if .KiroUsageEnabled}}
+  <div class="card usage-card">
+    <div class="usage-card-head">
+      <div class="card-title">Kiro Usage</div>
+      {{- with .KiroUsage}}
+      <div class="usage-reset">reset {{.ResetDate}}</div>
+      {{- else}}
+      <div class="usage-reset">{{if $.KiroUsageChecked}}unavailable{{else}}checking{{end}}</div>
+      {{- end}}
+    </div>
+    {{- with .KiroUsage}}
+    <div class="usage-card-main">
+      <div class="card-value">{{.CreditLabel}}</div>
+      <div class="usage-percent">{{.PercentLabel}}</div>
+    </div>
+    <div class="card-meta usage-meta">{{.MetaLabel}}</div>
+    {{- else}}
+    <div class="usage-card-main">
+      <div class="card-value usage-placeholder">{{if $.KiroUsageChecked}}unavailable{{else}}checking…{{end}}</div>
+      <div class="usage-percent usage-percent-muted">—</div>
+    </div>
+    <div class="card-meta usage-meta">{{if $.KiroUsageChecked}}kiro-cli usage unavailable{{else}}loading in background{{end}}</div>
+    {{- end}}
+  </div>
+  {{- end}}
   <div class="card"><div class="card-title">Sessions</div><div class="card-value">{{len .Sessions}}</div></div>
-  <div class="card"><div class="card-title">Active</div><div class="card-value">{{$active}}</div></div>
   <div class="card"><div class="card-title">Agents</div><div class="card-value">{{len .Agents}}</div></div>
   <div class="card"><div class="card-title">Tool calls</div><div class="card-value">{{$tools}}</div></div>
   <div class="card"><div class="card-title">Prompts</div><div class="card-value">{{$prompts}}</div></div>
   <div class="card"><div class="card-title">Errors</div><div class="card-value">{{$errors}}</div></div>
   <div class="card"><div class="card-title">Files changed</div><div class="card-value">{{$files}}</div></div>
-  {{- if $credits}}<div class="card"><div class="card-title">Credits</div><div class="card-value">{{fmtCredits $credits}}</div></div>{{end}}
 </div>
 {{end}}

@@ -13,9 +13,21 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/monitor"
 	"github.com/kapmcli/kapm/internal/stylegen"
 )
+
+type overviewSummary struct {
+	monitor.Metrics
+	KiroUsage        *kirocliusage.Usage
+	KiroUsageEnabled bool
+	KiroUsageChecked bool
+}
+
+func newOverviewSummary(metrics monitor.Metrics, usage *kirocliusage.Usage, usageEnabled, usageChecked bool) overviewSummary {
+	return overviewSummary{Metrics: metrics, KiroUsage: usage, KiroUsageEnabled: usageEnabled, KiroUsageChecked: usageChecked}
+}
 
 // agentLink is a {agent, URL} pair rendered next to a merged session view.
 // URL construction lives here so internal/monitor stays URL-free.
@@ -113,6 +125,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		capped, _ := paginateByID(loaded.sessions, 1, dashboardSessionLimit)
 		overview := loaded.dm.Overview
 		overview.Sessions = capped
+		usage, usageChecked := s.currentKiroUsage(s.now())
 		overviewJSON, err := marshalForTemplate(overview)
 		if err != nil {
 			s.handleError(w, r, err, http.StatusInternalServerError)
@@ -122,6 +135,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			"Title":        "Overview",
 			"Active":       "overview",
 			"Overview":     overview,
+			"Summary":      newOverviewSummary(overview, usage, s.kiroUsageRead != nil, usageChecked),
 			"Skills":       loaded.dm.Skills,
 			"OverviewJSON": overviewJSON,
 		})

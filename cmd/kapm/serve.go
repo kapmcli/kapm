@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/serve"
 )
 
@@ -22,7 +23,8 @@ var runServe = func() func([]string) error {
 			fs.BoolVar(&serveOpen, "open", false, "open browser automatically")
 		},
 		func(ctx context.Context, fs *flag.FlagSet, lf logsFlags) error {
-			srv := serve.New(serve.Options{Port: servePort, SessionsDir: lf.SessionsDir, LogsDir: lf.LogsDir, IDEBaseDir: lf.IDESessionsDir, CwdFilter: lf.CwdFilter, Since: lf.Since, SQLiteDBPath: lf.SQLiteDBPath})
+			usageReader := kirocliusage.NewReader()
+			srv := serve.New(serve.Options{Port: servePort, SessionsDir: lf.SessionsDir, LogsDir: lf.LogsDir, IDEBaseDir: lf.IDESessionsDir, CwdFilter: lf.CwdFilter, Since: lf.Since, SQLiteDBPath: lf.SQLiteDBPath, KiroUsageRead: usageReader.Read})
 
 			url := fmt.Sprintf("http://%s/", srv.Addr())
 			_, _ = fmt.Fprintf(os.Stdout, "kapm serve listening on %s\n", url)

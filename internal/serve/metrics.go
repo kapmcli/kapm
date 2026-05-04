@@ -3,10 +3,12 @@ package serve
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
@@ -90,6 +92,83 @@ func (s *Server) storeMetrics(now time.Time, lm loadedMetrics) {
 		dashboardSessions: lm.sessions,
 		storedAt:          now,
 	}
+}
+
+func (s *Server) currentKiroUsage(now time.Time) (*kirocliusage.Usage, bool) {
+	if s.kiroUsageRead == nil {
+		return nil, false
+	}
+	usage, fresh, checked := s.cachedKiroUsage(now)
+	if !fresh {
+		s.refreshKiroUsageAsync(now)
+	}
+	return usage, checked
+}
+
+func (s *Server) refreshKiroUsageAsync(now time.Time) {
+	if s.kiroUsageRead == nil {
+		return
+	}
+	s.kiroUsageSF.DoChan("kiro-usage", func() (any, error) {
+		return s.readAndStoreKiroUsage(context.Background(), now), nil
+	})
+}
+
+func (s *Server) refreshKiroUsage(ctx context.Context, now time.Time) *kirocliusage.Usage {
+	if s.kiroUsageRead == nil {
+		return nil
+	}
+	v, err, _ := s.kiroUsageSF.Do("kiro-usage", func() (any, error) {
+		return s.readAndStoreKiroUsage(ctx, now), nil
+	})
+	if err != nil {
+		return nil
+	}
+	usage, _ := v.(*kirocliusage.Usage)
+	return usage
+}
+
+func (s *Server) readAndStoreKiroUsage(ctx context.Context, now time.Time) *kirocliusage.Usage {
+	usage, ok, err := s.kiroUsageRead(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("serve load kiro usage", "err", err)
+		}
+		s.storeKiroUsageIfEmpty(now, nil)
+		return nil
+	}
+	if !ok {
+		s.storeKiroUsageIfEmpty(now, nil)
+		return nil
+	}
+	s.storeKiroUsage(now, &usage)
+	return &usage
+}
+
+func (s *Server) cachedKiroUsage(now time.Time) (*kirocliusage.Usage, bool, bool) {
+	s.kiroUsageMu.Lock()
+	defer s.kiroUsageMu.Unlock()
+
+	if s.kiroUsageCache == nil {
+		return nil, false, false
+	}
+	return s.kiroUsageCache.usage, now.Sub(s.kiroUsageCache.storedAt) < s.kiroUsageTTL, true
+}
+
+func (s *Server) storeKiroUsage(now time.Time, usage *kirocliusage.Usage) {
+	s.kiroUsageMu.Lock()
+	defer s.kiroUsageMu.Unlock()
+	s.kiroUsageCache = &kiroUsageCacheEntry{usage: usage, storedAt: now}
+}
+
+func (s *Server) storeKiroUsageIfEmpty(now time.Time, usage *kirocliusage.Usage) {
+	s.kiroUsageMu.Lock()
+	defer s.kiroUsageMu.Unlock()
+	if s.kiroUsageCache != nil && s.kiroUsageCache.usage != nil {
+		s.kiroUsageCache.storedAt = now
+		return
+	}
+	s.kiroUsageCache = &kiroUsageCacheEntry{usage: usage, storedAt: now}
 }
 
 // computeDashboardSessions groups sessions by ID for the dashboard's Recent

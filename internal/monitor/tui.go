@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 )
 
 // tab identifiers
@@ -22,8 +24,9 @@ const (
 
 // default terminal dimensions
 const (
-	defaultWidth  = 120
-	defaultHeight = 40
+	defaultWidth        = 120
+	defaultHeight       = 40
+	defaultKiroUsageTTL = 5 * time.Minute
 )
 
 var tabNames = []string{"Overview", "Sessions", "Agents", "Tools", "Skills"}
@@ -31,10 +34,21 @@ var tabNames = []string{"Overview", "Sessions", "Agents", "Tools", "Skills"}
 var singleLineReplacer = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 type metricsMsg struct {
-	metrics DetailedMetrics
-	cache   *SessionCache
-	err     error
+	metrics            DetailedMetrics
+	cache              *SessionCache
+	kiroUsage          *kirocliusage.Usage
+	kiroUsageFetchedAt time.Time
+	err                error
 }
+
+type kiroUsageMsg struct {
+	usage     *kirocliusage.Usage
+	fetchedAt time.Time
+}
+
+// KiroUsageReadFunc reads optional account-level Kiro usage. ok=false means
+// usage is unavailable and should be omitted from the TUI.
+type KiroUsageReadFunc func(context.Context) (kirocliusage.Usage, bool, error)
 
 type tickMsg time.Time
 
@@ -47,8 +61,8 @@ type model struct {
 	homeDir     string
 	since       time.Duration
 
-	ctx         context.Context
-	cache       *SessionCache
+	ctx          context.Context
+	cache        *SessionCache
 	sqliteDBPath string
 	sqliteCache  *SQLiteCache
 
@@ -66,6 +80,12 @@ type model struct {
 	promptExpanded   bool // toggle for prompt full display
 	changesExpanded  bool // toggle for diff previews in Changes section
 	timelineExpanded bool // toggle for full tool input in Timeline
+
+	kiroUsage          *kirocliusage.Usage
+	kiroUsageRead      KiroUsageReadFunc
+	kiroUsageTTL       time.Duration
+	kiroUsageFetchedAt time.Time
+	kiroUsageInFlight  bool
 }
 
 // NewModel creates a new TUI model.
@@ -75,11 +95,11 @@ func NewModel(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilt
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache(), sqliteCache: NewSQLiteCache()}
+	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache(), sqliteCache: NewSQLiteCache(), kiroUsageTTL: defaultKiroUsageTTL}
 }
 
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.refreshCmd(), tickCmd())
+	return tea.Batch(m.refreshCmd(), m.kiroUsageCmd(), tickCmd())
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -101,8 +121,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.detail {
 			m.recomputeDetailCache()
 		}
+	case kiroUsageMsg:
+		if msg.usage != nil || m.kiroUsage == nil {
+			m.kiroUsage = msg.usage
+		}
+		m.kiroUsageFetchedAt = msg.fetchedAt
+		m.kiroUsageInFlight = false
 	case tickMsg:
-		return m, tea.Batch(m.refreshCmd(), tickCmd())
+		return m, tea.Batch(m.refreshCmd(), m.kiroUsageCmd(), tickCmd())
 	}
 	return m, nil
 }
@@ -119,7 +145,7 @@ func (m *model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "r":
-		return m, m.refreshCmd()
+		return m, tea.Batch(m.refreshCmd(), m.kiroUsageCmd())
 	case "right", "l":
 		n := m.listLen(m.tab)
 		if m.cursor[m.tab] < n-1 {
@@ -172,7 +198,7 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "r":
-		return m, m.refreshCmd()
+		return m, tea.Batch(m.refreshCmd(), m.kiroUsageCmd())
 	case "tab", "right", "l":
 		m.tab = (m.tab + 1) % len(tabNames)
 	case "shift+tab", "left", "h":
@@ -499,6 +525,27 @@ func (m *model) refreshCmd() tea.Cmd {
 	}
 }
 
+func (m *model) kiroUsageCmd() tea.Cmd {
+	if m.kiroUsageRead == nil || m.kiroUsageInFlight {
+		return nil
+	}
+	now := time.Now()
+	if !m.kiroUsageFetchedAt.IsZero() && now.Sub(m.kiroUsageFetchedAt) < m.kiroUsageTTL {
+		return nil
+	}
+	m.kiroUsageInFlight = true
+	usageRead := m.kiroUsageRead
+	ctx := m.ctx
+	return func() tea.Msg {
+		fetchedAt := time.Now()
+		usage, ok, err := usageRead(ctx)
+		if err != nil || !ok {
+			return kiroUsageMsg{usage: nil, fetchedAt: fetchedAt}
+		}
+		return kiroUsageMsg{usage: &usage, fetchedAt: fetchedAt}
+	}
+}
+
 func tickCmd() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
@@ -562,8 +609,15 @@ func statusBadge(active bool) string {
 
 // RunTUI creates and runs the bubbletea program.
 func RunTUI(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, sqliteDBPath string, since time.Duration) error {
+	return RunTUIWithKiroUsage(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, sqliteDBPath, since, nil)
+}
+
+// RunTUIWithKiroUsage creates and runs the bubbletea program with an optional
+// account-level Kiro usage reader.
+func RunTUIWithKiroUsage(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, sqliteDBPath string, since time.Duration, usageRead KiroUsageReadFunc) error {
 	m := NewModel(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, since)
 	m.sqliteDBPath = sqliteDBPath
+	m.kiroUsageRead = usageRead
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err

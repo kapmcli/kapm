@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
@@ -28,6 +29,10 @@ type loadedMetrics struct {
 	sessions []monitor.SessionMetric
 }
 
+// KiroUsageReadFunc reads optional account-level Kiro usage. ok=false means
+// usage is unavailable and should be omitted from the UI.
+type KiroUsageReadFunc func(context.Context) (kirocliusage.Usage, bool, error)
+
 // Options configures a Server.
 type Options struct {
 	Port         int
@@ -38,6 +43,12 @@ type Options struct {
 	Since        time.Duration
 	MetricsTTL   time.Duration // 0 means default 1s
 	SQLiteDBPath string
+	// KiroUsageRead, when set, enriches the Overview summary with account-level
+	// Kiro usage. It is optional so tests and library consumers never spawn an
+	// external command unless they opt in.
+	KiroUsageRead KiroUsageReadFunc
+	// KiroUsageTTL caches optional usage reads. 0 means default 5m.
+	KiroUsageTTL time.Duration
 	// MaxSSE caps concurrent SSE connections. 0 means default 64.
 	MaxSSE int
 }
@@ -49,19 +60,29 @@ type metricsCacheEntry struct {
 	storedAt          time.Time
 }
 
+type kiroUsageCacheEntry struct {
+	usage    *kirocliusage.Usage
+	storedAt time.Time
+}
+
 // Server serves the kapm WebUI.
 type Server struct {
-	opts         Options
-	now          func() time.Time
-	handler      http.Handler
-	cache        *monitor.SessionCache
-	sqliteCache  *monitor.SQLiteCache
-	ttl          time.Duration
-	metricsMu    sync.Mutex
-	metricsCache *metricsCacheEntry
-	metricsSF    singleflight.Group
-	sseMax       int32
-	sseCount     atomic.Int32
+	opts           Options
+	now            func() time.Time
+	handler        http.Handler
+	cache          *monitor.SessionCache
+	sqliteCache    *monitor.SQLiteCache
+	ttl            time.Duration
+	metricsMu      sync.Mutex
+	metricsCache   *metricsCacheEntry
+	metricsSF      singleflight.Group
+	kiroUsageMu    sync.Mutex
+	kiroUsageCache *kiroUsageCacheEntry
+	kiroUsageSF    singleflight.Group
+	kiroUsageRead  KiroUsageReadFunc
+	kiroUsageTTL   time.Duration
+	sseMax         int32
+	sseCount       atomic.Int32
 }
 
 // New constructs a Server with the given options.
@@ -70,7 +91,11 @@ func New(opts Options) *Server {
 	if ttl == 0 {
 		ttl = time.Second
 	}
-	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), sqliteCache: monitor.NewSQLiteCache(), ttl: ttl}
+	kiroUsageTTL := opts.KiroUsageTTL
+	if kiroUsageTTL == 0 {
+		kiroUsageTTL = defaultKiroUsageTTL
+	}
+	s := &Server{opts: opts, now: time.Now, cache: monitor.NewSessionCache(), sqliteCache: monitor.NewSQLiteCache(), ttl: ttl, kiroUsageRead: opts.KiroUsageRead, kiroUsageTTL: kiroUsageTTL}
 	s.sseMax = defaultMaxSSE
 	if opts.MaxSSE > 0 {
 		if opts.MaxSSE > math.MaxInt32 {
@@ -185,4 +210,5 @@ const (
 const (
 	dashboardSessionLimit = 50
 	sessionsPerPage       = 50
+	defaultKiroUsageTTL   = 5 * time.Minute
 )

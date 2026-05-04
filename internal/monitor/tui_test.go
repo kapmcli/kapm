@@ -7,10 +7,12 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 )
 
 // fixture builds a small but realistic DetailedMetrics value.
@@ -108,6 +110,111 @@ func TestTUIOverviewRender(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview missing %q", want)
 		}
+	}
+}
+
+func TestTUIOverviewShowsKiroUsageInsteadOfAggregateCredits(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.metrics.Overview.Sessions[0].TotalCredits = 42
+	m.kiroUsage = &kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13, Overages: "Disabled"}
+
+	out := m.renderOverview()
+	for _, want := range []string{"kiro usage: 6.72 / 50", "usage:      13% · resets 2026-06-01", "plan:       KIRO FREE · overages disabled"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("overview missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "credits:") || strings.Contains(out, "42.00") {
+		t.Fatalf("overview still shows aggregate credits:\n%s", out)
+	}
+}
+
+func TestTUIOverviewShowsKiroUsageCheckingWhenUnavailable(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.metrics.Overview.Sessions[0].TotalCredits = 42
+	m.kiroUsageRead = func(context.Context) (kirocliusage.Usage, bool, error) { return kirocliusage.Usage{}, false, nil }
+
+	out := m.renderOverview()
+	if !strings.Contains(out, "kiro usage:") || !strings.Contains(out, "checking") {
+		t.Fatalf("overview should show Kiro Usage checking placeholder:\n%s", out)
+	}
+	if strings.Contains(out, "credits:") || strings.Contains(out, "42.00") {
+		t.Fatalf("overview should omit aggregate credits when Kiro Usage unavailable:\n%s", out)
+	}
+}
+
+func TestTUIKiroUsageCmdCachesKiroUsage(t *testing.T) {
+	t.Parallel()
+	m := NewModel(context.Background(), t.TempDir(), t.TempDir(), "", "", 24*time.Hour)
+	m.kiroUsageTTL = time.Hour
+	var calls atomic.Int32
+	m.kiroUsageRead = func(context.Context) (kirocliusage.Usage, bool, error) {
+		calls.Add(1)
+		return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13}, true, nil
+	}
+
+	cmd := m.kiroUsageCmd()
+	if cmd == nil {
+		t.Fatal("kiroUsageCmd() = nil, want command")
+	}
+	msg, ok := cmd().(kiroUsageMsg)
+	if !ok {
+		t.Fatalf("kiroUsageCmd() returned %T, want kiroUsageMsg", msg)
+	}
+	if msg.usage == nil || msg.usage.CreditLabel() != "6.72 / 50" {
+		t.Fatalf("kiroUsageCmd() usage = %+v", msg.usage)
+	}
+	m.Update(msg)
+
+	if cmd := m.kiroUsageCmd(); cmd != nil {
+		t.Fatal("second kiroUsageCmd() returned command inside TTL, want nil")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("usage reader calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestTUIRefreshDoesNotWaitForSlowKiroUsage(t *testing.T) {
+	t.Parallel()
+	m := NewModel(context.Background(), t.TempDir(), t.TempDir(), "", "", 24*time.Hour)
+	m.kiroUsageRead = func(context.Context) (kirocliusage.Usage, bool, error) {
+		t.Fatal("refreshCmd must not call Kiro Usage reader")
+		return kirocliusage.Usage{}, false, nil
+	}
+
+	begin := time.Now()
+	msg, ok := m.refreshCmd()().(metricsMsg)
+	if !ok {
+		t.Fatalf("refreshCmd() returned %T, want metricsMsg", msg)
+	}
+	if msg.err != nil {
+		t.Fatalf("refreshCmd() error = %v", msg.err)
+	}
+	if elapsed := time.Since(begin); elapsed > 50*time.Millisecond {
+		t.Fatalf("refreshCmd() blocked for %s", elapsed)
+	}
+}
+
+func TestTUIKiroUsageRefreshKeepsStaleOnFailure(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.kiroUsageRead = func(context.Context) (kirocliusage.Usage, bool, error) { return kirocliusage.Usage{}, false, nil }
+	m.kiroUsage = &kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 6.72, TotalCredits: 50, Percent: 13}
+	m.kiroUsageFetchedAt = time.Now().Add(-2 * defaultKiroUsageTTL)
+
+	cmd := m.kiroUsageCmd()
+	if cmd == nil {
+		t.Fatal("kiroUsageCmd() = nil, want refresh command")
+	}
+	msg, ok := cmd().(kiroUsageMsg)
+	if !ok {
+		t.Fatalf("kiroUsageCmd() returned %T, want kiroUsageMsg", msg)
+	}
+	m.Update(msg)
+	if m.kiroUsage == nil || m.kiroUsage.Plan != "KIRO FREE" {
+		t.Fatalf("stale usage was cleared after failed refresh: %+v", m.kiroUsage)
 	}
 }
 
@@ -834,6 +941,17 @@ func TestTUISessionsListGroupingIndent(t *testing.T) {
 	}
 }
 
+func TestTUISessionsListKeepsSessionCredits(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.metrics.Sessions[0].TotalCredits = 1.25
+	m.tab = tabSessions
+	out := m.renderSessionsList()
+	if !strings.Contains(out, "1.25") {
+		t.Fatalf("sessions list missing session credit value:\n%s", out)
+	}
+}
+
 func TestTUIRenderSessionDetailTitle(t *testing.T) {
 	t.Parallel()
 	m := newTestModel()
@@ -1182,6 +1300,18 @@ func TestTUIRenderSessionHeader_IncludesFilesCount(t *testing.T) {
 	out := m.renderSessionHeader(&m.metrics.Sessions[0])
 	if !strings.Contains(out, "files: 5") {
 		t.Errorf("expected 'files: 5' in header, got: %s", out)
+	}
+}
+
+func TestTUIRenderSessionHeaderKeepsSessionCredits(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	base := fixture()
+	base.Sessions[0].TotalCredits = 1.25
+	m.metrics = base
+	out := m.renderSessionHeader(&m.metrics.Sessions[0])
+	if !strings.Contains(out, "credits: 1.25") {
+		t.Fatalf("session header missing session credits:\n%s", out)
 	}
 }
 

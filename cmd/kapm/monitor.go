@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/kapmcli/kapm/internal/kirocliusage"
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
@@ -30,7 +31,8 @@ var runMonitor = func() func([]string) error {
 			if monitorJSON {
 				return monitor.RunJSON(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.SQLiteDBPath, lf.Since, session, agent, os.Stdout)
 			}
-			return monitor.RunTUI(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.SQLiteDBPath, lf.Since)
+			usageReader := kirocliusage.NewReader()
+			return monitor.RunTUIWithKiroUsage(ctx, lf.SessionsDir, lf.LogsDir, lf.IDESessionsDir, lf.CwdFilter, lf.SQLiteDBPath, lf.Since, usageReader.Read)
 		},
 	)
 }()
