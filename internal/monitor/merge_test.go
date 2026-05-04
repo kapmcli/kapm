@@ -167,6 +167,73 @@ func TestMergeSessions_WithHook(t *testing.T) {
 	}
 }
 
+func TestMergeSessions_PreservesMatchedHookAliasToolName(t *testing.T) {
+	session := makeSession("sess-alias", []SessionMessage{
+		toolUseMsg("tu-1", "read", map[string]string{"path": "/tmp/f"}),
+		toolResultMsg("tu-1", "success"),
+	})
+
+	preTs := time.Date(2026, 4, 27, 10, 19, 42, 0, time.UTC)
+	postTs := time.Date(2026, 4, 27, 10, 19, 43, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "sess-alias", Event: "preToolUse", Agent: "orchestrator", Tool: "fs_read"},
+		{Ts: postTs, Session: "sess-alias", Event: "postToolUse", Agent: "orchestrator", Tool: "fs_read"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(recs))
+	}
+	if recs[0].ToolName != "fs_read" {
+		t.Fatalf("merged ToolName = %q; want raw hook alias fs_read", recs[0].ToolName)
+	}
+
+	d := mustAggregate(t, recs, postTs.Add(time.Hour))
+	read := toolDetailByNameForTest(d.Tools, "read")
+	if read == nil {
+		t.Fatalf("canonical read detail missing: %#v", d.Tools)
+	}
+	if len(read.Aliases) != 1 || read.Aliases[0].Name != "fs_read" || read.Aliases[0].CallCount != 1 {
+		t.Fatalf("read aliases = %#v; want one fs_read call", read.Aliases)
+	}
+}
+
+func TestHookToolNameForMergedRecord(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		sessionTool string
+		hookTool    string
+		want        string
+	}{
+		{name: "read snake alias", sessionTool: "read", hookTool: "fs_read", want: "fs_read"},
+		{name: "read camel alias", sessionTool: "read", hookTool: "fsRead", want: "fsRead"},
+		{name: "write snake alias", sessionTool: "write", hookTool: "fs_write", want: "fs_write"},
+		{name: "write camel alias", sessionTool: "write", hookTool: "fsWrite", want: "fsWrite"},
+		{name: "unrelated hook stays session", sessionTool: "read", hookTool: "fs_write", want: "read"},
+		{name: "empty hook stays session", sessionTool: "read", hookTool: "", want: "read"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := hookToolNameForMergedRecord(tt.sessionTool, HookRecord{Tool: tt.hookTool})
+			if got != tt.want {
+				t.Fatalf("hookToolNameForMergedRecord(%q, %q) = %q; want %q", tt.sessionTool, tt.hookTool, got, tt.want)
+			}
+		})
+	}
+}
+
+func toolDetailByNameForTest(details []ToolDetail, name string) *ToolDetail {
+	for i := range details {
+		if details[i].Name == name {
+			return &details[i]
+		}
+	}
+	return nil
+}
+
 // TestMergeSessions_FewerHooksThanToolUse verifies position-based matching with fewer hooks than toolUse records.
 func TestMergeSessions_FewerHooksThanToolUse(t *testing.T) {
 	// Position-based matching: 2 toolUse, 1 hook pair → hook[0] matches toolUse[0], toolUse[1] has no hook.
@@ -253,6 +320,36 @@ func TestMergeSessions_MatchesUnknownHooksToSessionByWindowAndTool(t *testing.T)
 
 func TestMergeSessions_MatchesStableUnknownHooksToSessionByWindowAndTool(t *testing.T) {
 	testMergeSessionsMatchesUnknownHooksToSessionByWindowAndTool(t, "unknown", "unknown")
+}
+
+func TestMergeSessions_MatchesUnknownHooksByCanonicalToolFamily(t *testing.T) {
+	session := makeSession("conv-alias", []SessionMessage{
+		toolUseMsg("tu-read", "read", map[string]string{"path": "/a.go"}),
+		toolResultMsg("tu-read", "success"),
+	})
+	session.Meta.CreatedAt = rfc3339Time(time.Date(2026, 5, 2, 3, 0, 0, 0, time.UTC))
+	session.Meta.UpdatedAt = rfc3339Time(time.Date(2026, 5, 2, 3, 0, 10, 0, time.UTC))
+
+	preTs := time.Date(2026, 5, 2, 3, 0, 1, 0, time.UTC)
+	postTs := time.Date(2026, 5, 2, 3, 0, 2, 0, time.UTC)
+	hooks := []HookRecord{
+		{Ts: preTs, Session: "unknown", Event: apmconfig.EventPreToolUse, Agent: "lead", Tool: "fsRead"},
+		{Ts: postTs, Session: "unknown", Event: apmconfig.EventPostToolUse, Agent: "lead", Tool: "fsRead"},
+	}
+
+	recs := MergeSessions([]ParsedSession{session}, hooks)
+	if len(recs) != 2 {
+		t.Fatalf("len(recs) = %d, want 2", len(recs))
+	}
+	if recs[0].ToolName != "fsRead" {
+		t.Fatalf("toolUse ToolName = %q; want raw hook alias fsRead", recs[0].ToolName)
+	}
+	if !recs[0].PreToolTs.Equal(preTs) {
+		t.Fatalf("toolUse PreToolTs = %v, want %v", recs[0].PreToolTs, preTs)
+	}
+	if !recs[1].PostToolTs.Equal(postTs) {
+		t.Fatalf("toolResult PostToolTs = %v, want %v", recs[1].PostToolTs, postTs)
+	}
 }
 
 func testMergeSessionsMatchesUnknownHooksToSessionByWindowAndTool(t *testing.T, preSession, postSession string) {

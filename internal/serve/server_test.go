@@ -978,6 +978,9 @@ func TestHandleToolDetailHappyPath(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "Tool bash") {
 		t.Fatalf("body missing tool detail title: %s", rr.Body.String())
 	}
+	if strings.Contains(rr.Body.String(), "Aliases") {
+		t.Fatalf("single-alias tool detail should not render aliases section: %s", rr.Body.String())
+	}
 }
 
 func newAliasTestServer(t *testing.T) *Server {

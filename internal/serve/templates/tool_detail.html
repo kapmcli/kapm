@@ -13,6 +13,7 @@
   </table>
 </section>
 
+{{- if gt (len $t.Aliases) 1}}
 <section class="card">
   <div class="card-title">Aliases</div>
   <table>
@@ -25,12 +26,11 @@
         <td>{{.ErrorCount}}</td>
         <td>{{printf "%.1f%%" (mul .Percentage 100.0)}}</td>
       </tr>
-    {{- else}}
-      <tr><td colspan="4" class="muted">No aliases</td></tr>
     {{- end}}
     </tbody>
   </table>
 </section>
+{{- end}}
 
 <section class="card">
   <div class="card-title">Trends</div>

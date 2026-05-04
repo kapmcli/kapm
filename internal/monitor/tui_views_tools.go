@@ -85,16 +85,27 @@ func (m *model) renderToolDetail() string {
 		t.CallCount, t.ErrorCount, formatErrRate(t.ErrorRate))
 	fmt.Fprintf(&b, "  avg duration: %s\n\n", formatDur(time.Duration(t.AvgDuration)))
 
+	if len(t.Aliases) > 1 {
+		fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Aliases"))
+		fmt.Fprintf(&b, "  %-16s  %7s  %7s  %7s\n", "Name", "Calls", "Errors", "Share")
+		for _, a := range t.Aliases {
+			fmt.Fprintf(&b, "  %-16s  %7d  %7d  %6.1f%%\n",
+				truncate(a.Name, 16), a.CallCount, a.ErrorCount, a.Percentage*100)
+		}
+		b.WriteString("\n")
+	}
+
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Recent calls (newest first)"))
 	if len(t.RecentCalls) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
-		fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %10s\n", "Time", "Session", "Agent", "Duration")
+		fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %10s\n", "Time", "Tool", "Session", "Agent", "Duration")
 		limit := min(len(t.RecentCalls), 15)
 		for i := range limit {
 			c := t.RecentCalls[i]
-			fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %10s\n",
+			fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %10s\n",
 				c.Ts.Local().Format(tsLayout),
+				truncate(c.Tool, 12),
 				shortID(c.Session, 12),
 				truncate(c.Agent, 14),
 				formatDur(time.Duration(c.Duration)),
@@ -107,15 +118,16 @@ func (m *model) renderToolDetail() string {
 	if len(t.Errors) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
-		fmt.Fprintf(&b, "  %-19s  %-12s  %-14s  %s\n", "Time", "Session", "Agent", "Input")
+		fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %s\n", "Time", "Tool", "Session", "Agent", "Input")
 		limit := min(len(t.Errors), 10)
-		// Reserve space: 2(indent) + 2(!+space) + 19(time) + 2 + 12(session) + 2 + 14(agent) + 2 = 55
-		inputWidth := max(m.interiorWidth()-55, 10)
+		// Reserve space: 2(indent) + 2(!+space) + 19(time) + 2 + 12(tool) + 2 + 12(session) + 2 + 14(agent) + 2 = 69
+		inputWidth := max(m.interiorWidth()-69, 10)
 		for i := range limit {
 			c := t.Errors[i]
-			fmt.Fprintf(&b, "  %s %-19s  %-12s  %-14s  %s\n",
+			fmt.Fprintf(&b, "  %s %-19s  %-12s  %-12s  %-14s  %s\n",
 				errorStyle.Render("!"),
 				c.Ts.Local().Format(tsLayout),
+				truncate(c.Tool, 12),
 				shortID(c.Session, 12),
 				truncate(c.Agent, 14),
 				truncateVisible(c.InputSummary, inputWidth),

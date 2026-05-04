@@ -1907,6 +1907,34 @@ func TestFinalizeToolDetails(t *testing.T) {
 			t.Errorf("ErrorRate: want 0 for zero CallCount, got %v", td.ErrorRate)
 		}
 	})
+
+	t.Run("skips zero durations for average", func(t *testing.T) {
+		t.Parallel()
+		td := &ToolDetail{
+			ToolMetric: ToolMetric{CallCount: 3},
+			RecentCalls: []ToolCall{
+				{Ts: baseTime, Duration: 0},
+				{Ts: baseTime.Add(time.Second), Duration: JSONDuration(2 * time.Second)},
+				{Ts: baseTime.Add(2 * time.Second), Duration: 0},
+			},
+		}
+		finalizeToolDetails(td)
+		if td.AvgDuration != JSONDuration(2*time.Second) {
+			t.Errorf("AvgDuration: want 2s after skipping zeros, got %v", td.AvgDuration)
+		}
+	})
+
+	t.Run("all zero durations leave average unknown", func(t *testing.T) {
+		t.Parallel()
+		td := &ToolDetail{
+			ToolMetric:  ToolMetric{CallCount: 2},
+			RecentCalls: []ToolCall{{Ts: baseTime}, {Ts: baseTime.Add(time.Second)}},
+		}
+		finalizeToolDetails(td)
+		if td.AvgDuration != 0 {
+			t.Errorf("AvgDuration: want 0 for all-zero durations, got %v", td.AvgDuration)
+		}
+	})
 }
 
 func TestParseToolResponseError_JsonWireFormat(t *testing.T) {

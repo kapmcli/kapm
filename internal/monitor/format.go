@@ -5,10 +5,11 @@ import (
 	"time"
 )
 
-// FormatDuration formats d as an integer-second string: "12s", "1m03s", "1h02m", "2d3h".
+// FormatDuration formats d as "-" for missing/zero durations, then as
+// "500ms", "12s", "1m03s", "1h02m", or "2d3h".
 func FormatDuration(d time.Duration) string {
-	if d < 0 {
-		d = 0
+	if d <= 0 {
+		return "-"
 	}
 	if d < time.Second {
 		return fmt.Sprintf("%dms", d.Milliseconds())

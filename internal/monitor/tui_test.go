@@ -165,8 +165,54 @@ func TestTUIToolDetail(t *testing.T) {
 	m = press(m, "4") // Tools
 	m = press(m, "enter")
 	out := m.renderView()
+	if strings.Contains(out, "Aliases") {
+		t.Errorf("tool detail should hide aliases section for single observed tool name")
+	}
 	if !strings.Contains(out, "Recent calls") || !strings.Contains(out, "Error samples") {
 		t.Errorf("tool detail missing sections")
+	}
+}
+
+func TestTUIToolDetailShowsAliasDistributionAndRawTool(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 5, 4, 10, 0, 0, 0, time.UTC)
+	m := newTestModel()
+	m.metrics.Tools = []ToolDetail{{
+		ToolMetric: ToolMetric{Name: "read", CallCount: 2},
+		Aliases: []ToolAliasMetric{
+			{Name: "read", CallCount: 1, Percentage: 0.5},
+			{Name: "fs_read", CallCount: 1, Percentage: 0.5},
+		},
+		RecentCalls: []ToolCall{{Ts: start, Session: "abcdef123456789012", Agent: "lead", Tool: "fs_read", Duration: JSONDuration(78 * time.Millisecond)}},
+	}}
+	m = press(m, "4") // Tools
+	m = press(m, "enter")
+
+	out := m.renderView()
+	for _, want := range []string{"Aliases", "fs_read", "50.0%", "Tool", "Recent calls"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("tool detail missing %q in output:\n%s", want, out)
+		}
+	}
+}
+
+func TestTUIToolDetailDisplaysUnknownDurationsAsDash(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 5, 4, 10, 0, 0, 0, time.UTC)
+	m := newTestModel()
+	m.metrics.Tools = []ToolDetail{{
+		ToolMetric:  ToolMetric{Name: "read", CallCount: 1},
+		RecentCalls: []ToolCall{{Ts: start, Session: "abcdef123456789012", Agent: "lead", Tool: "read"}},
+	}}
+	m = press(m, "4")
+	m = press(m, "enter")
+
+	out := m.renderView()
+	if !strings.Contains(out, "avg duration: -") {
+		t.Fatalf("tool detail should render unknown average duration as dash:\n%s", out)
+	}
+	if !regexp.MustCompile(`lead\s+-`).MatchString(out) {
+		t.Fatalf("recent call should render zero duration as dash:\n%s", out)
 	}
 }
 

@@ -508,7 +508,7 @@ func findUnknownHook(
 ) int {
 	bestIdx := -1
 	for i, hook := range hooks {
-		if used[i] || hook.Event != event || hook.Tool != toolName {
+		if used[i] || hook.Event != event || !sameToolAggregationFamily(hook.Tool, toolName) {
 			continue
 		}
 		if hook.Ts.Before(start) || hook.Ts.After(end) {
@@ -519,6 +519,23 @@ func findUnknownHook(
 		}
 	}
 	return bestIdx
+}
+
+func hookToolNameForMergedRecord(sessionToolName string, hook HookRecord) string {
+	if hook.Tool == "" || sessionToolName == "" {
+		return sessionToolName
+	}
+	if sameToolAggregationFamily(hook.Tool, sessionToolName) {
+		return hook.Tool
+	}
+	return sessionToolName
+}
+
+func sameToolAggregationFamily(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return CanonicalToolNameForAggregation(a) == CanonicalToolNameForAggregation(b)
 }
 
 // resolveInitialAgent returns the active agent name for a session.
@@ -662,17 +679,19 @@ func (s *messageProcessorState) processAssistantMessage(msg SessionMessage, out 
 				}
 				s.subAgentsByID[tu.ToolUseID] = subAgents
 			}
+			var preHook HookRecord
 			var preTs time.Time
 			if s.toolUseIdx < len(s.preHooks) {
-				preTs = s.preHooks[s.toolUseIdx].Ts
-				if s.preHooks[s.toolUseIdx].Agent != "" {
-					*s.currentAgent = s.preHooks[s.toolUseIdx].Agent
+				preHook = s.preHooks[s.toolUseIdx]
+				preTs = preHook.Ts
+				if preHook.Agent != "" {
+					*s.currentAgent = preHook.Agent
 				}
 			}
 			rec := s.base()
 			rec.Kind = RecordKindToolUse
 			rec.ToolUseID = tu.ToolUseID
-			rec.ToolName = tu.Name
+			rec.ToolName = hookToolNameForMergedRecord(tu.Name, preHook)
 			rec.ToolInput = tu.Input
 			rec.PreToolTs = preTs
 			out = append(out, rec)

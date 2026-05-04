@@ -563,10 +563,17 @@ func finalizeToolDetails(td *ToolDetail) {
 	})
 	if len(td.RecentCalls) > 0 {
 		var total time.Duration
+		var count int
 		for _, c := range td.RecentCalls {
+			if c.Duration <= 0 {
+				continue
+			}
 			total += time.Duration(c.Duration)
+			count++
 		}
-		td.AvgDuration = JSONDuration(total / time.Duration(len(td.RecentCalls)))
+		if count > 0 {
+			td.AvgDuration = JSONDuration(total / time.Duration(count))
+		}
 		slices.SortFunc(td.RecentCalls, sortToolCallByTsDesc)
 		if len(td.RecentCalls) > maxRecentCalls {
 			td.RecentCalls = td.RecentCalls[:maxRecentCalls]
