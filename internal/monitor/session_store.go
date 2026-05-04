@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kapmcli/kapm/internal/fileutil"
+	"golang.org/x/sync/errgroup"
 )
 
 // SessionCache caches parsed session files keyed by path, invalidated by
@@ -56,6 +57,8 @@ type dataCacheEntry struct {
 // kapm will parse. Files beyond this size are skipped with a Warn log to
 // avoid OOM on pathologically large logs. 100 MiB.
 const sessionJSONLMaxBytes = 100 << 20
+
+const sessionLoadParallelism = 8
 
 // ParsedSession holds the metadata and messages for one session.
 type ParsedSession struct {
@@ -133,88 +136,50 @@ func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdF
 		oldData = map[string]dataCacheEntry{}
 	}
 
-	nextMeta := make(map[string]metaCacheEntry, len(entries))
-	nextData := make(map[string]dataCacheEntry, len(entries))
-
-	var sessions []ParsedSession
+	sessionEntries := make([]fs.DirEntry, 0, len(entries))
 	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		if e.IsDir() {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue // skip .jsonl and .lock
-		}
+		sessionEntries = append(sessionEntries, e)
+	}
 
-		jsonPath := filepath.Join(sessionsDir, name)
-		info, err := e.Info()
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return nil, nil, fmt.Errorf("stat %q: %w", jsonPath, err)
+	results := make([]sessionLoadResult, len(sessionEntries))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(sessionLoadParallelism)
+	for i, e := range sessionEntries {
+		if err := gctx.Err(); err != nil {
+			return nil, nil, err
 		}
-		mtime, size := info.ModTime(), info.Size()
-
-		var meta SessionMeta
-		if prev, ok := oldMeta[jsonPath]; ok && prev.mtime.Equal(mtime) && prev.size == size {
-			meta = prev.meta
-			nextMeta[jsonPath] = prev
-		} else {
-			meta, err = parseSessionMetaFile(jsonPath)
+		g.Go(func() error {
+			result, err := loadSessionEntry(gctx, sessionsDir, since, cwdFilter, oldMeta, oldData, e)
 			if err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					continue
-				}
-				slog.Warn("skipped malformed session metadata", "path", jsonPath, "err", err)
-				continue
+				return err
 			}
-			nextMeta[jsonPath] = metaCacheEntry{mtime: mtime, size: size, meta: meta}
+			results[i] = result
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+
+	nextMeta := make(map[string]metaCacheEntry, len(sessionEntries))
+	nextData := make(map[string]dataCacheEntry, len(sessionEntries))
+	sessions := make([]ParsedSession, 0, len(sessionEntries))
+	for _, result := range results {
+		if result.hasMeta {
+			nextMeta[result.jsonPath] = result.metaEntry
 		}
-
-		// Apply since filter using updated_at from metadata.
-		if time.Time(meta.UpdatedAt).Before(since) {
-			continue
+		if result.hasData {
+			nextData[result.jsonlPath] = result.dataEntry
 		}
-
-		// Apply cwd filter: skip sessions not rooted in cwdFilter.
-		if cwdFilter != "" && !strings.HasPrefix(meta.Cwd, cwdFilter) {
-			continue
+		if result.hasSession {
+			sessions = append(sessions, result.session)
 		}
-
-		// Parse corresponding .jsonl.
-		uuid := strings.TrimSuffix(name, ".json")
-		jsonlPath := filepath.Join(sessionsDir, uuid+".jsonl")
-
-		jsonlInfo, err := os.Stat(jsonlPath)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue // .jsonl missing — skip silently
-			}
-			return nil, nil, fmt.Errorf("stat %q: %w", jsonlPath, err)
-		}
-		jmtime, jsize := jsonlInfo.ModTime(), jsonlInfo.Size()
-
-		var msgs []SessionMessage
-		if prev, ok := oldData[jsonlPath]; ok && prev.mtime.Equal(jmtime) && prev.size == jsize {
-			msgs = prev.msgs
-			nextData[jsonlPath] = prev
-		} else {
-			msgs, err = parseSessionJSONLFile(jsonlPath)
-			if err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					continue
-				}
-				slog.Warn("skipped unreadable session jsonl", "path", jsonlPath, "err", err)
-				continue
-			}
-			nextData[jsonlPath] = dataCacheEntry{mtime: jmtime, size: jsize, msgs: msgs}
-		}
-
-		sessions = append(sessions, ParsedSession{Meta: meta, Messages: msgs})
 	}
 
 	next := &SessionCache{meta: nextMeta, data: nextData}
@@ -222,4 +187,103 @@ func LoadSessions(ctx context.Context, sessionsDir string, since time.Time, cwdF
 		sessions = []ParsedSession{}
 	}
 	return sessions, next, nil
+}
+
+type sessionLoadResult struct {
+	jsonPath   string
+	jsonlPath  string
+	metaEntry  metaCacheEntry
+	dataEntry  dataCacheEntry
+	session    ParsedSession
+	hasMeta    bool
+	hasData    bool
+	hasSession bool
+}
+
+func loadSessionEntry(ctx context.Context, sessionsDir string, since time.Time, cwdFilter string, oldMeta map[string]metaCacheEntry, oldData map[string]dataCacheEntry, e fs.DirEntry) (sessionLoadResult, error) {
+	if err := ctx.Err(); err != nil {
+		return sessionLoadResult{}, err
+	}
+	if e.IsDir() {
+		return sessionLoadResult{}, nil
+	}
+	name := e.Name()
+	if !strings.HasSuffix(name, ".json") {
+		return sessionLoadResult{}, nil // skip .jsonl and .lock
+	}
+
+	jsonPath := filepath.Join(sessionsDir, name)
+	info, err := e.Info()
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return sessionLoadResult{}, nil
+		}
+		return sessionLoadResult{}, fmt.Errorf("stat %q: %w", jsonPath, err)
+	}
+	mtime, size := info.ModTime(), info.Size()
+
+	result := sessionLoadResult{jsonPath: jsonPath}
+	var meta SessionMeta
+	if prev, ok := oldMeta[jsonPath]; ok && prev.mtime.Equal(mtime) && prev.size == size {
+		meta = prev.meta
+		result.metaEntry = prev
+		result.hasMeta = true
+	} else {
+		meta, err = parseSessionMetaFile(jsonPath)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return sessionLoadResult{}, nil
+			}
+			slog.Warn("skipped malformed session metadata", "path", jsonPath, "err", err)
+			return sessionLoadResult{}, nil
+		}
+		result.metaEntry = metaCacheEntry{mtime: mtime, size: size, meta: meta}
+		result.hasMeta = true
+	}
+
+	// Apply since filter using updated_at from metadata.
+	if time.Time(meta.UpdatedAt).Before(since) {
+		return result, nil
+	}
+
+	// Apply cwd filter: skip sessions not rooted in cwdFilter.
+	if cwdFilter != "" && !strings.HasPrefix(meta.Cwd, cwdFilter) {
+		return result, nil
+	}
+
+	// Parse corresponding .jsonl.
+	uuid := strings.TrimSuffix(name, ".json")
+	jsonlPath := filepath.Join(sessionsDir, uuid+".jsonl")
+	result.jsonlPath = jsonlPath
+
+	jsonlInfo, err := os.Stat(jsonlPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return result, nil // .jsonl missing — skip silently
+		}
+		return sessionLoadResult{}, fmt.Errorf("stat %q: %w", jsonlPath, err)
+	}
+	jmtime, jsize := jsonlInfo.ModTime(), jsonlInfo.Size()
+
+	var msgs []SessionMessage
+	if prev, ok := oldData[jsonlPath]; ok && prev.mtime.Equal(jmtime) && prev.size == jsize {
+		msgs = prev.msgs
+		result.dataEntry = prev
+		result.hasData = true
+	} else {
+		msgs, err = parseSessionJSONLFile(jsonlPath)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return result, nil
+			}
+			slog.Warn("skipped unreadable session jsonl", "path", jsonlPath, "err", err)
+			return result, nil
+		}
+		result.dataEntry = dataCacheEntry{mtime: jmtime, size: jsize, msgs: msgs}
+		result.hasData = true
+	}
+
+	result.session = ParsedSession{Meta: meta, Messages: msgs}
+	result.hasSession = true
+	return result, nil
 }
