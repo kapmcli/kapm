@@ -143,7 +143,7 @@ func filterKapmIDEHookSessions(sessions []IDEParsedSession) []IDEParsedSession {
 
 func isKapmIDEHookTitle(title string) bool {
 	switch title {
-	case "kapm Manual Hook Dump",
+	case "kapm Manual Hook Event Logger",
 		"kapm Prompt Submit Logger",
 		"kapm Pre Tool Use Logger",
 		"kapm Post Tool Use Logger",

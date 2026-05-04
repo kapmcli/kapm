@@ -88,6 +88,70 @@ func TestLoadAll_WithIDESessions(t *testing.T) {
 	}
 }
 
+func TestLoadAll_WithIDEHookRecords(t *testing.T) {
+	t.Parallel()
+	cliDir := t.TempDir()
+	hookDir := t.TempDir()
+	ideDir := t.TempDir()
+	wsPath := "/home/user/project-alpha"
+	enc := base64.RawURLEncoding.EncodeToString([]byte(wsPath))
+	wsDir := filepath.Join(ideDir, "workspace-sessions", enc)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 5, 3, 1, 0, 0, 0, time.UTC)
+	sessions := []IDESessionEntry{{SessionID: "ide-sess-1", Title: "IDE Session", DateCreated: "1777760400000"}}
+	data, _ := json.Marshal(sessions)
+	if err := os.WriteFile(filepath.Join(wsDir, "sessions.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	history := IDESessionHistory{History: []IDEHistoryEntry{{
+		Message: IDEMessage{Role: "user", Content: json.RawMessage(`"hello from ide"`)},
+	}}}
+	hdata, _ := json.Marshal(history)
+	if err := os.WriteFile(filepath.Join(wsDir, "ide-sess-1.json"), hdata, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ideHookDir := filepath.Join(hookDir, "ide")
+	if err := os.MkdirAll(ideHookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hooks := []HookRecord{
+		{Ts: createdAt.Add(time.Second), Event: "userPromptSubmit", Agent: "ide", Cwd: wsPath},
+		{Ts: createdAt.Add(2 * time.Second), Event: "stop", Agent: "ide", Cwd: wsPath},
+	}
+	var lines []byte
+	for _, hook := range hooks {
+		line, err := json.Marshal(hook)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, line...)
+		lines = append(lines, '\n')
+	}
+	if err := os.WriteFile(filepath.Join(ideHookDir, "events.jsonl"), lines, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, _, err := LoadAll(context.Background(), cliDir, hookDir, ideDir, "", time.Time{}, "", nil, nil)
+	if err != nil {
+		t.Fatalf("LoadAll() error = %v", err)
+	}
+	detail, err := AggregateDetail(context.Background(), recs, createdAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("AggregateDetail() error = %v", err)
+	}
+	if len(detail.Sessions) != 1 {
+		t.Fatalf("sessions len = %d, want 1", len(detail.Sessions))
+	}
+	if len(detail.Sessions[0].PromptHistory) != 1 || detail.Sessions[0].PromptHistory[0] != "hello from ide" {
+		t.Fatalf("PromptHistory = %#v", detail.Sessions[0].PromptHistory)
+	}
+	if detail.Sessions[0].Active {
+		t.Fatal("session should be inactive after IDE stop hook")
+	}
+}
+
 func TestLoadAll_EmptyIDEDir(t *testing.T) {
 	t.Parallel()
 	cliDir := t.TempDir()
@@ -140,9 +204,13 @@ func TestCollectExecutionIDs(t *testing.T) {
 // Must NOT call t.Parallel() — uses testutil.CaptureSlog.
 func TestLoadAllHookRecords_UnreadableWarn(t *testing.T) {
 	hookDir := t.TempDir()
+	cliDir := filepath.Join(hookDir, "cli")
+	if err := os.MkdirAll(cliDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Create a directory named "bad.jsonl" — os.Open on a dir returns an error
 	// that is not fs.ErrNotExist, triggering the non-ErrNotExist branch.
-	badPath := filepath.Join(hookDir, "bad.jsonl")
+	badPath := filepath.Join(cliDir, "bad.jsonl")
 	if err := os.Mkdir(badPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +230,33 @@ func TestLoadAllHookRecords_UnreadableWarn(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), badPath) {
 		t.Errorf("expected path %q in log, got: %s", badPath, buf.String())
+	}
+}
+
+func TestLoadAllHookRecordsReadsCLIOnly(t *testing.T) {
+	t.Parallel()
+	hookDir := t.TempDir()
+	cliDir := filepath.Join(hookDir, "cli")
+	if err := os.MkdirAll(cliDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ts := time.Date(2026, 5, 3, 1, 2, 3, 0, time.UTC)
+	cliLine, err := json.Marshal(HookRecord{Ts: ts, Session: "cli-session", Event: "preToolUse", Agent: "coder", Tool: "shell"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cliDir, "cli-session.jsonl"), append(cliLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := loadAllHookRecords(context.Background(), hookDir)
+	if err != nil {
+		t.Fatalf("loadAllHookRecords() error = %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("records len = %d, want 1: %#v", len(recs), recs)
+	}
+	if recs[0].Session != "cli-session" || recs[0].Tool != "shell" {
+		t.Fatalf("record = %#v", recs[0])
 	}
 }
 

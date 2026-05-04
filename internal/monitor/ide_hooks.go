@@ -1,17 +1,7 @@
 package monitor
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/fs"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
@@ -19,101 +9,19 @@ import (
 
 const ideHookAgent = "kiro-ide"
 
-// IDEHookInputRecord is one raw IDE runCommand hook capture from hook-dump.
-type IDEHookInputRecord struct {
-	Ts             time.Time
-	Event          string
-	Agent          string
-	Cwd            string
-	Stdin          string
-	StdinBytes     int
-	StdinReadTimed bool
-	Env            map[string]string
-	EnvKeys        []string
-}
-
-type ideHookInputJSON struct {
-	Ts             string            `json:"ts"`
-	Event          string            `json:"event,omitempty"`
-	Agent          string            `json:"agent,omitempty"`
-	Cwd            string            `json:"cwd,omitempty"`
-	Stdin          string            `json:"stdin"`
-	StdinBytes     int               `json:"stdin_bytes"`
-	StdinReadTimed bool              `json:"stdin_read_timed_out,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	EnvKeys        []string          `json:"env_keys,omitempty"`
-}
-
-// LoadIDEHookInputs reads hook-dump's raw IDE hook capture file.
-func LoadIDEHookInputs(ctx context.Context, hookLogsDir string) ([]IDEHookInputRecord, error) {
-	if hookLogsDir == "" {
-		return nil, nil
-	}
-	path := filepath.Join(hookLogsDir, "hook-input.jsonl")
-	f, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var records []IDEHookInputRecord
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 20*1024*1024)
-	var parseFailed int
-	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var raw ideHookInputJSON
-		if err := json.Unmarshal(line, &raw); err != nil {
-			parseFailed++
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339Nano, raw.Ts)
-		if err != nil || ts.IsZero() {
-			continue
-		}
-		records = append(records, IDEHookInputRecord{
-			Ts:             ts,
-			Event:          raw.Event,
-			Agent:          raw.Agent,
-			Cwd:            raw.Cwd,
-			Stdin:          raw.Stdin,
-			StdinBytes:     raw.StdinBytes,
-			StdinReadTimed: raw.StdinReadTimed,
-			Env:            raw.Env,
-			EnvKeys:        raw.EnvKeys,
-		})
-	}
-	if parseFailed > 0 {
-		slog.Warn("skipped malformed IDE hook input lines", "path", path, "count", parseFailed)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
-}
-
-// AppendIDEHookMergedRecords folds raw IDE hook captures into the same record
-// stream used by CLI and IDE execution logs. Existing IDE execution records are
-// enriched when possible; otherwise synthetic tool records preserve hook data.
-func AppendIDEHookMergedRecords(records []MergedRecord, sessions []IDEParsedSession, hooks []IDEHookInputRecord) []MergedRecord {
+// AppendIDEHookRecords folds minimal IDE hook records into IDE session and
+// execution records. Hook logs provide lifecycle timestamps only; prompts,
+// tool inputs, and tool results remain sourced from IDE session/execution logs.
+func AppendIDEHookRecords(records []MergedRecord, sessions []IDEParsedSession, hooks []HookRecord) []MergedRecord {
 	if len(sessions) == 0 || len(hooks) == 0 {
 		return records
 	}
 	sorted := slices.Clone(hooks)
-	slices.SortStableFunc(sorted, func(a, b IDEHookInputRecord) int { return a.Ts.Compare(b.Ts) })
+	slices.SortStableFunc(sorted, func(a, b HookRecord) int { return a.Ts.Compare(b.Ts) })
 
 	windows := ideSessionWindows(sessions, records)
-	pendingPre := map[string][]IDEHookInputRecord{}
-	promptsBySession := map[string][]ideHookPrompt{}
+	pendingPre := map[string][]HookRecord{}
+	promptState := map[string]idePromptState{}
 	var synthetic []MergedRecord
 	for _, h := range sorted {
 		s := matchIDEHookSession(sessions, windows, h)
@@ -123,40 +31,38 @@ func AppendIDEHookMergedRecords(records []MergedRecord, sessions []IDEParsedSess
 		sid := s.SessionID
 		switch h.Event {
 		case apmconfig.EventUserPromptSubmit:
-			prompt := hookUserPrompt(h)
-			if strings.TrimSpace(prompt) == "" {
+			prompt := nextIDEHookPrompt(s, promptState[sid])
+			if prompt == "" {
 				continue
 			}
-			promptsBySession[sid] = append(promptsBySession[sid], ideHookPrompt{text: prompt, ts: h.Ts})
-			synthetic = append(synthetic, ideHookBaseRecord(*s, h, RecordKindPrompt, ""))
-			synthetic[len(synthetic)-1].PromptText = prompt
-			synthetic[len(synthetic)-1].PromptTs = h.Ts
+			state := promptState[sid]
+			state.index++
+			state.lastTs = h.Ts
+			promptState[sid] = state
+
+			rec := ideHookBaseRecord(*s, h, RecordKindPrompt, "")
+			rec.PromptText = prompt
+			rec.PromptTs = h.Ts
+			synthetic = append(synthetic, rec)
 
 		case apmconfig.EventPreToolUse:
 			pendingPre[sid] = append(pendingPre[sid], h)
 
 		case apmconfig.EventPostToolUse:
-			if pendingSID := bestPendingPreSession(pendingPre, h); pendingSID != "" {
-				if pendingSession := findIDESessionByID(sessions, pendingSID); pendingSession != nil {
-					s = pendingSession
-					sid = pendingSID
-				}
-			}
-			payload := parseIDEHookToolPayload(h)
-			if payload.ToolName == "" {
-				payload.ToolName = "tool"
-			}
-			payload.ToolName = normalizeIDEToolName(payload.ToolName)
-			if enrichExistingIDEResult(records, sid, payload, h.Ts) || enrichAnyExistingIDEResult(records, payload, h.Ts) {
-				pendingPre[sid] = popPendingPre(pendingPre[sid])
-				continue
-			}
 			preTs := h.Ts
+			var matchedPre *HookRecord
 			if len(pendingPre[sid]) > 0 {
-				preTs = pendingPre[sid][0].Ts
+				matchedPre = &pendingPre[sid][0]
+				preTs = matchedPre.Ts
 				pendingPre[sid] = pendingPre[sid][1:]
 			}
-			synthetic = append(synthetic, ideHookToolPair(*s, h, payload, preTs)...)
+			if enrichExistingIDEHookPair(records, sid, preTs, h.Ts) {
+				continue
+			}
+			if matchedPre != nil {
+				synthetic = append(synthetic, ideHookLifecycleRecord(*s, *matchedPre, apmconfig.EventPreToolUse, preTs))
+			}
+			synthetic = append(synthetic, ideHookLifecycleRecord(*s, h, apmconfig.EventPostToolUse, h.Ts))
 
 		case apmconfig.EventStop:
 			rec := ideHookBaseRecord(*s, h, RecordKindStop, "")
@@ -167,13 +73,11 @@ func AppendIDEHookMergedRecords(records []MergedRecord, sessions []IDEParsedSess
 			continue
 
 		default:
-			if isEmptyLifecycleHookPayload(h) {
+			if h.Event == "" {
 				continue
 			}
 			rec := ideHookBaseRecord(*s, h, RecordKindHookEvent, "")
 			rec.EventName = h.Event
-			rec.ToolInput = genericIDEHookInput(h)
-			rec.ToolResult = hookUserPrompt(h)
 			rec.PreToolTs = h.Ts
 			synthetic = append(synthetic, rec)
 		}
@@ -185,183 +89,12 @@ func AppendIDEHookMergedRecords(records []MergedRecord, sessions []IDEParsedSess
 			continue
 		}
 		for _, h := range pres {
-			rec := ideHookBaseRecord(*s, h, RecordKindToolUse, "tool")
-			rec.ToolUseID = ideHookToolUseID(h)
-			rec.ToolName = "tool"
-			rec.ToolInput = genericIDEHookInput(h)
-			rec.PreToolTs = h.Ts
-			synthetic = append(synthetic, rec)
+			synthetic = append(synthetic, ideHookLifecycleRecord(*s, h, apmconfig.EventPreToolUse, h.Ts))
 		}
 	}
 
-	if len(promptsBySession) > 0 {
-		for i := range records {
-			if records[i].Kind == RecordKindSessionMeta {
-				if hooks := promptsBySession[records[i].SessionID]; len(hooks) > 0 {
-					s := findIDESessionByID(sessions, records[i].SessionID)
-					if s == nil {
-						continue
-					}
-					synthetic = append(synthetic, fallbackPromptRecords(*s, records[i].PromptTexts, hooks)...)
-					records[i].PromptTexts = nil
-				}
-			}
-		}
-	}
-
+	appendIDEHookPromptFallbacks(records, sessions, promptState, &synthetic)
 	return append(records, synthetic...)
-}
-
-func isEmptyLifecycleHookPayload(h IDEHookInputRecord) bool {
-	if h.Stdin != "" || hookUserPrompt(h) != "" {
-		return false
-	}
-	switch h.Event {
-	case apmconfig.EventFileCreated,
-		apmconfig.EventFileEdited,
-		apmconfig.EventFileDeleted,
-		apmconfig.EventPreTaskExecution,
-		apmconfig.EventPostTaskExecution:
-		return true
-	default:
-		return false
-	}
-}
-
-type ideHookPayload struct {
-	ToolName   string
-	ToolArgs   json.RawMessage
-	ToolResult string
-	Success    *bool
-}
-
-type ideHookPrompt struct {
-	text string
-	ts   time.Time
-}
-
-func parseIDEHookToolPayload(h IDEHookInputRecord) ideHookPayload {
-	var payload struct {
-		ToolName    string          `json:"toolName"`
-		ToolArgs    json.RawMessage `json:"toolArgs"`
-		ToolResult  string          `json:"toolResult"`
-		ToolSuccess *bool           `json:"toolSuccess"`
-	}
-	_ = json.Unmarshal([]byte(hookUserPrompt(h)), &payload)
-	return ideHookPayload{
-		ToolName:   payload.ToolName,
-		ToolArgs:   normalizedRawJSON(payload.ToolArgs),
-		ToolResult: payload.ToolResult,
-		Success:    payload.ToolSuccess,
-	}
-}
-
-func ideHookToolPair(s IDEParsedSession, h IDEHookInputRecord, payload ideHookPayload, preTs time.Time) []MergedRecord {
-	id := ideHookToolUseID(h)
-	payload.ToolName = normalizeIDEToolName(payload.ToolName)
-	toolInput := normalizedRawJSON(payload.ToolArgs)
-	use := ideHookBaseRecord(s, h, RecordKindToolUse, payload.ToolName)
-	use.ToolUseID = id
-	use.ToolName = payload.ToolName
-	use.ToolInput = toolInput
-	use.PreToolTs = preTs
-
-	status := ToolStatusSuccess
-	errorDetail := ""
-	if payload.Success != nil && !*payload.Success {
-		status = ToolStatusError
-		errorDetail = truncateUTF8(payload.ToolResult, maxErrorDetailLength)
-	}
-	result := ideHookBaseRecord(s, h, RecordKindToolResult, payload.ToolName)
-	result.ToolUseID = id
-	result.ToolName = payload.ToolName
-	result.ToolStatus = status
-	result.ErrorDetail = errorDetail
-	result.ToolResult = payload.ToolResult
-	result.PostToolTs = h.Ts
-	return []MergedRecord{use, result}
-}
-
-func ideHookBaseRecord(s IDEParsedSession, h IDEHookInputRecord, kind, tool string) MergedRecord {
-	return MergedRecord{
-		SessionID: s.SessionID,
-		Kind:      kind,
-		Agent:     ideHookAgent,
-		ToolName:  tool,
-		Title:     s.Title,
-		Cwd:       s.WorkspaceDirectory,
-		CreatedAt: s.CreatedAt,
-		UpdatedAt: h.Ts,
-	}
-}
-
-func enrichExistingIDEResult(records []MergedRecord, sid string, payload ideHookPayload, ts time.Time) bool {
-	best := bestExistingIDEResult(records, sid, payload, ts)
-	if best < 0 {
-		return false
-	}
-	enrichExistingIDEResultAt(records, best, payload)
-	return true
-}
-
-func enrichAnyExistingIDEResult(records []MergedRecord, payload ideHookPayload, ts time.Time) bool {
-	best := bestExistingIDEResult(records, "", payload, ts)
-	if best < 0 {
-		return false
-	}
-	enrichExistingIDEResultAt(records, best, payload)
-	return true
-}
-
-func bestExistingIDEResult(records []MergedRecord, sid string, payload ideHookPayload, ts time.Time) int {
-	best := -1
-	bestDelta := 5 * time.Second
-	for i := range records {
-		r := records[i]
-		if sid != "" && r.SessionID != sid {
-			continue
-		}
-		if r.Kind != RecordKindToolResult {
-			continue
-		}
-		if normalizeIDEToolName(r.ToolName) != normalizeIDEToolName(payload.ToolName) {
-			continue
-		}
-		if r.PostToolTs.IsZero() {
-			continue
-		}
-		delta := r.PostToolTs.Sub(ts)
-		if delta < 0 {
-			delta = -delta
-		}
-		if delta < bestDelta {
-			best = i
-			bestDelta = delta
-		}
-	}
-	return best
-}
-
-func enrichExistingIDEResultAt(records []MergedRecord, best int, payload ideHookPayload) {
-	if payload.ToolResult != "" {
-		records[best].ToolResult = payload.ToolResult
-	}
-	if !rawJSONIsEmptyObject(payload.ToolArgs) {
-		sid := records[best].SessionID
-		toolUseID := records[best].ToolUseID
-		for i := range records {
-			if records[i].SessionID == sid && records[i].Kind == RecordKindToolUse && records[i].ToolUseID == toolUseID {
-				if len(records[i].ToolInput) == 0 || rawJSONIsEmptyObject(records[i].ToolInput) {
-					records[i].ToolInput = payload.ToolArgs
-				}
-				break
-			}
-		}
-	}
-	if payload.Success != nil && !*payload.Success {
-		records[best].ToolStatus = ToolStatusError
-		records[best].ErrorDetail = truncateUTF8(payload.ToolResult, maxErrorDetailLength)
-	}
 }
 
 type ideSessionWindow struct {
@@ -395,7 +128,7 @@ func ideSessionWindows(sessions []IDEParsedSession, records []MergedRecord) map[
 	return windows
 }
 
-func matchIDEHookSession(sessions []IDEParsedSession, windows map[string]ideSessionWindow, h IDEHookInputRecord) *IDEParsedSession {
+func matchIDEHookSession(sessions []IDEParsedSession, windows map[string]ideSessionWindow, h HookRecord) *IDEParsedSession {
 	var best *IDEParsedSession
 	var bestWindow *IDEParsedSession
 	const windowGrace = 2 * time.Minute
@@ -404,10 +137,15 @@ func matchIDEHookSession(sessions []IDEParsedSession, windows map[string]ideSess
 		if h.Cwd != "" && s.WorkspaceDirectory != "" && h.Cwd != s.WorkspaceDirectory {
 			continue
 		}
-		if !s.CreatedAt.IsZero() && h.Ts.Before(s.CreatedAt) {
+		w, hasWindow := windows[s.SessionID]
+		start := s.CreatedAt
+		if hasWindow && !w.start.IsZero() && (start.IsZero() || w.start.Before(start)) {
+			start = w.start
+		}
+		if !start.IsZero() && h.Ts.Before(start) {
 			continue
 		}
-		if w, ok := windows[s.SessionID]; ok && !w.start.IsZero() {
+		if hasWindow && !w.start.IsZero() {
 			end := w.end
 			if end.IsZero() {
 				end = w.start
@@ -428,35 +166,99 @@ func matchIDEHookSession(sessions []IDEParsedSession, windows map[string]ideSess
 	return best
 }
 
-func fallbackPromptRecords(s IDEParsedSession, fallbacks []string, hooks []ideHookPrompt) []MergedRecord {
-	if len(fallbacks) == 0 {
-		return nil
+type idePromptState struct {
+	index  int
+	lastTs time.Time
+}
+
+func nextIDEHookPrompt(s *IDEParsedSession, state idePromptState) string {
+	if state.index >= len(s.PromptTexts) {
+		return ""
 	}
-	used := make([]bool, len(hooks))
-	out := make([]MergedRecord, 0, len(fallbacks))
-	lastHookTs := s.CreatedAt
-	for idx, fallback := range fallbacks {
-		matched := false
-		for i, hook := range hooks {
-			if used[i] {
-				continue
-			}
-			if strings.TrimSpace(fallback) == strings.TrimSpace(hook.text) {
-				used[i] = true
-				matched = true
-				lastHookTs = hook.ts
-				break
-			}
+	return s.PromptTexts[state.index]
+}
+
+func appendIDEHookPromptFallbacks(records []MergedRecord, sessions []IDEParsedSession, promptState map[string]idePromptState, synthetic *[]MergedRecord) {
+	for i := range records {
+		if records[i].Kind != RecordKindSessionMeta {
+			continue
 		}
-		if !matched {
-			ts := lastHookTs.Add(time.Duration(idx+1) * time.Nanosecond)
-			rec := ideHookBaseRecord(s, IDEHookInputRecord{Ts: ts}, RecordKindPrompt, "")
-			rec.PromptText = fallback
+		state, ok := promptState[records[i].SessionID]
+		if !ok || state.index == 0 {
+			continue
+		}
+		s := findIDESessionByID(sessions, records[i].SessionID)
+		if s == nil {
+			continue
+		}
+		for idx := state.index; idx < len(records[i].PromptTexts); idx++ {
+			ts := state.lastTs.Add(time.Duration(idx-state.index+1) * time.Nanosecond)
+			rec := ideHookBaseRecord(*s, HookRecord{Ts: ts}, RecordKindPrompt, "")
+			rec.PromptText = records[i].PromptTexts[idx]
 			rec.PromptTs = ts
-			out = append(out, rec)
+			*synthetic = append(*synthetic, rec)
+		}
+		records[i].PromptTexts = nil
+	}
+}
+
+func ideHookLifecycleRecord(s IDEParsedSession, h HookRecord, event string, ts time.Time) MergedRecord {
+	rec := ideHookBaseRecord(s, h, RecordKindHookEvent, "")
+	rec.EventName = event
+	rec.PreToolTs = ts
+	return rec
+}
+
+func ideHookBaseRecord(s IDEParsedSession, h HookRecord, kind, tool string) MergedRecord {
+	return MergedRecord{
+		SessionID: s.SessionID,
+		Kind:      kind,
+		Agent:     ideHookAgent,
+		ToolName:  tool,
+		Title:     s.Title,
+		Cwd:       s.WorkspaceDirectory,
+		CreatedAt: s.CreatedAt,
+		UpdatedAt: h.Ts,
+	}
+}
+
+func enrichExistingIDEHookPair(records []MergedRecord, sid string, preTs, postTs time.Time) bool {
+	best := bestExistingIDEResult(records, sid, postTs)
+	if best < 0 {
+		return false
+	}
+	records[best].PostToolTs = postTs
+	toolUseID := records[best].ToolUseID
+	for i := range records {
+		if records[i].SessionID == sid && records[i].Kind == RecordKindToolUse && records[i].ToolUseID == toolUseID {
+			records[i].PreToolTs = preTs
+			break
 		}
 	}
-	return out
+	return true
+}
+
+func bestExistingIDEResult(records []MergedRecord, sid string, ts time.Time) int {
+	best := -1
+	bestDelta := 5 * time.Second
+	for i := range records {
+		r := records[i]
+		if r.SessionID != sid || r.Kind != RecordKindToolResult {
+			continue
+		}
+		if r.PostToolTs.IsZero() {
+			continue
+		}
+		delta := r.PostToolTs.Sub(ts)
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta < bestDelta {
+			best = i
+			bestDelta = delta
+		}
+	}
+	return best
 }
 
 func findIDESessionByID(sessions []IDEParsedSession, sid string) *IDEParsedSession {
@@ -466,91 +268,4 @@ func findIDESessionByID(sessions []IDEParsedSession, sid string) *IDEParsedSessi
 		}
 	}
 	return nil
-}
-
-func hookUserPrompt(h IDEHookInputRecord) string {
-	if h.Env == nil {
-		return ""
-	}
-	return h.Env["USER_PROMPT"]
-}
-
-func popPendingPre(records []IDEHookInputRecord) []IDEHookInputRecord {
-	if len(records) == 0 {
-		return records
-	}
-	return records[1:]
-}
-
-func bestPendingPreSession(pending map[string][]IDEHookInputRecord, post IDEHookInputRecord) string {
-	var bestSID string
-	var bestDelta time.Duration
-	for sid, records := range pending {
-		if len(records) == 0 {
-			continue
-		}
-		pre := records[0]
-		if post.Cwd != "" && pre.Cwd != "" && post.Cwd != pre.Cwd {
-			continue
-		}
-		if pre.Ts.After(post.Ts) {
-			continue
-		}
-		delta := post.Ts.Sub(pre.Ts)
-		if delta > 2*time.Minute {
-			continue
-		}
-		if bestSID == "" || delta < bestDelta {
-			bestSID = sid
-			bestDelta = delta
-		}
-	}
-	return bestSID
-}
-
-func ideHookToolUseID(h IDEHookInputRecord) string {
-	return fmt.Sprintf("ide-hook-%d", h.Ts.UnixNano())
-}
-
-func normalizedRawJSON(raw json.RawMessage) json.RawMessage {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" {
-		return json.RawMessage(`{}`)
-	}
-	return raw
-}
-
-func rawJSONIsEmptyObject(raw json.RawMessage) bool {
-	trimmed := strings.TrimSpace(string(raw))
-	return trimmed == "" || trimmed == "{}" || trimmed == "null"
-}
-
-func genericIDEHookInput(h IDEHookInputRecord) json.RawMessage {
-	payload := map[string]string{}
-	if h.Stdin != "" {
-		payload["stdin"] = h.Stdin
-	}
-	if userPrompt := hookUserPrompt(h); userPrompt != "" {
-		payload["userPrompt"] = userPrompt
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	return data
-}
-
-func normalizeIDEToolName(name string) string {
-	switch name {
-	case "readFile", "readMultipleFiles", ActionReadFiles:
-		return ActionReadFiles
-	case "fsWrite":
-		return ActionCreate
-	case "deleteFile":
-		return ActionDelete
-	case "executeCommand", ActionRunCommand, ToolNameShell:
-		return ToolNameShell
-	default:
-		return name
-	}
 }

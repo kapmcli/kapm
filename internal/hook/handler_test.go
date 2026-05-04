@@ -25,7 +25,7 @@ func readLines(t *testing.T, path string) []string {
 		t.Fatalf("read %q: %v", path, err)
 	}
 	var lines []string
-	for _, l := range strings.Split(string(data), "\n") {
+	for l := range strings.SplitSeq(string(data), "\n") {
 		if l != "" {
 			lines = append(lines, l)
 		}
@@ -37,7 +37,7 @@ func readLines(t *testing.T, path string) []string {
 }
 
 func logFile(dir, session string) string {
-	return filepath.Join(dir, ".kapm", "logs", session+".jsonl")
+	return filepath.Join(dir, ".kapm", "logs", "cli", session+".jsonl")
 }
 
 func TestHandleWritesPreToolUseRecord(t *testing.T) {
@@ -128,8 +128,8 @@ func TestHandleFallsBackWhenSessionIdEmpty(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("want 0, got %d", code)
 	}
-	expected := fmt.Sprintf("unknown-%d.jsonl", nano)
-	entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs"))
+	expected := "unknown.jsonl"
+	entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs", "cli"))
 	if len(entries) != 1 || entries[0].Name() != expected {
 		t.Errorf("want file %q, got %v", expected, entries)
 	}
@@ -198,8 +198,8 @@ func TestHandleInvalidSessionIDFallsBack(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("want 0, got %d", code)
 			}
-			expected := fmt.Sprintf("unknown-%d.jsonl", nano)
-			entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs"))
+			expected := "unknown.jsonl"
+			entries, _ := os.ReadDir(filepath.Join(dir, ".kapm", "logs", "cli"))
 			if len(entries) != 1 || entries[0].Name() != expected {
 				t.Errorf("id=%q: want file %q, got %v", id, expected, entries)
 			}
@@ -215,7 +215,7 @@ func TestHandleConcurrentAppendPreservesAllLines(t *testing.T) {
 	const n = 20
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"conc","cwd":"/tmp","tool_name":"fs_read","tool_input":{"data":"` + strings.Repeat("x", 10000) + `"}}`)
@@ -286,6 +286,64 @@ func TestHandleRejectsSymlinkedKapm(t *testing.T) {
 	}
 }
 
+func TestHandleRejectsSymlinkedNestedLogDir(t *testing.T) {
+	dir := t.TempDir()
+	target := t.TempDir()
+	logsParent := filepath.Join(dir, ".kapm")
+	if err := os.MkdirAll(logsParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	logsLink := filepath.Join(logsParent, "logs")
+	if err := os.Symlink(target, logsLink); err != nil {
+		t.Skipf("os.Symlink not available: %v", err)
+	}
+
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-sym-dir","cwd":"/tmp","tool_name":"read"}`)
+	var stderr bytes.Buffer
+	code := Handle(in, &bytes.Buffer{}, &stderr, fixedNow, dir, "a")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "is a symlink") {
+		t.Errorf("want symlink warning in stderr, got %q", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(target, "cli")); err == nil {
+		t.Error("cli log dir should not have been created under symlink target")
+	}
+}
+
+func TestHandleRejectsSymlinkedLogFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target.jsonl")
+	if err := os.WriteFile(target, []byte("original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logDir := filepath.Join(dir, ".kapm", "logs", "cli")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(logDir, "s-sym-file.jsonl")); err != nil {
+		t.Skipf("os.Symlink not available: %v", err)
+	}
+
+	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-sym-file","cwd":"/tmp","tool_name":"read"}`)
+	var stderr bytes.Buffer
+	code := Handle(in, &bytes.Buffer{}, &stderr, fixedNow, dir, "a")
+	if code != 0 {
+		t.Fatalf("want 0, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "is a symlink") {
+		t.Errorf("want symlink warning in stderr, got %q", stderr.String())
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "original\n" {
+		t.Fatalf("symlink target was modified: %q", string(data))
+	}
+}
+
 func TestHandleInvalidAgent(t *testing.T) {
 	dir := t.TempDir()
 	in := strings.NewReader(`{"hook_event_name":"preToolUse","session_id":"s-inv","cwd":"/tmp","tool_name":"read"}`)
@@ -314,7 +372,7 @@ func TestHandleJSONLRoundTrip(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("want 0, got %d", code)
 	}
-	logsDir := filepath.Join(dir, ".kapm", "logs")
+	logsDir := filepath.Join(dir, ".kapm", "logs", "cli")
 	lines := readLines(t, filepath.Join(logsDir, "s-rt.jsonl"))
 	if len(lines) != 1 {
 		t.Fatalf("want 1 record, got %d", len(lines))

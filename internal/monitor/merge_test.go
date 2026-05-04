@@ -248,6 +248,15 @@ func TestMergeSessions_OrphanHooks(t *testing.T) {
 }
 
 func TestMergeSessions_MatchesUnknownHooksToSessionByWindowAndTool(t *testing.T) {
+	testMergeSessionsMatchesUnknownHooksToSessionByWindowAndTool(t, "unknown-1777690833863161000", "unknown-1777690858447015000")
+}
+
+func TestMergeSessions_MatchesStableUnknownHooksToSessionByWindowAndTool(t *testing.T) {
+	testMergeSessionsMatchesUnknownHooksToSessionByWindowAndTool(t, "unknown", "unknown")
+}
+
+func testMergeSessionsMatchesUnknownHooksToSessionByWindowAndTool(t *testing.T, preSession, postSession string) {
+	t.Helper()
 	input := map[string]any{
 		"command": "InvokeSubagents",
 		"content": map[string]any{
@@ -270,9 +279,9 @@ func TestMergeSessions_MatchesUnknownHooksToSessionByWindowAndTool(t *testing.T)
 	preTs := time.Date(2026, 5, 2, 3, 0, 33, 863_444_000, time.UTC)
 	postTs := time.Date(2026, 5, 2, 3, 0, 58, 447_033_000, time.UTC)
 	hooks := []HookRecord{
-		{Ts: preTs, Session: "unknown-1777690833863161000", Event: apmconfig.EventPreToolUse, Agent: "lead", Tool: "use_subagent"},
+		{Ts: preTs, Session: preSession, Event: apmconfig.EventPreToolUse, Agent: "lead", Tool: "use_subagent"},
 		{Ts: time.Date(2026, 5, 2, 3, 0, 36, 156_010_000, time.UTC), Session: "43f211a4-7207-4032-9554-2bafa21ff04b", Event: apmconfig.EventPreToolUse, Agent: "explorer", Tool: "read"},
-		{Ts: postTs, Session: "unknown-1777690858447015000", Event: apmconfig.EventPostToolUse, Agent: "lead", Tool: "use_subagent"},
+		{Ts: postTs, Session: postSession, Event: apmconfig.EventPostToolUse, Agent: "lead", Tool: "use_subagent"},
 	}
 
 	recs := MergeSessions([]ParsedSession{session}, hooks)

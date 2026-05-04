@@ -64,7 +64,7 @@ kapm init-ide-hook
 
 kapm は Kiro CLI v2 のセッションデータ (`~/.kiro/sessions/cli/{uuid}.jsonl` ログと `{uuid}.json` メタデータ) をメインのデータソースとして読み込みます。利用可能な場合は Kiro IDE のセッションログも自動的に読み込まれます。Kiro CLI v1 の SQLite セッションストア (`conversations_v2`) も、存在する場合に読み込みます。基本的な監視には hook のインストールは不要で、セッションファイルにはプロンプト、アシスタント応答、ツール呼び出し、ツール結果、ターンごとのメタデータ (トークン数、クレジット、所要時間) が含まれています。
 
-`kapm init-hook` は補足 CLI エージェントデータのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。`kapm init-ide-hook` は Kiro IDE hook ファイルを `.kiro/hooks/*.kiro.hook` に書き込みます。CLI hook は `agentSpawn` / `preToolUse` / `postToolUse` / `stop` を記録し、IDE hook は `preToolUse` / `postToolUse` / `stop` で `kapm hook-dump` を呼び、IDE テレメトリとして取り込む範囲を決める前に raw stdin と一部の Kiro 環境変数を `.kapm/logs/hook-input.jsonl` で確認できるようにします。
+`kapm init-hook` は補足 CLI エージェントデータのために `.kiro/agents/*.json` に hook エントリをオプションで追加します。`kapm init-ide-hook` は Kiro IDE hook ファイルを `.kiro/hooks/*.kiro.hook` に書き込みます。CLI hook は `.kapm/logs/cli/` に、IDE hook は `.kapm/logs/ide/` に最小レコードを書き込みます。
 
 ```bash
 kapm init-hook             # エージェントを対話的に選択
@@ -177,7 +177,7 @@ kapm power install https://github.com/owner/repo/tree/main/path/to/power
 
 ## ログ形式と保存
 
-hook ログは最小限の形式を使用します。各 JSONL レコードには `ts`, `session`, `event`, `agent`, `tool`、およびオプションで `shell_exit_status` のみが含まれます。プロンプト、ツール入出力、アシスタント応答は hook ログではなく Kiro のセッションファイルから読み込まれます。
+hook ログは最小限の形式を使用します。CLI レコードには `ts`, `session`, `event`, `agent`, `tool`、およびオプションで `shell_exit_status` が含まれ、IDE レコードには `ts`, `event`, `agent`, `cwd` が含まれます。プロンプト、ツール入出力、アシスタント応答は hook ログではなく Kiro のセッションファイルから読み込まれます。
 
 `.kapm/` は gitignore され、ディレクトリは `0700`、ログファイルは `0600` で作成されます。
 

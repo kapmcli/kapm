@@ -257,6 +257,7 @@ type HookRecord struct {
 	Event           string    `json:"event,omitempty"`
 	Agent           string    `json:"agent,omitempty"`
 	Tool            string    `json:"tool,omitempty"`
+	Cwd             string    `json:"cwd,omitempty"`
 	ShellExitStatus string    `json:"shell_exit_status,omitempty"`
 }
 
@@ -437,7 +438,7 @@ func groupHooksByEvent(hooks []HookRecord) (pre, post, spawn, stop []HookRecord)
 const unknownHookMatchSlack = 5 * time.Second
 
 func isUnknownHookSession(sessionID string) bool {
-	return strings.HasPrefix(sessionID, "unknown-")
+	return sessionID == "unknown" || strings.HasPrefix(sessionID, "unknown-")
 }
 
 func matchUnknownHooks(session ParsedSession, unknownHooks []HookRecord, used []bool) []HookRecord {

@@ -25,6 +25,7 @@ const (
 	// .kapm hierarchy
 	KapmDir    = ".kapm"
 	LogsSubdir = "logs"
+	IDESubdir  = "ide"
 
 	// .apm hierarchy
 	APMSubdir     = ".apm"

@@ -148,6 +148,33 @@ func TestBuildIDEMergedRecords(t *testing.T) {
 	}
 }
 
+func TestBuildIDEMergedRecordsUsesEarlierExecutionStart(t *testing.T) {
+	t.Parallel()
+	sessionCreatedAt := time.UnixMilli(10_000)
+	execStart := time.UnixMilli(1_000)
+	execEnd := time.UnixMilli(20_000)
+	sessions := []IDEParsedSession{{
+		SessionID:          "sess-early-exec",
+		Title:              "Early Execution",
+		WorkspaceDirectory: "/home/user/proj",
+		CreatedAt:          sessionCreatedAt,
+	}}
+	execResults := map[string]IDEExecutionResult{
+		"sess-early-exec": {StartTime: execStart, EndTime: execEnd, Executions: 1},
+	}
+
+	records := BuildIDEMergedRecords(sessions, execResults)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if !records[0].CreatedAt.Equal(execStart) {
+		t.Fatalf("CreatedAt = %v, want earlier execution start %v", records[0].CreatedAt, execStart)
+	}
+	if !records[0].UpdatedAt.Equal(execEnd) {
+		t.Fatalf("UpdatedAt = %v, want %v", records[0].UpdatedAt, execEnd)
+	}
+}
+
 func TestBuildIDEMergedRecords_NoExecResult(t *testing.T) {
 	t.Parallel()
 	createdAt := time.UnixMilli(1000)

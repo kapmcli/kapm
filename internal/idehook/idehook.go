@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
@@ -41,9 +40,9 @@ var hookSpecs = []hookSpec{
 	{
 		Event:       "manual",
 		WhenType:    "userTriggered",
-		FileName:    "kapm-manual-dump.kiro.hook",
-		Name:        "kapm Manual Hook Dump",
-		Description: "Manually dump Kiro IDE hook input for kapm debugging.",
+		FileName:    "kapm-manual-hook-event.kiro.hook",
+		Name:        "kapm Manual Hook Event Logger",
+		Description: "Manually record a minimal Kiro IDE hook event for kapm monitoring.",
 	},
 	{
 		Event:       apmconfig.EventUserPromptSubmit,
@@ -116,6 +115,7 @@ var hookSpecs = []hookSpec{
 }
 
 var obsoleteHookFiles = []string{
+	"kapm-manual-dump.kiro.hook",
 	"kapm-file-saved.kiro.hook",
 }
 
@@ -228,7 +228,14 @@ func hookPath(root, fileName string) string {
 }
 
 func hookCommand(executablePath, event string) string {
-	return fmt.Sprintf("%s hook-dump --agent %s --event %s", strconv.Quote(executablePath), agentName, event)
+	return fmt.Sprintf("%s ide-hook-handler --agent %s --event %s", shellQuote(executablePath), shellQuote(agentName), shellQuote(event))
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func renderHook(spec hookSpec, command string) ([]byte, error) {

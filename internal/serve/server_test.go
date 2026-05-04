@@ -702,6 +702,10 @@ func newMultiAgentServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	sessDir := t.TempDir()
 	hookDir := t.TempDir()
+	cliHookDir := filepath.Join(hookDir, "cli")
+	if err := os.MkdirAll(cliHookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	const sid = "11111111-2222-3333-4444-555555555555"
 
 	// Sessions metadata
@@ -731,7 +735,7 @@ func newMultiAgentServer(t *testing.T) (*Server, string) {
 		`{"ts":"2026-04-22T09:01:01Z","agent":"lead","session":"` + sid + `","event":"preToolUse","tool":"bash"}`,
 		`{"ts":"2026-04-22T09:01:02Z","agent":"lead","session":"` + sid + `","event":"postToolUse","tool":"bash"}`,
 	}
-	if err := os.WriteFile(filepath.Join(hookDir, sid+".jsonl"), []byte(strings.Join(hooks, "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cliHookDir, sid+".jsonl"), []byte(strings.Join(hooks, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

@@ -56,8 +56,16 @@ func TestInitInstallsIDEHooks(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(out.String(), "kapm-manual-dump.kiro.hook") {
+	if !strings.Contains(out.String(), "kapm-manual-hook-event.kiro.hook") {
 		t.Fatalf("output = %q, want installed hook path", out.String())
+	}
+}
+
+func TestHookCommandShellQuotesArguments(t *testing.T) {
+	command := hookCommand(`/tmp/kapm $(touch pwn)'bin`, "preToolUse")
+	want := `'/tmp/kapm $(touch pwn)'\''bin' ide-hook-handler --agent 'ide' --event 'preToolUse'`
+	if command != want {
+		t.Fatalf("hookCommand() = %q, want %q", command, want)
 	}
 }
 
@@ -67,8 +75,12 @@ func TestInitRemoveDeletesOnlyKapmIDEHooks(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 	obsoletePath := filepath.Join(root, ".kiro", "hooks", "kapm-file-saved.kiro.hook")
+	obsoleteManualPath := filepath.Join(root, ".kiro", "hooks", "kapm-manual-dump.kiro.hook")
 	if err := os.WriteFile(obsoletePath, []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(obsolete): %v", err)
+	}
+	if err := os.WriteFile(obsoleteManualPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(obsolete manual): %v", err)
 	}
 	customPath := filepath.Join(root, ".kiro", "hooks", "custom.kiro.hook")
 	if err := os.WriteFile(customPath, []byte("{}\n"), 0o644); err != nil {
@@ -91,6 +103,9 @@ func TestInitRemoveDeletesOnlyKapmIDEHooks(t *testing.T) {
 	if _, err := os.Stat(obsoletePath); !os.IsNotExist(err) {
 		t.Fatalf("obsolete hook should be removed, stat err = %v", err)
 	}
+	if _, err := os.Stat(obsoleteManualPath); !os.IsNotExist(err) {
+		t.Fatalf("obsolete manual hook should be removed, stat err = %v", err)
+	}
 	if !strings.Contains(out.String(), "kapm-stop.kiro.hook") {
 		t.Fatalf("output = %q, want removed hook path", out.String())
 	}
@@ -99,11 +114,15 @@ func TestInitRemoveDeletesOnlyKapmIDEHooks(t *testing.T) {
 func TestInitInstallRemovesObsoleteIDEHooks(t *testing.T) {
 	root := t.TempDir()
 	obsoletePath := filepath.Join(root, ".kiro", "hooks", "kapm-file-saved.kiro.hook")
+	obsoleteManualPath := filepath.Join(root, ".kiro", "hooks", "kapm-manual-dump.kiro.hook")
 	if err := os.MkdirAll(filepath.Dir(obsoletePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(obsoletePath, []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(obsolete): %v", err)
+	}
+	if err := os.WriteFile(obsoleteManualPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(obsolete manual): %v", err)
 	}
 
 	if err := Init(Options{Root: root, Executable: filepath.Join(root, "kapm"), Out: &strings.Builder{}}); err != nil {
@@ -112,6 +131,9 @@ func TestInitInstallRemovesObsoleteIDEHooks(t *testing.T) {
 
 	if _, err := os.Stat(obsoletePath); !os.IsNotExist(err) {
 		t.Fatalf("obsolete hook should be removed on install, stat err = %v", err)
+	}
+	if _, err := os.Stat(obsoleteManualPath); !os.IsNotExist(err) {
+		t.Fatalf("obsolete manual hook should be removed on install, stat err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".kiro", "hooks", "kapm-file-edited.kiro.hook")); err != nil {
 		t.Fatalf("fileEdited hook should exist: %v", err)

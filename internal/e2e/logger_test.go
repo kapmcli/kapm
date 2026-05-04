@@ -13,7 +13,7 @@ import (
 )
 
 // TestLoggerWritesJSONL verifies `kapm hook-handler` consumes a hook event
-// on stdin, writes a single JSONL record under .kapm/logs/<session>.jsonl,
+// on stdin, writes a single JSONL record under .kapm/logs/cli/<session>.jsonl,
 // exits 0, and emits nothing on stdout.
 func TestLoggerWritesJSONL(t *testing.T) {
 	kapm := binary(t)
@@ -36,7 +36,7 @@ func TestLoggerWritesJSONL(t *testing.T) {
 		t.Fatalf("kapm hook-handler wrote to stdout: %q", stdout.String())
 	}
 
-	logPath := filepath.Join(root, ".kapm", "logs", "e2e-1.jsonl")
+	logPath := filepath.Join(root, ".kapm", "logs", "cli", "e2e-1.jsonl")
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read log: %v", err)
@@ -84,7 +84,7 @@ func TestLoggerAgentFlagWritesAgent(t *testing.T) {
 		t.Fatalf("kapm hook-handler wrote to stdout: %q", stdout.String())
 	}
 
-	logPath := filepath.Join(root, ".kapm", "logs", "e2e-agent-flag.jsonl")
+	logPath := filepath.Join(root, ".kapm", "logs", "cli", "e2e-agent-flag.jsonl")
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read log: %v", err)

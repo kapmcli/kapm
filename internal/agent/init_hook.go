@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -256,7 +255,14 @@ func isKapmEntry(raw json.RawMessage) (bool, error) {
 }
 
 func hookCommand(executablePath, name string) string {
-	return fmt.Sprintf("%s hook-handler --agent %s", strconv.Quote(executablePath), name)
+	return fmt.Sprintf("%s hook-handler --agent %s", shellQuote(executablePath), shellQuote(name))
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func isKapmCommand(command string) bool {
@@ -294,33 +300,43 @@ func consumeCommandToken(command string) (token, rest string, ok bool) {
 	if command == "" {
 		return "", "", false
 	}
-	if command[0] != '"' && command[0] != '\'' {
-		i := 0
-		for i < len(command) && !unicode.IsSpace(rune(command[i])) {
-			i++
-		}
-		return command[:i], command[i:], true
-	}
-	quote := command[0]
 	var tokenBuilder strings.Builder
-	escaped := false
-	for i := 1; i < len(command); i++ {
+	for i := 0; i < len(command); {
 		ch := command[i]
-		if quote == '"' && escaped {
-			tokenBuilder.WriteByte(ch)
-			escaped = false
-			continue
+		if unicode.IsSpace(rune(ch)) {
+			return tokenBuilder.String(), command[i:], true
 		}
-		if quote == '"' && ch == '\\' {
-			escaped = true
+		if ch == '\'' || ch == '"' {
+			quote := ch
+			i++
+			closed := false
+			for i < len(command) {
+				ch = command[i]
+				if quote == '"' && ch == '\\' {
+					if i+1 >= len(command) {
+						return "", "", false
+					}
+					tokenBuilder.WriteByte(command[i+1])
+					i += 2
+					continue
+				}
+				if ch == quote {
+					i++
+					closed = true
+					break
+				}
+				tokenBuilder.WriteByte(ch)
+				i++
+			}
+			if !closed {
+				return "", "", false
+			}
 			continue
-		}
-		if ch == quote {
-			return tokenBuilder.String(), command[i+1:], true
 		}
 		tokenBuilder.WriteByte(ch)
+		i++
 	}
-	return "", "", false
+	return tokenBuilder.String(), "", true
 }
 
 func removeKapmEntries(hooksMap map[string][]json.RawMessage) {

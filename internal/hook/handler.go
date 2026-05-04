@@ -20,6 +20,8 @@ import (
 
 const maxHookEvent = 10 << 20 // 10 MiB
 
+const unknownSessionID = "unknown"
+
 var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // HandlerInputOptions configures hook-handler stdin normalization.
@@ -92,7 +94,7 @@ func reportHookErr(stderr io.Writer, op string, err error) {
 }
 
 // PrepareHandlerInput resolves the agent name and synthesizes a minimal hook
-// event when Kiro IDE invokes hook-handler with fallback flags and empty stdin.
+// event when a hook host invokes hook-handler with fallback flags and empty stdin.
 func PrepareHandlerInput(opts HandlerInputOptions) (io.Reader, string, error) {
 	agentName := opts.Agent
 	if agentName == "" && opts.Getenv != nil {
@@ -155,9 +157,8 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 
 	sessionID := ev.SessionID
 	if !isSafeSessionID(sessionID) {
-		fallback := fmt.Sprintf("unknown-%d", now().UnixNano())
-		_, _ = fmt.Fprintf(stderr, "hook-handler: invalid session_id %q, using %s\n", sessionID, fallback)
-		sessionID = fallback
+		_, _ = fmt.Fprintf(stderr, "hook-handler: invalid session_id %q, using %s\n", sessionID, unknownSessionID)
+		sessionID = unknownSessionID
 	}
 
 	if agent != "" {
@@ -190,18 +191,25 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	}
 	line = append(line, '\n')
 
-	logDir := filepath.Join(rootDir, paths.KapmDir, paths.LogsSubdir)
-	kapmDir := filepath.Join(rootDir, paths.KapmDir)
-	if isLink, err := fileutil.IsSymlinkPath(kapmDir); err == nil && isLink {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: %q is a symlink, refusing to write logs\n", kapmDir)
+	logDir := filepath.Join(rootDir, paths.KapmDir, paths.LogsSubdir, paths.CLISubdir)
+	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logDir); err != nil {
+		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
 		return 0
 	}
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		reportHookErr(stderr, fmt.Sprintf("mkdir %q", logDir), err)
 		return 0
 	}
+	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logDir); err != nil {
+		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
+		return 0
+	}
 
 	logPath := filepath.Join(logDir, sessionID+".jsonl")
+	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logPath); err != nil {
+		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
+		return 0
+	}
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		reportHookErr(stderr, fmt.Sprintf("open %q", logPath), err)

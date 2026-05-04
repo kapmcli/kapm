@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // WriteFileAtomic writes data to path atomically via a temp file + rename.
@@ -165,6 +166,93 @@ func IsSymlinkPath(path string) (bool, error) {
 		return false, err
 	}
 	return info.Mode()&os.ModeSymlink != 0, nil
+}
+
+// SymlinkInPath returns the first existing symlink at path or in one of its
+// existing parent components. Missing components stop the check and are not an
+// error, so callers can run this before creating directories or files.
+func SymlinkInPath(path string) (string, bool, error) {
+	clean := filepath.Clean(path)
+	volume := filepath.VolumeName(clean)
+	rest := strings.TrimPrefix(clean, volume)
+	current := volume
+	if filepath.IsAbs(clean) {
+		sep := string(os.PathSeparator)
+		current = volume + sep
+		rest = strings.TrimPrefix(rest, sep)
+	}
+	if rest == "" || rest == "." {
+		return "", false, nil
+	}
+
+	for elem := range strings.SplitSeq(rest, string(os.PathSeparator)) {
+		if elem == "" || elem == "." {
+			continue
+		}
+		current = filepath.Join(current, elem)
+		info, err := os.Lstat(current)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return "", false, nil
+			}
+			return current, false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return current, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// RefuseSymlinkPath returns an error when path or an existing parent component
+// is a symlink.
+func RefuseSymlinkPath(path string) error {
+	symlinkPath, isLink, err := SymlinkInPath(path)
+	if err != nil {
+		return fmt.Errorf("lstat %q: %w", symlinkPath, err)
+	}
+	if isLink {
+		return fmt.Errorf("%q is a symlink", symlinkPath)
+	}
+	return nil
+}
+
+// RefuseSymlinkPathUnder returns an error when path or an existing parent
+// component below root is a symlink. The root itself and its parents are treated
+// as trusted, which avoids rejecting common platform layouts such as /tmp being
+// a symlink while still protecting project-local managed paths.
+func RefuseSymlinkPathUnder(root, path string) error {
+	cleanRoot := filepath.Clean(root)
+	cleanPath := filepath.Clean(path)
+	rel, err := filepath.Rel(cleanRoot, cleanPath)
+	if err != nil {
+		return fmt.Errorf("rel %q from %q: %w", cleanPath, cleanRoot, err)
+	}
+	if rel == "." {
+		return nil
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("%q is outside trusted root %q", cleanPath, cleanRoot)
+	}
+
+	current := cleanRoot
+	for elem := range strings.SplitSeq(rel, string(os.PathSeparator)) {
+		if elem == "" || elem == "." {
+			continue
+		}
+		current = filepath.Join(current, elem)
+		info, err := os.Lstat(current)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("lstat %q: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%q is a symlink", current)
+		}
+	}
+	return nil
 }
 
 // IsSymlinkMode reports whether m has the symlink bit set.

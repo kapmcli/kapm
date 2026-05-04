@@ -1042,6 +1042,158 @@ func TestAggregateMultiAgentSameSid(t *testing.T) {
 	}
 }
 
+func TestAggregateAbsorbsFirstPromptOnlyAgentSplit(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	readPre, readPost := recPair("s1", "lead", "read", 1*time.Minute, 2*time.Minute)
+	writePre, writePost := recPair("s1", "lead", "write", 3*time.Minute, 4*time.Minute)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "auto", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "run once"},
+		readPre,
+		readPost,
+		writePre,
+		writePost,
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 SessionDetail, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	s := d.Sessions[0]
+	if s.Agent != "lead" || s.AgentKey != "s1|lead" {
+		t.Fatalf("session agent = %q key = %q, want lead / s1|lead", s.Agent, s.AgentKey)
+	}
+	if s.Prompts != 1 || len(s.PromptHistory) != 1 || s.PromptHistory[0] != "run once" {
+		t.Fatalf("prompt was not preserved: prompts=%d history=%#v", s.Prompts, s.PromptHistory)
+	}
+	if s.ToolCalls != 2 {
+		t.Fatalf("ToolCalls = %d, want 2", s.ToolCalls)
+	}
+	if len(s.Timeline) != 3 || s.Timeline[0].Event != apmconfig.EventUserPromptSubmit {
+		t.Fatalf("timeline did not keep first prompt before tools: %#v", s.Timeline)
+	}
+}
+
+func TestAggregateAbsorbsFirstPromptOnlySessionMetaAgentSplit(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	readPre, readPost := recPair("s1", "lead", "read", 1*time.Minute, 2*time.Minute)
+	records := []MergedRecord{
+		{
+			SessionID:   "s1",
+			Agent:       "auto",
+			Kind:        RecordKindSessionMeta,
+			CreatedAt:   baseTime,
+			UpdatedAt:   baseTime.Add(2 * time.Minute),
+			PromptTexts: []string{"run once"},
+		},
+		readPre,
+		readPost,
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 SessionDetail, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	s := d.Sessions[0]
+	if s.Agent != "lead" || s.AgentKey != "s1|lead" {
+		t.Fatalf("session agent = %q key = %q, want lead / s1|lead", s.Agent, s.AgentKey)
+	}
+	if s.Prompts != 1 || len(s.PromptHistory) != 1 || s.PromptHistory[0] != "run once" {
+		t.Fatalf("prompt was not preserved: prompts=%d history=%#v", s.Prompts, s.PromptHistory)
+	}
+	if s.ToolCalls != 1 {
+		t.Fatalf("ToolCalls = %d, want 1", s.ToolCalls)
+	}
+}
+
+func TestAggregateKeepsRealMultiAgentWhenFirstAgentHasTool(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	autoPre, autoPost := recPair("s1", "auto", "read", 1*time.Minute, 2*time.Minute)
+	leadPre, leadPost := recPair("s1", "lead", "write", 3*time.Minute, 4*time.Minute)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "auto", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "auto prompt"},
+		autoPre,
+		autoPost,
+		leadPre,
+		leadPost,
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 2 {
+		t.Fatalf("want 2 SessionDetails, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	byAgent := map[string]SessionDetail{}
+	for _, s := range d.Sessions {
+		byAgent[s.Agent] = s
+	}
+	if byAgent["auto"].ToolCalls != 1 || byAgent["lead"].ToolCalls != 1 {
+		t.Fatalf("real multi-agent tool calls were collapsed: %#v", byAgent)
+	}
+}
+
+func TestAggregateKeepsPromptOnlyAgentsSplit(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "auto", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "auto prompt"},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindPrompt, PromptTs: baseTime.Add(time.Minute), PromptText: "lead prompt"},
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 2 {
+		t.Fatalf("want 2 prompt-only SessionDetails, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	byAgent := map[string]SessionDetail{}
+	for _, s := range d.Sessions {
+		byAgent[s.Agent] = s
+	}
+	if byAgent["auto"].Prompts != 1 || byAgent["lead"].Prompts != 1 {
+		t.Fatalf("prompt-only agents were collapsed: %#v", byAgent)
+	}
+}
+
+func TestAggregateAbsorbsPromptOnlyAgentIntoAssistantAgent(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "auto", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "run once"},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindAssistantText, CreatedAt: baseTime.Add(time.Minute), AssistantText: "done"},
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 SessionDetail, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	s := d.Sessions[0]
+	if s.Agent != "lead" || s.Prompts != 1 || s.AssistantResponse != "done" {
+		t.Fatalf("prompt-only agent was not absorbed into substantive agent: %#v", s)
+	}
+}
+
+func TestAggregateKeepsEqualStartAgentSplit(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		{SessionID: "s1", Agent: "auto", Kind: RecordKindPrompt, PromptTs: baseTime, PromptText: "auto prompt"},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindToolUse, ToolUseID: "tu-read", ToolName: "read", PreToolTs: baseTime},
+		{SessionID: "s1", Agent: "lead", Kind: RecordKindToolResult, ToolUseID: "tu-read", ToolName: "read", PostToolTs: baseTime.Add(time.Minute), ToolStatus: ToolStatusSuccess},
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 2 {
+		t.Fatalf("want 2 equal-start SessionDetails, got %d: %#v", len(d.Sessions), d.Sessions)
+	}
+	byAgent := map[string]SessionDetail{}
+	for _, s := range d.Sessions {
+		byAgent[s.Agent] = s
+	}
+	if byAgent["auto"].Prompts != 1 || byAgent["lead"].ToolCalls != 1 {
+		t.Fatalf("equal-start agents were collapsed: %#v", byAgent)
+	}
+}
+
 func TestAggregateSummaryToolTitlePreferred(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
@@ -1733,7 +1885,7 @@ func writeRec(session, agent, path, command string, offset time.Duration) Merged
 	return MergedRecord{
 		SessionID: session,
 		Agent:     agent,
-		Kind: RecordKindToolUse,
+		Kind:      RecordKindToolUse,
 		ToolUseID: fmt.Sprintf("tu-write-%d", id),
 		ToolName:  "write",
 		ToolInput: input,
@@ -1949,7 +2101,7 @@ func TestTouchSessionState_UpdatedAt(t *testing.T) {
 	r := MergedRecord{
 		SessionID: "ide-1",
 		Agent:     "kiro-ide",
-		Kind: RecordKindSessionMeta,
+		Kind:      RecordKindSessionMeta,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}
@@ -1974,7 +2126,7 @@ func TestAggregateDetail_IDESession(t *testing.T) {
 	records := []MergedRecord{
 		{
 			SessionID:    "ide-sess-1",
-			Kind: RecordKindSessionMeta,
+			Kind:         RecordKindSessionMeta,
 			Agent:        "kiro-ide",
 			Title:        "Implement feature X",
 			Cwd:          "/home/user/project-alpha",
@@ -2022,7 +2174,7 @@ func TestAggregateDetail_MixedSources(t *testing.T) {
 		// IDE session
 		{
 			SessionID:    "ide-1",
-			Kind: RecordKindSessionMeta,
+			Kind:         RecordKindSessionMeta,
 			Agent:        "kiro-ide",
 			Cwd:          "/home/user/proj",
 			CreatedAt:    baseTime.Add(10 * time.Minute),

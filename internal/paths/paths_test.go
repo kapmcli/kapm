@@ -17,6 +17,8 @@ func TestConstants(t *testing.T) {
 		{"AgentPromptsDir", paths.AgentPromptsDir, "agent-prompts"},
 		{"HooksSubdir", paths.HooksSubdir, "hooks"},
 		{"LogsSubdir", paths.LogsSubdir, "logs"},
+		{"IDESubdir", paths.IDESubdir, "ide"},
+		{"CLISubdir", paths.CLISubdir, "cli"},
 		{"SkillsSubdir", paths.SkillsSubdir, "skills"},
 		{"PromptsSubdir", paths.PromptsSubdir, "prompts"},
 		{"SettingsSubdir", paths.SettingsSubdir, "settings"},

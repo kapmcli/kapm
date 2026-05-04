@@ -157,9 +157,13 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 	var out []MergedRecord
 	for _, s := range sessions {
 		res := execResults[s.SessionID]
+		createdAt := s.CreatedAt
+		if !res.StartTime.IsZero() && (createdAt.IsZero() || res.StartTime.Before(createdAt)) {
+			createdAt = res.StartTime
+		}
 		updatedAt := res.EndTime
 		if updatedAt.IsZero() {
-			updatedAt = s.CreatedAt
+			updatedAt = createdAt
 		}
 		out = append(out, MergedRecord{
 			SessionID:         s.SessionID,
@@ -167,7 +171,7 @@ func BuildIDEMergedRecords(sessions []IDEParsedSession, execResults map[string]I
 			Agent:             "kiro-ide",
 			Title:             s.Title,
 			Cwd:               s.WorkspaceDirectory,
-			CreatedAt:         s.CreatedAt,
+			CreatedAt:         createdAt,
 			UpdatedAt:         updatedAt,
 			TotalCredits:      res.TotalCredits,
 			TotalInputTokens:  0,

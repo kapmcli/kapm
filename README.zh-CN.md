@@ -64,7 +64,7 @@ kapm init-ide-hook
 
 kapm 以 Kiro CLI v2 的会话数据（`~/.kiro/sessions/cli/{uuid}.jsonl` 日志和 `{uuid}.json` 元数据）作为主要数据源，同时在有 IDE 会话日志时自动加载。存在 Kiro CLI v1 SQLite 会话存储（`conversations_v2`）时也会读取。基本监控无需安装 hook——会话文件已包含提示、助手响应、工具调用、工具结果以及每轮的元数据（token 数、积分、耗时）。
 
-`kapm init-hook` 可选地向 `.kiro/agents/*.json` 添加 hook 条目，以获取补充 CLI Agent 数据。`kapm init-ide-hook` 会将 Kiro IDE hook 文件写入 `.kiro/hooks/*.kiro.hook`。CLI hook 记录 `agentSpawn`、`preToolUse`、`postToolUse` 和 `stop`；IDE hook 会在 `preToolUse`、`postToolUse` 和 `stop` 调用 `kapm hook-dump`，把 raw stdin 和部分 Kiro 环境变量写入 `.kapm/logs/hook-input.jsonl`，以便先确认哪些 IDE telemetry 值可用。
+`kapm init-hook` 可选地向 `.kiro/agents/*.json` 添加 hook 条目，以获取补充 CLI Agent 数据。`kapm init-ide-hook` 会将 Kiro IDE hook 文件写入 `.kiro/hooks/*.kiro.hook`。CLI hook 会向 `.kapm/logs/cli/` 写入最小记录，IDE hook 会向 `.kapm/logs/ide/` 写入最小记录。
 
 ```bash
 kapm init-hook             # 交互式选择 Agent
@@ -177,7 +177,7 @@ kapm power install https://github.com/owner/repo/tree/main/path/to/power
 
 ## 日志格式和保留
 
-Hook 日志采用精简格式：每条 JSONL 记录仅包含 `ts`、`session`、`event`、`agent`、`tool`，以及可选的 `shell_exit_status`。提示、工具输入/输出和助手响应均从 Kiro 的会话文件中读取，而非来自 hook 日志。
+Hook 日志采用精简格式：CLI 记录包含 `ts`、`session`、`event`、`agent`、`tool`，以及可选的 `shell_exit_status`；IDE 记录包含 `ts`、`event`、`agent` 和 `cwd`。提示、工具输入/输出和助手响应均从 Kiro 的会话文件中读取，而非来自 hook 日志。
 
 `.kapm/` 已加入 gitignore；目录以 `0700` 权限创建，日志文件以 `0600` 权限创建。
 

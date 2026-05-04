@@ -325,8 +325,11 @@ func TestInitHookWritesRelativeCommand(t *testing.T) {
 func TestHookCommandForGOOS(t *testing.T) {
 	t.Parallel()
 
-	if got := hookCommand("/tmp/kapm binary", "coder"); got != `"/tmp/kapm binary" hook-handler --agent coder` {
-		t.Fatalf("hookCommand() = %q, want %q", got, `"/tmp/kapm binary" hook-handler --agent coder`)
+	if got := hookCommand("/tmp/kapm binary", "coder"); got != `'/tmp/kapm binary' hook-handler --agent 'coder'` {
+		t.Fatalf("hookCommand() = %q, want %q", got, `'/tmp/kapm binary' hook-handler --agent 'coder'`)
+	}
+	if got := hookCommand(`/tmp/kapm $(touch pwn)'bin`, "coder"); got != `'/tmp/kapm $(touch pwn)'\''bin' hook-handler --agent 'coder'` {
+		t.Fatalf("hookCommand() = %q, want shell-quoted command", got)
 	}
 }
 
@@ -336,6 +339,7 @@ func TestIsKapmEntryMatchesBuiltInCommandFormat(t *testing.T) {
 		want bool
 	}{
 		{`{"command":"\"/usr/local/bin/kapm\" hook-handler --agent coder"}`, true},
+		{`{"command":"'/usr/local/bin/kapm' hook-handler --agent 'coder'"}`, true},
 		{`{"command":"AGENT=coder /usr/local/bin/kapm hook-handler"}`, true},
 		{`{"command":"AGENT=coder C:\\tools\\kapm.exe hook-handler --agent other"}`, true},
 		{`{"command":".kiro/hooks/kapl --agent coder"}`, true},
@@ -353,6 +357,17 @@ func TestIsKapmEntryMatchesBuiltInCommandFormat(t *testing.T) {
 		if got != c.want {
 			t.Errorf("isKapmEntry(%s) = %v, want %v", c.raw, got, c.want)
 		}
+	}
+	quotedPathRaw, err := json.Marshal(map[string]string{"command": hookCommand("/tmp/kapm 'quoted'/kapm", "coder")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := isKapmEntry(json.RawMessage(quotedPathRaw))
+	if err != nil {
+		t.Fatalf("isKapmEntry(%s): unexpected error: %v", quotedPathRaw, err)
+	}
+	if !got {
+		t.Fatalf("isKapmEntry(%s) = false, want true", quotedPathRaw)
 	}
 }
 

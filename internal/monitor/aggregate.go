@@ -264,6 +264,7 @@ func appendResolvedSubAgents(s *sessionState, r MergedRecord, ts time.Time, dur 
 // finalizeSessionStats marks unmatched preToolUse as errors, builds per-session
 // details, and folds them into agent stats.
 func finalizeSessionStats(st *aggState) {
+	absorbFirstPromptOnlyAgentSplits(st)
 	markUnmatchedToolCalls(st)
 	for _, s := range st.sessions {
 		s.filesChangedCached = countUniqueFiles(s.changes)
@@ -320,6 +321,106 @@ func markUnmatchedToolCalls(st *aggState) {
 			})
 		}
 	}
+}
+
+func absorbFirstPromptOnlyAgentSplits(st *aggState) {
+	bySession := map[string][]*sessionState{}
+	for _, s := range st.sessions {
+		bySession[s.id] = append(bySession[s.id], s)
+	}
+	for _, states := range bySession {
+		if len(states) != 2 {
+			continue
+		}
+		from, to := firstPromptOnlySplit(states[0], states[1])
+		if from == nil || to == nil {
+			continue
+		}
+		mergeFirstPromptOnlyState(to, from)
+		delete(st.sessions, compositeKey(from.id, from.agent))
+	}
+}
+
+func firstPromptOnlySplit(a, b *sessionState) (*sessionState, *sessionState) {
+	switch {
+	case isFirstPromptOnlyAgentState(a, b):
+		return a, b
+	case isFirstPromptOnlyAgentState(b, a):
+		return b, a
+	default:
+		return nil, nil
+	}
+}
+
+func isFirstPromptOnlyAgentState(candidate, target *sessionState) bool {
+	if len(candidate.prompts) != 1 || candidate.toolCalls != 0 || candidate.stopped {
+		return false
+	}
+	if !hasNonPromptActivity(target) {
+		return false
+	}
+	if !hasOnlyPromptTimeline(candidate.timeline) {
+		return false
+	}
+	if len(candidate.changes) != 0 || len(candidate.subAgentCalls) != 0 || len(candidate.pendingToolUse) != 0 {
+		return false
+	}
+	if candidate.start.IsZero() || target.start.IsZero() || !candidate.start.Before(target.start) {
+		return false
+	}
+	return true
+}
+
+func hasNonPromptActivity(s *sessionState) bool {
+	if s.toolCalls > 0 || s.stopped || s.assistantResponse != "" {
+		return true
+	}
+	if len(s.changes) > 0 || len(s.subAgentCalls) > 0 || len(s.pendingToolUse) > 0 {
+		return true
+	}
+	for _, response := range s.assistantResponses {
+		if response != "" {
+			return true
+		}
+	}
+	for _, ev := range s.timeline {
+		if ev.Event != apmconfig.EventUserPromptSubmit {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOnlyPromptTimeline(timeline []EventEntry) bool {
+	if len(timeline) == 0 {
+		return true
+	}
+	return len(timeline) == 1 && timeline[0].Event == apmconfig.EventUserPromptSubmit
+}
+
+func mergeFirstPromptOnlyState(dst, src *sessionState) {
+	if dst.start.IsZero() || (!src.start.IsZero() && src.start.Before(dst.start)) {
+		dst.start = src.start
+	}
+	if src.end.After(dst.end) {
+		dst.end = src.end
+	}
+	if dst.cwd == "" {
+		dst.cwd = src.cwd
+	}
+	if dst.sumTitle == "" {
+		dst.sumTitle = src.sumTitle
+	}
+	dst.prompts = append(slices.Clone(src.prompts), dst.prompts...)
+	dst.assistantResponses = append(slices.Clone(src.assistantResponses), dst.assistantResponses...)
+	if dst.assistantResponse == "" {
+		dst.assistantResponse = src.assistantResponse
+	}
+	dst.timeline = append(dst.timeline, src.timeline...)
+	slices.SortStableFunc(dst.timeline, func(a, b EventEntry) int { return a.Ts.Compare(b.Ts) })
+	dst.totalInputTokens += src.totalInputTokens
+	dst.totalOutputTokens += src.totalOutputTokens
+	dst.totalCredits += src.totalCredits
 }
 
 // buildSessionDetails builds per-session SessionDetail entries and appends to st.sessionDetails.

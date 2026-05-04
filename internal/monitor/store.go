@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kapmcli/kapm/internal/paths"
 )
 
 // SQLiteCache caches v1 SQLite sessions, invalidated by file mtime.
@@ -118,11 +120,13 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDB
 			}
 			ideRecords := BuildIDEMergedRecords(ideSessions, execResults)
 			if hookLogsDir != "" {
-				ideHooks, hookErr := LoadIDEHookInputs(ctx, hookLogsDir)
+				ideHooks, hookErr := loadHookRecordsFromDir(ctx, filepath.Join(hookLogsDir, paths.IDESubdir))
 				if hookErr != nil {
-					slog.Warn("load ide hook inputs", "err", hookErr)
+					if !errors.Is(hookErr, fs.ErrNotExist) {
+						slog.Warn("load ide hook records", "err", hookErr)
+					}
 				} else {
-					ideRecords = AppendIDEHookMergedRecords(ideRecords, ideSessions, ideHooks)
+					ideRecords = AppendIDEHookRecords(ideRecords, ideSessions, ideHooks)
 				}
 			}
 			records = append(records, ideRecords...)
@@ -143,18 +147,34 @@ func collectExecutionIDs(sessions []IDEParsedSession) map[string]struct{} {
 	return ids
 }
 
-// loadAllHookRecords reads all .jsonl files in hookLogsDir and returns
-// parsed HookRecords. Honors ctx cancellation.
+// loadAllHookRecords reads CLI hook logs. Honors ctx cancellation.
 func loadAllHookRecords(ctx context.Context, hookLogsDir string) ([]HookRecord, error) {
+	cli, err := loadHookRecordsFromDir(ctx, filepath.Join(hookLogsDir, paths.CLISubdir))
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+	}
+	return cli, nil
+}
+
+func loadHookRecordsFromDir(ctx context.Context, hookLogsDir string, skipNames ...string) ([]HookRecord, error) {
 	entries, err := os.ReadDir(hookLogsDir)
 	if err != nil {
 		return nil, err
+	}
+	skip := make(map[string]struct{}, len(skipNames))
+	for _, name := range skipNames {
+		skip[name] = struct{}{}
 	}
 
 	var all []HookRecord
 	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if _, ok := skip[e.Name()]; ok {
+			continue
 		}
 		if !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue

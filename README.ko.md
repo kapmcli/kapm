@@ -64,7 +64,7 @@ kapm init-ide-hook
 
 kapm은 Kiro CLI v2 세션 데이터(`~/.kiro/sessions/cli/{uuid}.jsonl` 로그와 `{uuid}.json` 메타데이터)를 기본 데이터 소스로 읽습니다. Kiro IDE 세션 로그도 사용 가능한 경우 자동으로 불러옵니다. Kiro CLI v1 SQLite 세션 스토어(`conversations_v2`)도 있으면 읽습니다. 기본 모니터링에는 hook 설치가 필요 없으며, 세션 파일에는 프롬프트, 어시스턴트 응답, 도구 호출, 도구 결과, 턴별 메타데이터(토큰, 크레딧, 소요 시간)가 포함됩니다.
 
-`kapm init-hook`은 선택적으로 `.kiro/agents/*.json`에 hook 항목을 추가해 CLI 에이전트 보조 데이터를 수집합니다. `kapm init-ide-hook`은 Kiro IDE hook 파일을 `.kiro/hooks/*.kiro.hook`에 씁니다. CLI hook은 `agentSpawn`·`preToolUse`·`postToolUse`·`stop`을 기록하고, IDE hook은 `preToolUse`·`postToolUse`·`stop`에서 `kapm hook-dump`를 호출해 IDE telemetry로 수집할 범위를 정하기 전에 raw stdin과 일부 Kiro 환경 변수를 `.kapm/logs/hook-input.jsonl`에서 확인할 수 있게 합니다.
+`kapm init-hook`은 선택적으로 `.kiro/agents/*.json`에 hook 항목을 추가해 CLI 에이전트 보조 데이터를 수집합니다. `kapm init-ide-hook`은 Kiro IDE hook 파일을 `.kiro/hooks/*.kiro.hook`에 씁니다. CLI hook은 `.kapm/logs/cli/`에, IDE hook은 `.kapm/logs/ide/`에 최소 레코드를 씁니다.
 
 ```bash
 kapm init-hook             # 에이전트를 대화형으로 선택
@@ -177,7 +177,7 @@ kapm power install https://github.com/owner/repo/tree/main/path/to/power
 
 ## 로그 형식과 보관
 
-hook 로그는 최소한의 형식을 사용합니다. 각 JSONL 레코드에는 `ts`, `session`, `event`, `agent`, `tool`, 그리고 선택적으로 `shell_exit_status`만 포함됩니다. 프롬프트, 도구 입출력, 어시스턴트 응답은 hook 로그가 아닌 Kiro의 세션 파일에서 읽습니다.
+hook 로그는 최소한의 형식을 사용합니다. CLI 레코드에는 `ts`, `session`, `event`, `agent`, `tool`, 그리고 선택적으로 `shell_exit_status`가 포함되고, IDE 레코드에는 `ts`, `event`, `agent`, `cwd`가 포함됩니다. 프롬프트, 도구 입출력, 어시스턴트 응답은 hook 로그가 아닌 Kiro의 세션 파일에서 읽습니다.
 
 `.kapm/`은 gitignore 처리되며, 디렉터리는 `0700`, 로그 파일은 `0600` 권한으로 생성됩니다.
 

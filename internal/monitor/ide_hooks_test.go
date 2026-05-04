@@ -3,39 +3,13 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
-func TestLoadIDEHookInputs(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".kapm", "logs")
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	line := `{"ts":"2026-05-03T04:16:53.501582Z","event":"postToolUse","agent":"ide","cwd":"/repo","stdin":"","stdin_bytes":0,"stdin_read_timed_out":true,"env":{"USER_PROMPT":"{}` + `"}}` + "\n"
-	if err := os.WriteFile(filepath.Join(logDir, "hook-input.jsonl"), []byte(line), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	records, err := LoadIDEHookInputs(context.Background(), logDir)
-	if err != nil {
-		t.Fatalf("LoadIDEHookInputs() error = %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("records len = %d, want 1", len(records))
-	}
-	if records[0].Event != apmconfig.EventPostToolUse || records[0].Env["USER_PROMPT"] != "{}" {
-		t.Fatalf("record = %#v", records[0])
-	}
-}
-
-func TestAppendIDEHookMergedRecordsAddsPromptToolResultAndStop(t *testing.T) {
+func TestAppendIDEHookRecordsAddsPromptToolDurationAndStop(t *testing.T) {
 	t.Parallel()
 	createdAt := time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC)
 	sessions := []IDEParsedSession{{
@@ -45,25 +19,30 @@ func TestAppendIDEHookMergedRecordsAddsPromptToolResultAndStop(t *testing.T) {
 		CreatedAt:          createdAt,
 		PromptTexts:        []string{"actual prompt"},
 	}}
-	records := BuildIDEMergedRecords(sessions, map[string]IDEExecutionResult{})
-
-	toolPayload, err := json.Marshal(map[string]any{
-		"toolName":    "readMultipleFiles",
-		"toolArgs":    map[string]any{"paths": []string{"README.md"}},
-		"toolResult":  "README content",
-		"toolSuccess": true,
-	})
-	if err != nil {
-		t.Fatal(err)
+	execResults := map[string]IDEExecutionResult{
+		"ide-sess": {
+			StartTime: createdAt,
+			EndTime:   createdAt.Add(10 * time.Second),
+			ToolActions: []IDEAction{{
+				ActionType:        ActionReadFiles,
+				ActionID:          "action-1",
+				ActionState:       "Success",
+				EmittedAt:         createdAt.Add(3 * time.Second).UnixMilli(),
+				Input:             json.RawMessage(`{"paths":["README.md"]}`),
+				Output:            json.RawMessage(`"README content"`),
+				EstimatedDuration: 2 * time.Second,
+			}},
+		},
 	}
-	hooks := []IDEHookInputRecord{
-		{Ts: createdAt.Add(time.Second), Event: apmconfig.EventUserPromptSubmit, Agent: "ide", Cwd: "/repo", Env: map[string]string{"USER_PROMPT": "actual prompt"}},
-		{Ts: createdAt.Add(2 * time.Second), Event: apmconfig.EventPreToolUse, Agent: "ide", Cwd: "/repo", Env: map[string]string{"USER_PROMPT": "{}"}},
-		{Ts: createdAt.Add(5 * time.Second), Event: apmconfig.EventPostToolUse, Agent: "ide", Cwd: "/repo", Env: map[string]string{"USER_PROMPT": string(toolPayload)}},
-		{Ts: createdAt.Add(6 * time.Second), Event: apmconfig.EventStop, Agent: "ide", Cwd: "/repo", Env: map[string]string{"USER_PROMPT": ""}},
+	records := BuildIDEMergedRecords(sessions, execResults)
+	hooks := []HookRecord{
+		{Ts: createdAt.Add(time.Second), Event: apmconfig.EventUserPromptSubmit, Agent: "ide", Cwd: "/repo"},
+		{Ts: createdAt.Add(2 * time.Second), Event: apmconfig.EventPreToolUse, Agent: "ide", Cwd: "/repo"},
+		{Ts: createdAt.Add(5 * time.Second), Event: apmconfig.EventPostToolUse, Agent: "ide", Cwd: "/repo"},
+		{Ts: createdAt.Add(6 * time.Second), Event: apmconfig.EventStop, Agent: "ide", Cwd: "/repo"},
 	}
 
-	records = AppendIDEHookMergedRecords(records, sessions, hooks)
+	records = AppendIDEHookRecords(records, sessions, hooks)
 	detail, err := AggregateDetail(context.Background(), records, createdAt.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("AggregateDetail() error = %v", err)
@@ -86,8 +65,8 @@ func TestAppendIDEHookMergedRecordsAddsPromptToolResultAndStop(t *testing.T) {
 	for _, ev := range s.Timeline {
 		if ev.Event == apmconfig.EventPreToolUse && ev.Tool == ActionReadFiles {
 			foundTool = true
-			if ev.ToolResult != "README content" {
-				t.Fatalf("ToolResult = %q", ev.ToolResult)
+			if ev.InputSummary != "README.md" {
+				t.Fatalf("InputSummary = %q, want README.md", ev.InputSummary)
 			}
 			if ev.Duration != JSONDuration(3*time.Second) {
 				t.Fatalf("Duration = %s, want 3s", time.Duration(ev.Duration))
@@ -99,7 +78,7 @@ func TestAppendIDEHookMergedRecordsAddsPromptToolResultAndStop(t *testing.T) {
 	}
 }
 
-func TestAppendIDEHookMergedRecordsKeepsUnmatchedPromptFallbacks(t *testing.T) {
+func TestAppendIDEHookRecordsKeepsUnmatchedPromptFallbacks(t *testing.T) {
 	t.Parallel()
 	createdAt := time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC)
 	sessions := []IDEParsedSession{{
@@ -110,15 +89,14 @@ func TestAppendIDEHookMergedRecordsKeepsUnmatchedPromptFallbacks(t *testing.T) {
 		PromptTexts:        []string{"first prompt", "second prompt"},
 	}}
 	records := BuildIDEMergedRecords(sessions, map[string]IDEExecutionResult{})
-	hooks := []IDEHookInputRecord{{
+	hooks := []HookRecord{{
 		Ts:    createdAt.Add(time.Second),
 		Event: apmconfig.EventUserPromptSubmit,
 		Agent: "ide",
 		Cwd:   "/repo",
-		Env:   map[string]string{"USER_PROMPT": "first prompt"},
 	}}
 
-	records = AppendIDEHookMergedRecords(records, sessions, hooks)
+	records = AppendIDEHookRecords(records, sessions, hooks)
 	detail, err := AggregateDetail(context.Background(), records, createdAt.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("AggregateDetail() error = %v", err)
@@ -132,7 +110,7 @@ func TestAppendIDEHookMergedRecordsKeepsUnmatchedPromptFallbacks(t *testing.T) {
 	}
 }
 
-func TestAppendIDEHookMergedRecordsFileHookDoesNotIncrementToolCalls(t *testing.T) {
+func TestAppendIDEHookRecordsSkipsMismatchedCwd(t *testing.T) {
 	t.Parallel()
 	createdAt := time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC)
 	sessions := []IDEParsedSession{{
@@ -142,47 +120,9 @@ func TestAppendIDEHookMergedRecordsFileHookDoesNotIncrementToolCalls(t *testing.
 		CreatedAt:          createdAt,
 	}}
 	records := BuildIDEMergedRecords(sessions, map[string]IDEExecutionResult{})
-	hooks := []IDEHookInputRecord{{
-		Ts:    createdAt.Add(time.Second),
-		Event: apmconfig.EventFileEdited,
-		Agent: "ide",
-		Cwd:   "/repo",
-		Env:   map[string]string{"USER_PROMPT": "src/main.go"},
-	}}
+	hooks := []HookRecord{{Ts: createdAt.Add(time.Second), Event: apmconfig.EventStop, Agent: "ide", Cwd: "/other"}}
 
-	records = AppendIDEHookMergedRecords(records, sessions, hooks)
-	detail, err := AggregateDetail(context.Background(), records, createdAt.Add(time.Minute))
-	if err != nil {
-		t.Fatalf("AggregateDetail() error = %v", err)
-	}
-	s := detail.Sessions[0]
-	if s.ToolCalls != 0 {
-		t.Fatalf("ToolCalls = %d, want 0", s.ToolCalls)
-	}
-	if len(s.Timeline) != 1 || s.Timeline[0].Event != apmconfig.EventFileEdited {
-		t.Fatalf("Timeline = %#v", s.Timeline)
-	}
-}
-
-func TestAppendIDEHookMergedRecordsSkipsEmptyFileHookPayload(t *testing.T) {
-	t.Parallel()
-	createdAt := time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC)
-	sessions := []IDEParsedSession{{
-		SessionID:          "ide-sess",
-		Title:              "IDE Session",
-		WorkspaceDirectory: "/repo",
-		CreatedAt:          createdAt,
-	}}
-	records := BuildIDEMergedRecords(sessions, map[string]IDEExecutionResult{})
-	hooks := []IDEHookInputRecord{{
-		Ts:    createdAt.Add(time.Second),
-		Event: apmconfig.EventFileEdited,
-		Agent: "ide",
-		Cwd:   "/repo",
-		Env:   map[string]string{},
-	}}
-
-	records = AppendIDEHookMergedRecords(records, sessions, hooks)
+	records = AppendIDEHookRecords(records, sessions, hooks)
 	detail, err := AggregateDetail(context.Background(), records, createdAt.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("AggregateDetail() error = %v", err)
@@ -191,11 +131,11 @@ func TestAppendIDEHookMergedRecordsSkipsEmptyFileHookPayload(t *testing.T) {
 		t.Fatalf("sessions len = %d, want 1", len(detail.Sessions))
 	}
 	if len(detail.Sessions[0].Timeline) != 0 {
-		t.Fatalf("empty file hook payload should not enter timeline: %#v", detail.Sessions[0].Timeline)
+		t.Fatalf("mismatched cwd hook should not enter timeline: %#v", detail.Sessions[0].Timeline)
 	}
 }
 
-func TestAppendIDEHookMergedRecordsEnrichesExistingToolArgsAndNormalizesName(t *testing.T) {
+func TestAppendIDEHookRecordsHookOnlyToolEventsAreLifecycleOnly(t *testing.T) {
 	t.Parallel()
 	createdAt := time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC)
 	sessions := []IDEParsedSession{{
@@ -204,59 +144,79 @@ func TestAppendIDEHookMergedRecordsEnrichesExistingToolArgsAndNormalizesName(t *
 		WorkspaceDirectory: "/repo",
 		CreatedAt:          createdAt,
 	}}
-	execResults := map[string]IDEExecutionResult{
-		"ide-sess": {
-			StartTime: createdAt,
-			EndTime:   createdAt.Add(10 * time.Second),
-			ToolActions: []IDEAction{{
-				ActionType:        ActionReadFiles,
-				ActionID:          "action-1",
-				ActionState:       "Success",
-				EmittedAt:         createdAt.Add(3 * time.Second).UnixMilli(),
-				Input:             json.RawMessage(`{}`),
-				EstimatedDuration: 2 * time.Second,
-			}},
-		},
+	records := BuildIDEMergedRecords(sessions, map[string]IDEExecutionResult{})
+	hooks := []HookRecord{
+		{Ts: createdAt.Add(time.Second), Event: apmconfig.EventPreToolUse, Agent: "ide", Cwd: "/repo"},
+		{Ts: createdAt.Add(2 * time.Second), Event: apmconfig.EventPostToolUse, Agent: "ide", Cwd: "/repo"},
 	}
-	records := BuildIDEMergedRecords(sessions, execResults)
-	toolPayload, err := json.Marshal(map[string]any{
-		"toolName":    "readMultipleFiles",
-		"toolArgs":    map[string]any{"paths": []string{"README.md"}},
-		"toolResult":  "README content",
-		"toolSuccess": true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	hooks := []IDEHookInputRecord{{
-		Ts:    createdAt.Add(5 * time.Second),
-		Event: apmconfig.EventPostToolUse,
-		Agent: "ide",
-		Cwd:   "/repo",
-		Env:   map[string]string{"USER_PROMPT": string(toolPayload)},
-	}}
 
-	records = AppendIDEHookMergedRecords(records, sessions, hooks)
+	records = AppendIDEHookRecords(records, sessions, hooks)
 	detail, err := AggregateDetail(context.Background(), records, createdAt.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("AggregateDetail() error = %v", err)
 	}
+	if len(detail.Sessions) != 1 {
+		t.Fatalf("sessions len = %d, want 1", len(detail.Sessions))
+	}
 	s := detail.Sessions[0]
-	if s.ToolCalls != 1 {
-		t.Fatalf("ToolCalls = %d, want 1", s.ToolCalls)
+	if s.ToolCalls != 0 {
+		t.Fatalf("ToolCalls = %d, want 0 for hook-only IDE tool lifecycle events", s.ToolCalls)
 	}
-	if len(s.Timeline) != 1 {
-		t.Fatalf("Timeline len = %d, want 1: %#v", len(s.Timeline), s.Timeline)
+	if len(s.Timeline) != 2 {
+		t.Fatalf("Timeline len = %d, want 2: %#v", len(s.Timeline), s.Timeline)
 	}
-	ev := s.Timeline[0]
-	if ev.Tool != ActionReadFiles {
-		t.Fatalf("Tool = %q, want %q", ev.Tool, ActionReadFiles)
+	for _, ev := range s.Timeline {
+		if ev.Tool != "" {
+			t.Fatalf("hook-only lifecycle event invented tool %q: %#v", ev.Tool, ev)
+		}
 	}
-	if ev.InputSummary != "README.md" {
-		t.Fatalf("InputSummary = %q, want README.md", ev.InputSummary)
+}
+
+func TestAppendIDEHookRecordsMatchesExecutionStartBeforeSessionCreatedAt(t *testing.T) {
+	t.Parallel()
+	newExecStart := time.Date(2026, 5, 4, 0, 59, 40, 0, time.UTC)
+	oldExecStart := newExecStart.Add(-7 * time.Hour)
+	sessions := []IDEParsedSession{
+		{
+			SessionID:          "old-sess",
+			Title:              "Old IDE Session",
+			WorkspaceDirectory: "/repo",
+			CreatedAt:          oldExecStart,
+			PromptTexts:        []string{"old prompt"},
+		},
+		{
+			SessionID:          "new-sess",
+			Title:              "New IDE Session",
+			WorkspaceDirectory: "/repo",
+			CreatedAt:          newExecStart.Add(10 * time.Second),
+			PromptTexts:        []string{"new prompt"},
+		},
 	}
-	if ev.ToolResult != "README content" {
-		t.Fatalf("ToolResult = %q", ev.ToolResult)
+	execResults := map[string]IDEExecutionResult{
+		"old-sess": {StartTime: oldExecStart, EndTime: oldExecStart.Add(30 * time.Second), Executions: 1},
+		"new-sess": {StartTime: newExecStart, EndTime: newExecStart.Add(30 * time.Second), Executions: 1},
+	}
+	records := BuildIDEMergedRecords(sessions, execResults)
+	hooks := []HookRecord{{
+		Ts:    newExecStart.Add(2 * time.Second),
+		Event: apmconfig.EventUserPromptSubmit,
+		Agent: "ide",
+		Cwd:   "/repo",
+	}}
+
+	records = AppendIDEHookRecords(records, sessions, hooks)
+	var promptRecords []MergedRecord
+	for _, r := range records {
+		if r.Kind == RecordKindPrompt {
+			promptRecords = append(promptRecords, r)
+		}
+	}
+	if len(promptRecords) != 1 {
+		t.Fatalf("prompt records len = %d, want 1: %#v", len(promptRecords), promptRecords)
+	}
+	prompt := promptRecords[0]
+	if prompt.SessionID != "new-sess" || prompt.PromptText != "new prompt" {
+		t.Fatalf("prompt record matched wrong session: %#v", prompt)
 	}
 }
 
