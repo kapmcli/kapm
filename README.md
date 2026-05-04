@@ -106,6 +106,8 @@ Both `monitor` and `serve` support:
 | `GET /tools/{name}` | Tool detail |
 | `GET /skills` | Skill reads |
 
+Tool usage aggregates known tool aliases, and tool detail shows the observed alias distribution.
+
 ## Agent configuration
 
 ```bash

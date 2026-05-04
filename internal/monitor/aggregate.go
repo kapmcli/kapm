@@ -163,7 +163,9 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 			s.sumTitle = td
 		}
 	}
-	toolEntry(st.tools, toolName).CallCount++
+	td := toolEntryForCall(st.tools, toolName)
+	td.CallCount++
+	recordToolAliasCall(td, toolName)
 
 	if isToolName(toolName, apmconfig.ToolRead) && len(r.ToolInput) > 0 {
 		if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
@@ -223,7 +225,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 	}
 	appendResolvedSubAgents(s, r, preTs, s.timeline[matchIdx].Duration)
 
-	td := toolEntry(st.tools, s.timeline[matchIdx].Tool)
+	td := toolEntryForCall(st.tools, s.timeline[matchIdx].Tool)
 	call := ToolCall{
 		Ts: preTs, Session: r.SessionID, Agent: s.agent, Tool: s.timeline[matchIdx].Tool,
 		Duration: s.timeline[matchIdx].Duration, InputSummary: s.timeline[matchIdx].InputSummary,
@@ -236,6 +238,7 @@ func resolveToolResult(st *aggState, s *sessionState, r MergedRecord) {
 		s.timeline[matchIdx].ErrorDetail = truncateUTF8(s.timeline[matchIdx].ErrorDetail, maxErrorDetailLength)
 		call.IsError = true
 		td.ErrorCount++
+		recordToolAliasError(td, s.timeline[matchIdx].Tool)
 		td.Errors = append(td.Errors, call)
 	} else {
 		s.timeline[matchIdx].matched = true
@@ -317,8 +320,9 @@ func markUnmatchedToolCalls(st *aggState) {
 			}
 			// Unmatched toolUse → error
 			ev.IsError = true
-			td := toolEntry(st.tools, ev.Tool)
+			td := toolEntryForCall(st.tools, ev.Tool)
 			td.ErrorCount++
+			recordToolAliasError(td, ev.Tool)
 			td.Errors = append(td.Errors, ToolCall{
 				Ts: ev.Ts, Session: s.id, Agent: s.agent, Tool: ev.Tool, IsError: true,
 				InputSummary: ev.InputSummary, ToolInput: ev.ToolInput,
@@ -547,7 +551,16 @@ func foldSessionIntoAgents(st *aggState) {
 func finalizeToolDetails(td *ToolDetail) {
 	if td.CallCount > 0 {
 		td.ErrorRate = float64(td.ErrorCount) / float64(td.CallCount)
+		for i := range td.Aliases {
+			td.Aliases[i].Percentage = float64(td.Aliases[i].CallCount) / float64(td.CallCount)
+		}
 	}
+	slices.SortFunc(td.Aliases, func(a, b ToolAliasMetric) int {
+		if a.CallCount != b.CallCount {
+			return cmp.Compare(b.CallCount, a.CallCount)
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
 	if len(td.RecentCalls) > 0 {
 		var total time.Duration
 		for _, c := range td.RecentCalls {
@@ -563,6 +576,36 @@ func finalizeToolDetails(td *ToolDetail) {
 	if len(td.Errors) > maxErrors {
 		td.Errors = td.Errors[:maxErrors]
 	}
+}
+
+func toolEntryForCall(tools map[string]*ToolDetail, rawName string) *ToolDetail {
+	return toolEntry(tools, CanonicalToolNameForAggregation(rawName))
+}
+
+func recordToolAliasCall(td *ToolDetail, rawName string) {
+	if td == nil {
+		return
+	}
+	for i := range td.Aliases {
+		if td.Aliases[i].Name == rawName {
+			td.Aliases[i].CallCount++
+			return
+		}
+	}
+	td.Aliases = append(td.Aliases, ToolAliasMetric{Name: rawName, CallCount: 1})
+}
+
+func recordToolAliasError(td *ToolDetail, rawName string) {
+	if td == nil {
+		return
+	}
+	for i := range td.Aliases {
+		if td.Aliases[i].Name == rawName {
+			td.Aliases[i].ErrorCount++
+			return
+		}
+	}
+	td.Aliases = append(td.Aliases, ToolAliasMetric{Name: rawName, ErrorCount: 1})
 }
 
 // assembleDetails produces the final DetailedMetrics with sorted overview and detail slices.
@@ -651,8 +694,9 @@ func AggregateToolsFromTimeline(sessions []SessionDetail) ([]ToolDetail, []ToolM
 			if ev.Event != apmconfig.EventPreToolUse {
 				continue
 			}
-			td := toolEntry(tools, ev.Tool)
+			td := toolEntryForCall(tools, ev.Tool)
 			td.CallCount++
+			recordToolAliasCall(td, ev.Tool)
 			call := ToolCall{
 				Ts: ev.Ts, Session: sd.ID, Agent: sd.Agent, Tool: ev.Tool,
 				Duration: ev.Duration, IsError: ev.IsError, InputSummary: ev.InputSummary,
@@ -660,6 +704,7 @@ func AggregateToolsFromTimeline(sessions []SessionDetail) ([]ToolDetail, []ToolM
 			}
 			if ev.IsError {
 				td.ErrorCount++
+				recordToolAliasError(td, ev.Tool)
 				td.Errors = append(td.Errors, call)
 			} else {
 				td.RecentCalls = append(td.RecentCalls, call)

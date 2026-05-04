@@ -214,12 +214,21 @@ type AgentDetail struct {
 	ToolErrorCnt int                  // total error tool calls across all its sessions
 }
 
+// ToolAliasMetric summarizes one observed raw alias within a tool detail.
+type ToolAliasMetric struct {
+	Name       string
+	CallCount  int
+	ErrorCount int
+	Percentage float64
+}
+
 // ToolDetail is the per-tool drill-down payload.
 type ToolDetail struct {
 	ToolMetric
 	AvgDuration JSONDuration // average pre→post across matched calls
-	RecentCalls []ToolCall   // newest first, matched calls with duration
-	Errors      []ToolCall   // unmatched preToolUse samples
+	Aliases     []ToolAliasMetric
+	RecentCalls []ToolCall // newest first, matched calls with duration
+	Errors      []ToolCall // unmatched preToolUse samples
 }
 
 // SkillUsage counts how many times a skill's SKILL.md was read.

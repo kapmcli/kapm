@@ -108,6 +108,26 @@ func TestAPIMetricsJSON(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &dm); err != nil {
 		t.Fatalf("unmarshal metrics: %v", err)
 	}
+	type legacyToolMetric struct {
+		Name       string `json:"Name"`
+		CallCount  int    `json:"CallCount"`
+		ErrorCount int    `json:"ErrorCount"`
+	}
+	type legacyMetrics struct {
+		Overview struct {
+			Tools []legacyToolMetric `json:"Tools"`
+		} `json:"Overview"`
+	}
+	var legacy legacyMetrics
+	if err := json.Unmarshal(rr.Body.Bytes(), &legacy); err != nil {
+		t.Fatalf("legacy unmarshal metrics: %v", err)
+	}
+	if len(legacy.Overview.Tools) == 0 {
+		t.Fatal("legacy metrics lost overview tools")
+	}
+	if legacy.Overview.Tools[0].Name != dm.Overview.Tools[0].Name || legacy.Overview.Tools[0].CallCount != dm.Overview.Tools[0].CallCount || legacy.Overview.Tools[0].ErrorCount != dm.Overview.Tools[0].ErrorCount {
+		t.Fatalf("legacy metrics tool = %+v; want %+v", legacy.Overview.Tools[0], dm.Overview.Tools[0])
+	}
 }
 
 func TestSecurityHeaders(t *testing.T) {
@@ -555,11 +575,12 @@ func TestLoadMetricsSingleflight(t *testing.T) {
 
 // --- Filter tests (task-9) --------------------------------------------------
 
-// buildFilterTestMetrics constructs DetailedMetrics covering two agents and
-// two sessions with known tool usage, used by the filter tests below.
+// buildFilterTestMetrics constructs DetailedMetrics covering three agents and
+// three sessions with known tool usage, used by the filter tests below.
 //
 // agent=A has session s1 with: read x3, grep x1 (all matched).
 // agent=B has session s2 with: bash x2 (1 matched, 1 unmatched → error).
+// agent=C has session s3 with: write x1, fsWrite x1, fs_write x1 (1 unmatched → error).
 func buildFilterTestMetrics(t *testing.T) monitor.DetailedMetrics {
 	t.Helper()
 	base := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
@@ -583,11 +604,93 @@ func buildFilterTestMetrics(t *testing.T) monitor.DetailedMetrics {
 		monitor.MergedRecord{SessionID: "s2", Agent: "B", Kind: "toolUse", ToolUseID: "tu-bash2", ToolName: "bash", PreToolTs: base.Add(12 * time.Minute)},
 		// no result for tu-bash2 → error
 	)
+	// agent=C has session s3 with: write x2, fs_write x1 (1 unmatched → error).
+	writePre, writePost := monitor.MergedRecord{SessionID: "s3", Agent: "C", Kind: "toolUse", ToolUseID: "tu-write-1", ToolName: "write", PreToolTs: base.Add(20 * time.Minute)}, monitor.MergedRecord{SessionID: "s3", Agent: "C", Kind: "toolResult", ToolUseID: "tu-write-1", ToolName: "write", PostToolTs: base.Add(21 * time.Minute), ToolStatus: "success"}
+	fsWritePre, fsWritePost := monitor.MergedRecord{SessionID: "s3", Agent: "C", Kind: "toolUse", ToolUseID: "tu-fswrite-1", ToolName: "fsWrite", PreToolTs: base.Add(22 * time.Minute)}, monitor.MergedRecord{SessionID: "s3", Agent: "C", Kind: "toolResult", ToolUseID: "tu-fswrite-1", ToolName: "fsWrite", PostToolTs: base.Add(23 * time.Minute), ToolStatus: "success"}
+	fsWriteSnake := monitor.MergedRecord{SessionID: "s3", Agent: "C", Kind: "toolUse", ToolUseID: "tu-fswrite-snake", ToolName: "fs_write", PreToolTs: base.Add(24 * time.Minute)}
+	recs = append(recs, writePre, writePost, fsWritePre, fsWritePost, fsWriteSnake)
 	dm, err := monitor.AggregateDetail(context.Background(), recs, base.Add(1*time.Hour))
 	if err != nil {
 		t.Fatalf("AggregateDetail: %v", err)
 	}
 	return dm
+}
+
+func assertCanonicalWriteFilteredMetrics(t *testing.T, out monitor.DetailedMetrics) {
+	t.Helper()
+	if len(out.Tools) != 1 {
+		t.Fatalf("len(Tools) = %d; want 1 canonical write row: %#v", len(out.Tools), out.Tools)
+	}
+	write := out.Tools[0]
+	if write.Name != "write" {
+		t.Fatalf("tool name = %q; want write", write.Name)
+	}
+	if write.CallCount != 3 {
+		t.Fatalf("write CallCount = %d; want 3", write.CallCount)
+	}
+	if write.ErrorCount != 1 {
+		t.Fatalf("write ErrorCount = %d; want 1", write.ErrorCount)
+	}
+	if diff := write.ErrorRate - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("write ErrorRate = %f; want 1/3", write.ErrorRate)
+	}
+	if len(write.Aliases) != 3 {
+		t.Fatalf("len(write.Aliases) = %d; want 3: %#v", len(write.Aliases), write.Aliases)
+	}
+	aliases := map[string]monitor.ToolAliasMetric{}
+	for _, alias := range write.Aliases {
+		aliases[alias.Name] = alias
+	}
+	if len(aliases) != 3 {
+		t.Fatalf("write aliases = %#v; want 3 rows", write.Aliases)
+	}
+	if got := []string{write.Aliases[0].Name, write.Aliases[1].Name, write.Aliases[2].Name}; got[0] != "fsWrite" || got[1] != "fs_write" || got[2] != "write" {
+		t.Fatalf("write alias order = %#v; want [fsWrite fs_write write]", got)
+	}
+	if alias := aliases["write"]; alias.CallCount != 1 || alias.ErrorCount != 0 {
+		t.Fatalf("write alias row = %+v; want CallCount 1 ErrorCount 0", alias)
+	}
+	if diff := aliases["write"].Percentage - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("write alias Percentage = %f; want 1/3", aliases["write"].Percentage)
+	}
+	if alias := aliases["fsWrite"]; alias.CallCount != 1 || alias.ErrorCount != 0 {
+		t.Fatalf("fsWrite alias row = %+v; want CallCount 1 ErrorCount 0", alias)
+	}
+	if diff := aliases["fsWrite"].Percentage - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("fsWrite alias Percentage = %f; want 1/3", aliases["fsWrite"].Percentage)
+	}
+	if alias := aliases["fs_write"]; alias.CallCount != 1 || alias.ErrorCount != 1 {
+		t.Fatalf("fs_write alias row = %+v; want CallCount 1 ErrorCount 1", alias)
+	}
+	if diff := aliases["fs_write"].Percentage - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("fs_write alias Percentage = %f; want 1/3", aliases["fs_write"].Percentage)
+	}
+	if len(write.RecentCalls) != 2 {
+		t.Fatalf("len(RecentCalls) = %d; want 2: %#v", len(write.RecentCalls), write.RecentCalls)
+	}
+	recent := map[string]bool{}
+	for _, call := range write.RecentCalls {
+		recent[call.Tool] = true
+	}
+	if !recent["write"] || !recent["fsWrite"] {
+		t.Fatalf("RecentCalls = %#v; want raw write and fsWrite calls", write.RecentCalls)
+	}
+	if len(write.Errors) != 1 || write.Errors[0].Tool != "fs_write" {
+		t.Fatalf("Errors = %#v; want raw fs_write error row", write.Errors)
+	}
+	if len(out.Overview.Tools) != 1 {
+		t.Fatalf("len(Overview.Tools) = %d; want 1 canonical write row: %#v", len(out.Overview.Tools), out.Overview.Tools)
+	}
+	overviewWrite := out.Overview.Tools[0]
+	if overviewWrite.Name != "write" {
+		t.Fatalf("overview tool name = %q; want write", overviewWrite.Name)
+	}
+	if overviewWrite.CallCount != 3 || overviewWrite.ErrorCount != 1 {
+		t.Fatalf("overview write = %+v; want CallCount 3 ErrorCount 1", overviewWrite)
+	}
+	if diff := overviewWrite.ErrorRate - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("overview write ErrorRate = %f; want 1/3", overviewWrite.ErrorRate)
+	}
 }
 
 func TestFilterByAgentIncludesTools(t *testing.T) {
@@ -622,6 +725,13 @@ func TestFilterByAgentIncludesTools(t *testing.T) {
 	}
 }
 
+func TestFilterByAgentIncludesCanonicalWriteAliases(t *testing.T) {
+	t.Parallel()
+	dm := buildFilterTestMetrics(t)
+	out := filterByAgent(dm, "C")
+	assertCanonicalWriteFilteredMetrics(t, out)
+}
+
 func TestFilterBySessionIncludesTools(t *testing.T) {
 	t.Parallel()
 	dm := buildFilterTestMetrics(t)
@@ -652,6 +762,13 @@ func TestFilterBySessionIncludesTools(t *testing.T) {
 		t.Errorf("bash error attribution: want s2/B, got %s/%s",
 			bash.Errors[0].Session, bash.Errors[0].Agent)
 	}
+}
+
+func TestFilterBySessionIncludesCanonicalWriteAliases(t *testing.T) {
+	t.Parallel()
+	dm := buildFilterTestMetrics(t)
+	out := filterBySession(dm, "s3")
+	assertCanonicalWriteFilteredMetrics(t, out)
 }
 
 func TestFilterBySessionSkillsEmpty(t *testing.T) {
@@ -860,6 +977,74 @@ func TestHandleToolDetailHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Tool bash") {
 		t.Fatalf("body missing tool detail title: %s", rr.Body.String())
+	}
+}
+
+func newAliasTestServer(t *testing.T) *Server {
+	t.Helper()
+	sessDir := t.TempDir()
+	hookDir := t.TempDir()
+	cliHookDir := filepath.Join(hookDir, "cli")
+	if err := os.MkdirAll(cliHookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const sid = "11111111-2222-3333-4444-555555555555"
+
+	meta := `{"session_id":"` + sid + `","title":"test","cwd":"/w","created_at":"2026-04-22T09:00:00Z","updated_at":"2026-04-22T09:02:00Z","session_state":{"agent_name":"orchestrator"}}`
+	if err := os.WriteFile(filepath.Join(sessDir, sid+".json"), []byte(meta), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs := []string{
+		`{"version":"1","kind":"AssistantMessage","data":{"message_id":"m1","content":[{"kind":"toolUse","data":{"toolUseId":"tu-1","name":"write","input":{}}}]}}`,
+		`{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-1","content":[],"status":"success"}}]}}`,
+		`{"version":"1","kind":"AssistantMessage","data":{"message_id":"m2","content":[{"kind":"toolUse","data":{"toolUseId":"tu-2","name":"fsWrite","input":{}}}]}}`,
+		`{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-2","content":[],"status":"error"}}]}}`,
+		`{"version":"1","kind":"AssistantMessage","data":{"message_id":"m3","content":[{"kind":"toolUse","data":{"toolUseId":"tu-3","name":"fs_write","input":{}}}]}}`,
+		`{"version":"1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tu-3","content":[],"status":"success"}}]}}`,
+	}
+	if err := os.WriteFile(filepath.Join(sessDir, sid+".jsonl"), []byte(strings.Join(msgs, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return New(Options{Port: 0, SessionsDir: sessDir, LogsDir: hookDir, Since: 365 * 24 * time.Hour})
+}
+
+func TestHandleToolDetailAliases(t *testing.T) {
+	t.Parallel()
+	srv := newAliasTestServer(t)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/tools/write", nil)
+	rr1 := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr1, req1)
+
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("write status = %d, want 200", rr1.Code)
+	}
+	body1 := rr1.Body.String()
+	if !strings.Contains(body1, "Tool write") {
+		t.Errorf("missing canonical title")
+	}
+	if !strings.Contains(body1, "Aliases") || !strings.Contains(body1, "fsWrite") || !strings.Contains(body1, "fs_write") {
+		t.Errorf("missing aliases table or expected names")
+	}
+	if !strings.Contains(body1, "33.3%") {
+		t.Errorf("missing one-decimal share (expected 33.3%%)")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/tools/fsWrite", nil)
+	rr2 := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("fsWrite status = %d, want 200", rr2.Code)
+	}
+	body2 := rr2.Body.String()
+	if !strings.Contains(body2, "Tool write") {
+		t.Errorf("alias did not resolve to canonical title")
+	}
+	if !strings.Contains(body2, "fsWrite") {
+		t.Errorf("alias missing alias rows")
 	}
 }
 

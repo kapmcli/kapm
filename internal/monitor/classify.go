@@ -112,6 +112,15 @@ func baseToolName(key string) string {
 	return base
 }
 
+// CanonicalToolNameForAggregation returns the canonical aggregation name for a
+// known exact alias, or name unchanged when no exact alias match exists.
+func CanonicalToolNameForAggregation(name string) string {
+	if canonical, ok := toolAliases[name]; ok {
+		return canonical
+	}
+	return name
+}
+
 func isToolName(key, canonical string) bool {
 	return baseToolName(key) == canonical
 }

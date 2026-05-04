@@ -497,6 +497,58 @@ func TestInputSummaryToolSpecific(t *testing.T) {
 	}
 }
 
+func TestCanonicalToolNameForAggregation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "fsWrite canonicalizes to write", in: "fsWrite", want: "write"},
+		{name: "fs_write canonicalizes to write", in: "fs_write", want: "write"},
+		{name: "fsRead canonicalizes to read", in: "fsRead", want: "read"},
+		{name: "shell colon command stays distinct", in: "shell:git status", want: "shell:git status"},
+		{name: "unknown stays unchanged", in: "unknown", want: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := CanonicalToolNameForAggregation(tt.in); got != tt.want {
+				t.Fatalf("CanonicalToolNameForAggregation(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToolAliasAccountingFinalize(t *testing.T) {
+	t.Parallel()
+	td := &ToolDetail{ToolMetric: ToolMetric{Name: "write", CallCount: 4}}
+	recordToolAliasCall(td, "fsWrite")
+	recordToolAliasCall(td, "fsWrite")
+	recordToolAliasCall(td, "fs_write")
+	recordToolAliasError(td, "fs_write")
+	recordToolAliasError(td, "fsWrite")
+	recordToolAliasError(td, "fsWrite")
+
+	finalizeToolDetails(td)
+
+	if got, want := len(td.Aliases), 2; got != want {
+		t.Fatalf("len(Aliases) = %d; want %d", got, want)
+	}
+	if td.Aliases[0].Name != "fsWrite" || td.Aliases[0].CallCount != 2 || td.Aliases[0].ErrorCount != 2 {
+		t.Fatalf("Aliases[0] = %+v; want fsWrite/2/2", td.Aliases[0])
+	}
+	if td.Aliases[1].Name != "fs_write" || td.Aliases[1].CallCount != 1 || td.Aliases[1].ErrorCount != 1 {
+		t.Fatalf("Aliases[1] = %+v; want fs_write/1/1", td.Aliases[1])
+	}
+	if td.Aliases[0].Percentage != 0.5 {
+		t.Fatalf("Aliases[0].Percentage = %v; want 0.5", td.Aliases[0].Percentage)
+	}
+	if td.Aliases[1].Percentage != 0.25 {
+		t.Fatalf("Aliases[1].Percentage = %v; want 0.25", td.Aliases[1].Percentage)
+	}
+}
+
 func TestUnknownToolFallthrough(t *testing.T) {
 	t.Parallel()
 	// An unregistered tool name must fall through to genericSummary and return a non-empty result.
@@ -977,11 +1029,362 @@ func TestAggregateToolsFromTimeline(t *testing.T) {
 	}
 }
 
+func TestAggregateToolAliasesCanonicalizeTotalsPreserveRawCalls(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	writePre, writePost := recPair("s-write", "agent", "write", 0, 1*time.Minute)
+	fsWritePre, fsWritePost := recPair("s-write", "agent", "fsWrite", 2*time.Minute, 3*time.Minute)
+	fsWriteSnakePre, fsWriteSnakePost := recPair("s-write", "agent", "fs_write", 4*time.Minute, 5*time.Minute)
+	readPre, readPost := recPair("s-read", "agent", "read", 10*time.Minute, 11*time.Minute)
+	fsReadPre, fsReadPost := recPair("s-read", "agent", "fsRead", 12*time.Minute, 13*time.Minute)
+	fsReadSnakePre, fsReadSnakePost := recPair("s-read", "agent", "fs_read", 14*time.Minute, 15*time.Minute)
+	records := []MergedRecord{
+		writePre, writePost, fsWritePre, fsWritePost, fsWriteSnakePre, fsWriteSnakePost,
+		readPre, readPost, fsReadPre, fsReadPost, fsReadSnakePre, fsReadSnakePost,
+	}
+
+	d := mustAggregate(t, records, now)
+	byName := toolDetailsByName(d.Tools)
+
+	write := byName["write"]
+	if write.CallCount != 3 {
+		t.Fatalf("write CallCount = %d; want 3", write.CallCount)
+	}
+	assertAliasRows(t, write.Aliases, map[string]ToolAliasMetric{
+		"write":    {Name: "write", CallCount: 1},
+		"fsWrite":  {Name: "fsWrite", CallCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1},
+	}, 1.0/3.0)
+	assertRecentCallTools(t, write.RecentCalls, "write", "fsWrite", "fs_write")
+
+	read := byName["read"]
+	if read.CallCount != 3 {
+		t.Fatalf("read CallCount = %d; want 3", read.CallCount)
+	}
+	assertAliasRows(t, read.Aliases, map[string]ToolAliasMetric{
+		"read":    {Name: "read", CallCount: 1},
+		"fsRead":  {Name: "fsRead", CallCount: 1},
+		"fs_read": {Name: "fs_read", CallCount: 1},
+	}, 1.0/3.0)
+	assertRecentCallTools(t, read.RecentCalls, "read", "fsRead", "fs_read")
+
+	if _, ok := byName["fsWrite"]; ok {
+		t.Fatal("fsWrite detail should be folded into canonical write detail")
+	}
+	if _, ok := byName["fs_read"]; ok {
+		t.Fatal("fs_read detail should be folded into canonical read detail")
+	}
+}
+
+func TestAggregateToolAliasesCanonicalizeMixedResultsPreserveRawCalls(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	writePre, writePost := recPair("s-mixed", "agent", "write", 0, 1*time.Minute)
+	fsWritePre, fsWritePost := recPair("s-mixed", "agent", "fsWrite", 2*time.Minute, 3*time.Minute)
+	fsWriteSnake := rec("s-mixed", "agent", apmconfig.EventPreToolUse, "fs_write", 4*time.Minute)
+	readPre, readPost := recPair("s-mixed", "agent", "read", 10*time.Minute, 11*time.Minute)
+	fsReadPre, fsReadPost := recPair("s-mixed", "agent", "fsRead", 12*time.Minute, 13*time.Minute)
+	fsReadSnakePre, fsReadSnakePost := recPair("s-mixed", "agent", "fs_read", 14*time.Minute, 15*time.Minute)
+	records := []MergedRecord{
+		writePre, writePost, fsWritePre, fsWritePost, fsWriteSnake,
+		readPre, readPost, fsReadPre, fsReadPost, fsReadSnakePre, fsReadSnakePost,
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session detail, got %d", len(d.Sessions))
+	}
+	if len(d.Overview.Tools) != 2 {
+		t.Fatalf("len(Overview.Tools) = %d; want 2 canonical rows: %#v", len(d.Overview.Tools), d.Overview.Tools)
+	}
+
+	overviewByName := toolMetricsByName(t, d.Overview.Tools)
+	writeOverview := overviewByName["write"]
+	if writeOverview.CallCount != 3 {
+		t.Fatalf("overview write CallCount = %d; want 3", writeOverview.CallCount)
+	}
+	if writeOverview.ErrorCount != 1 {
+		t.Fatalf("overview write ErrorCount = %d; want 1", writeOverview.ErrorCount)
+	}
+	if diff := writeOverview.ErrorRate - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("overview write ErrorRate = %f; want 1/3", writeOverview.ErrorRate)
+	}
+	readOverview := overviewByName["read"]
+	if readOverview.CallCount != 3 {
+		t.Fatalf("overview read CallCount = %d; want 3", readOverview.CallCount)
+	}
+	if readOverview.ErrorCount != 0 {
+		t.Fatalf("overview read ErrorCount = %d; want 0", readOverview.ErrorCount)
+	}
+
+	byName := toolDetailsByName(d.Tools)
+	write := byName["write"]
+	if write.CallCount != 3 {
+		t.Fatalf("write CallCount = %d; want 3", write.CallCount)
+	}
+	if write.ErrorCount != 1 {
+		t.Fatalf("write ErrorCount = %d; want 1", write.ErrorCount)
+	}
+	if diff := write.ErrorRate - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("write ErrorRate = %f; want 1/3", write.ErrorRate)
+	}
+	assertAliasRows(t, write.Aliases, map[string]ToolAliasMetric{
+		"write":    {Name: "write", CallCount: 1},
+		"fsWrite":  {Name: "fsWrite", CallCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1, ErrorCount: 1},
+	}, 1.0/3.0)
+	if got := []string{write.Aliases[0].Name, write.Aliases[1].Name, write.Aliases[2].Name}; got[0] != "fsWrite" || got[1] != "fs_write" || got[2] != "write" {
+		t.Fatalf("write alias order = %#v; want [fsWrite fs_write write]", got)
+	}
+	assertRecentCallTools(t, write.RecentCalls, "write", "fsWrite")
+	assertErrorCallTools(t, write.Errors, "fs_write")
+
+	read := byName["read"]
+	if read.CallCount != 3 {
+		t.Fatalf("read CallCount = %d; want 3", read.CallCount)
+	}
+	if read.ErrorCount != 0 {
+		t.Fatalf("read ErrorCount = %d; want 0", read.ErrorCount)
+	}
+	assertAliasRows(t, read.Aliases, map[string]ToolAliasMetric{
+		"read":    {Name: "read", CallCount: 1},
+		"fsRead":  {Name: "fsRead", CallCount: 1},
+		"fs_read": {Name: "fs_read", CallCount: 1},
+	}, 1.0/3.0)
+	if got := []string{read.Aliases[0].Name, read.Aliases[1].Name, read.Aliases[2].Name}; got[0] != "fsRead" || got[1] != "fs_read" || got[2] != "read" {
+		t.Fatalf("read alias order = %#v; want [fsRead fs_read read]", got)
+	}
+	assertRecentCallTools(t, read.RecentCalls, "read", "fsRead", "fs_read")
+
+	recomputedDetails, recomputedOverview := AggregateToolsFromTimeline(d.Sessions)
+	recomputedByName := toolDetailsByName(recomputedDetails)
+	if len(recomputedByName) != 2 {
+		t.Fatalf("recomputed tools = %#v; want 2 canonical rows", recomputedDetails)
+	}
+	if len(recomputedOverview) != 2 {
+		t.Fatalf("len(recomputedOverview) = %d; want 2 canonical rows: %#v", len(recomputedOverview), recomputedOverview)
+	}
+	recomputedWrite := recomputedByName["write"]
+	if recomputedWrite.CallCount != 3 || recomputedWrite.ErrorCount != 1 {
+		t.Fatalf("recomputed write = %+v; want CallCount 3 ErrorCount 1", recomputedWrite)
+	}
+	if diff := recomputedWrite.ErrorRate - (1.0 / 3.0); diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("recomputed write ErrorRate = %f; want 1/3", recomputedWrite.ErrorRate)
+	}
+	assertAliasRows(t, recomputedWrite.Aliases, map[string]ToolAliasMetric{
+		"write":    {Name: "write", CallCount: 1},
+		"fsWrite":  {Name: "fsWrite", CallCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1, ErrorCount: 1},
+	}, 1.0/3.0)
+	if got := []string{recomputedWrite.Aliases[0].Name, recomputedWrite.Aliases[1].Name, recomputedWrite.Aliases[2].Name}; got[0] != "fsWrite" || got[1] != "fs_write" || got[2] != "write" {
+		t.Fatalf("recomputed write alias order = %#v; want [fsWrite fs_write write]", got)
+	}
+	assertRecentCallTools(t, recomputedWrite.RecentCalls, "write", "fsWrite")
+	assertErrorCallTools(t, recomputedWrite.Errors, "fs_write")
+
+	recomputedOverviewByName := toolMetricsByName(t, recomputedOverview)
+	if got := recomputedOverviewByName["write"]; got.CallCount != 3 || got.ErrorCount != 1 {
+		t.Fatalf("recomputed overview write = %+v; want CallCount 3 ErrorCount 1", got)
+	}
+	if got := recomputedOverviewByName["read"]; got.CallCount != 3 || got.ErrorCount != 0 {
+		t.Fatalf("recomputed overview read = %+v; want CallCount 3 ErrorCount 0", got)
+	}
+}
+
+func TestAggregateToolAliasOnlyRecordsProduceCanonicalWriteDetail(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	fsWritePre, fsWritePost := recPair("s1", "agent", "fsWrite", 0, 1*time.Minute)
+	fsWriteSnakePre, fsWriteSnakePost := recPair("s1", "agent", "fs_write", 2*time.Minute, 3*time.Minute)
+	records := []MergedRecord{fsWritePre, fsWritePost, fsWriteSnakePre, fsWriteSnakePost}
+
+	d := mustAggregate(t, records, now)
+	byName := toolDetailsByName(d.Tools)
+
+	write, ok := byName["write"]
+	if !ok {
+		t.Fatalf("missing canonical write detail: %#v", d.Tools)
+	}
+	if write.CallCount != 2 {
+		t.Fatalf("write CallCount = %d; want 2", write.CallCount)
+	}
+	assertAliasRows(t, write.Aliases, map[string]ToolAliasMetric{
+		"fsWrite":  {Name: "fsWrite", CallCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1},
+	}, 0.5)
+	assertRecentCallTools(t, write.RecentCalls, "fsWrite", "fs_write")
+}
+
+func TestAggregateToolAliasErrorsCanonicalizeAndPreserveRawRows(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	matchedPre, matchedPost := recPair("s1", "agent", "fsWrite", 0, 1*time.Minute)
+	matchedPost.ToolStatus = ToolStatusError
+	matchedPost.ErrorDetail = "write failed"
+	unmatched := rec("s1", "agent", apmconfig.EventPreToolUse, "fs_write", 2*time.Minute)
+	records := []MergedRecord{matchedPre, matchedPost, unmatched}
+
+	d := mustAggregate(t, records, now)
+	write := toolDetailsByName(d.Tools)["write"]
+
+	if write.CallCount != 2 {
+		t.Fatalf("write CallCount = %d; want 2", write.CallCount)
+	}
+	if write.ErrorCount != 2 {
+		t.Fatalf("write ErrorCount = %d; want 2", write.ErrorCount)
+	}
+	assertAliasRows(t, write.Aliases, map[string]ToolAliasMetric{
+		"fsWrite":  {Name: "fsWrite", CallCount: 1, ErrorCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1, ErrorCount: 1},
+	}, 0.5)
+	assertErrorCallTools(t, write.Errors, "fsWrite", "fs_write")
+}
+
+func TestAggregateToolsFromTimelineToolAliasesCanonicalize(t *testing.T) {
+	t.Parallel()
+	sessions := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "agent"},
+			Timeline: []EventEntry{
+				{Ts: baseTime, Event: apmconfig.EventPreToolUse, Tool: "fsWrite", Duration: JSONDuration(time.Second)},
+				{Ts: baseTime.Add(time.Minute), Event: apmconfig.EventPreToolUse, Tool: "fs_write", IsError: true},
+			},
+		},
+	}
+
+	details, metrics := AggregateToolsFromTimeline(sessions)
+	byName := toolDetailsByName(details)
+	write := byName["write"]
+
+	if write.CallCount != 2 {
+		t.Fatalf("write CallCount = %d; want 2", write.CallCount)
+	}
+	if write.ErrorCount != 1 {
+		t.Fatalf("write ErrorCount = %d; want 1", write.ErrorCount)
+	}
+	assertAliasRows(t, write.Aliases, map[string]ToolAliasMetric{
+		"fsWrite":  {Name: "fsWrite", CallCount: 1},
+		"fs_write": {Name: "fs_write", CallCount: 1, ErrorCount: 1},
+	}, 0.5)
+	assertRecentCallTools(t, write.RecentCalls, "fsWrite")
+	assertErrorCallTools(t, write.Errors, "fs_write")
+
+	metricByName := map[string]ToolMetric{}
+	for _, metric := range metrics {
+		metricByName[metric.Name] = metric
+	}
+	if metricByName["write"].CallCount != 2 || metricByName["write"].ErrorCount != 1 {
+		t.Fatalf("write metric = %+v; want CallCount 2 ErrorCount 1", metricByName["write"])
+	}
+}
+
+func TestAggregateToolsFromTimelineKeepsShellCommandBuckets(t *testing.T) {
+	t.Parallel()
+	sessions := []SessionDetail{
+		{
+			SessionMetric: SessionMetric{ID: "s1", Agent: "agent"},
+			Timeline: []EventEntry{
+				{Ts: baseTime, Event: apmconfig.EventPreToolUse, Tool: "shell:git status"},
+				{Ts: baseTime.Add(time.Minute), Event: apmconfig.EventPreToolUse, Tool: "shell:go test"},
+			},
+		},
+	}
+
+	details, _ := AggregateToolsFromTimeline(sessions)
+	byName := toolDetailsByName(details)
+
+	if byName["shell:git status"].CallCount != 1 {
+		t.Fatalf("shell:git status CallCount = %d; want 1", byName["shell:git status"].CallCount)
+	}
+	if byName["shell:go test"].CallCount != 1 {
+		t.Fatalf("shell:go test CallCount = %d; want 1", byName["shell:go test"].CallCount)
+	}
+	if _, ok := byName["shell"]; ok {
+		t.Fatalf("shell command buckets were collapsed into shell: %#v", details)
+	}
+}
+
 func TestAggregateToolsFromTimelineEmpty(t *testing.T) {
 	t.Parallel()
 	details, metrics := AggregateToolsFromTimeline(nil)
 	if len(details) != 0 || len(metrics) != 0 {
 		t.Errorf("want empty slices, got %d details / %d metrics", len(details), len(metrics))
+	}
+}
+
+func toolDetailsByName(details []ToolDetail) map[string]ToolDetail {
+	byName := make(map[string]ToolDetail, len(details))
+	for _, detail := range details {
+		byName[detail.Name] = detail
+	}
+	return byName
+}
+
+func toolMetricsByName(t *testing.T, metrics []ToolMetric) map[string]ToolMetric {
+	t.Helper()
+	byName := make(map[string]ToolMetric, len(metrics))
+	for _, metric := range metrics {
+		if _, ok := byName[metric.Name]; ok {
+			t.Fatalf("duplicate tool metric row %q in %#v", metric.Name, metrics)
+		}
+		byName[metric.Name] = metric
+	}
+	return byName
+}
+
+func assertAliasRows(t *testing.T, got []ToolAliasMetric, want map[string]ToolAliasMetric, wantPercentage float64) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("len(Aliases) = %d; want %d: %#v", len(got), len(want), got)
+	}
+	for _, alias := range got {
+		wantAlias, ok := want[alias.Name]
+		if !ok {
+			t.Fatalf("unexpected alias row %q in %#v", alias.Name, got)
+		}
+		if alias.CallCount != wantAlias.CallCount || alias.ErrorCount != wantAlias.ErrorCount {
+			t.Fatalf("alias %q = %+v; want CallCount %d ErrorCount %d",
+				alias.Name,
+				alias,
+				wantAlias.CallCount,
+				wantAlias.ErrorCount,
+			)
+		}
+		if diff := alias.Percentage - wantPercentage; diff > 0.0001 || diff < -0.0001 {
+			t.Fatalf("alias %q Percentage = %f; want %f", alias.Name, alias.Percentage, wantPercentage)
+		}
+	}
+}
+
+func assertRecentCallTools(t *testing.T, calls []ToolCall, want ...string) {
+	t.Helper()
+	if len(calls) != len(want) {
+		t.Fatalf("len(RecentCalls) = %d; want %d: %#v", len(calls), len(want), calls)
+	}
+	seen := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		seen[call.Tool] = true
+	}
+	for _, tool := range want {
+		if !seen[tool] {
+			t.Fatalf("RecentCalls missing raw tool %q: %#v", tool, calls)
+		}
+	}
+}
+
+func assertErrorCallTools(t *testing.T, calls []ToolCall, want ...string) {
+	t.Helper()
+	if len(calls) != len(want) {
+		t.Fatalf("len(Errors) = %d; want %d: %#v", len(calls), len(want), calls)
+	}
+	seen := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		seen[call.Tool] = true
+	}
+	for _, tool := range want {
+		if !seen[tool] {
+			t.Fatalf("Errors missing raw tool %q: %#v", tool, calls)
+		}
 	}
 }
 

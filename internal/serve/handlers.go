@@ -282,7 +282,7 @@ func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
-			"Title":          "Tool " + name,
+			"Title":          "Tool " + tool.Name,
 			"Active":         "tools",
 			"Tool":           tool,
 			"ToolDetailJSON": toolDetailJSON,

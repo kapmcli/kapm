@@ -216,6 +216,14 @@ func toolDetailByName(tools []monitor.ToolDetail, name string) (monitor.ToolDeta
 			return tool, true
 		}
 	}
+	canonical := monitor.CanonicalToolNameForAggregation(name)
+	if canonical != name {
+		for _, tool := range tools {
+			if tool.Name == canonical {
+				return tool, true
+			}
+		}
+	}
 	return monitor.ToolDetail{}, false
 }
 

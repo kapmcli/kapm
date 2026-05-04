@@ -110,6 +110,8 @@ kapm serve --port 9097 --open
 | `GET /tools/{name}` | 工具详情 |
 | `GET /skills` | Skill 读取情况 |
 
+工具使用情况会聚合已知的工具别名，工具详情则显示观察到的别名分布。
+
 ## Agent 配置
 
 ```bash

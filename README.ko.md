@@ -110,6 +110,8 @@ kapm serve --port 9097 --open
 | `GET /tools/{name}` | 도구 상세 |
 | `GET /skills` | Skill 읽기 정보 |
 
+도구 사용량은 알려진 도구 별칭을 통합하여 집계하며, 도구 상세에서는 관찰된 별칭 분포를 보여줍니다.
+
 ## 에이전트 설정
 
 ```bash
