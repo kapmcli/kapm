@@ -461,6 +461,8 @@ func TestInputSummaryToolSpecific(t *testing.T) {
 		want string
 	}{
 		{"read with offset+limit", "read", `{"operations":[{"mode":"Line","path":"/a/b.go","offset":100,"limit":80}]}`, "", "/a/b.go:100-180"},
+		{"read alias", "fs_read", `{"operations":[{"path":"/a.go"}]}`, "", "/a.go"},
+		{"read camel alias", "fsRead", `{"operations":[{"path":"/a.go"}]}`, "", "/a.go"},
 		{"read with limit only", "read", `{"operations":[{"path":"/a.go","limit":50}]}`, "", "/a.go:1-51"},
 		{"read path only", "read", `{"operations":[{"path":"/a.go"}]}`, "", "/a.go"},
 		{"read multiple ops", "read", `{"operations":[{"path":"/a.go"},{"path":"/b.go"}]}`, "", "/a.go (+1 more)"},
@@ -470,12 +472,16 @@ func TestInputSummaryToolSpecific(t *testing.T) {
 		{"glob with path", "glob", `{"pattern":"**/*.go","path":"/src"}`, "", "**/*.go in /src"},
 		{"glob pattern only", "glob", `{"pattern":"**/*.go"}`, "", "**/*.go"},
 		{"shell strips cd to cwd with &&", "shell", `{"command":"cd /ws && go test ./..."}`, "/ws", "go test ./..."},
+		{"shell execute bash alias", "execute_bash", `{"command":"cd /ws && go test ./..."}`, "/ws", "go test ./..."},
+		{"shell execute cmd alias", "execute_cmd", `{"command":"echo hi"}`, "/ws", "echo hi"},
 		{"shell strips cd to cwd with ;", "shell", `{"command":"cd /ws; ls"}`, "/ws", "ls"},
 		{"shell keeps cd to different dir", "shell", `{"command":"cd /other && ls"}`, "/ws", "cd /other && ls"},
 		{"shell no cd prefix", "shell", `{"command":"echo hi"}`, "/ws", "echo hi"},
 		{"shell no cwd info", "shell", `{"command":"cd /ws && ls"}`, "", "cd /ws && ls"},
 		{"shell bare cd only", "shell", `{"command":"cd /ws"}`, "/ws", ""},
 		{"write with command", "write", `{"command":"strReplace","path":"/a.go","oldStr":"x","newStr":"y"}`, "", "strReplace /a.go"},
+		{"write alias", "fs_write", `{"command":"create","path":"/new.md","file_text":"hi"}`, "", "create /new.md"},
+		{"write camel alias", "fsWrite", `{"command":"str_replace","path":"/a.go","old_str":"x","new_str":"y"}`, "", "str_replace /a.go"},
 		{"write create", "write", `{"command":"create","path":"/new.md","content":"hi"}`, "", "create /new.md"},
 		{"write path only", "write", `{"path":"/a.go"}`, "", "/a.go"},
 		{"unknown tool falls back", "other", `{"path":"/x"}`, "", "/x"},
@@ -1894,6 +1900,21 @@ func writeRec(session, agent, path, command string, offset time.Duration) Merged
 	}
 }
 
+func fsWriteRec(session, agent, toolName string, input map[string]string, offset time.Duration) MergedRecord {
+	id := writeRecCounter.Add(1)
+	raw, _ := json.Marshal(input)
+	return MergedRecord{
+		SessionID: session,
+		Agent:     agent,
+		Kind:      RecordKindToolUse,
+		ToolUseID: fmt.Sprintf("tu-%s-%d", toolName, id),
+		ToolName:  toolName,
+		ToolInput: raw,
+		PreToolTs: baseTime.Add(offset),
+		Cwd:       "/tmp",
+	}
+}
+
 func TestFilesChangedSessionMetric(t *testing.T) {
 	t.Parallel()
 	now := baseTime.Add(1 * time.Hour)
@@ -1911,6 +1932,42 @@ func TestFilesChangedSessionMetric(t *testing.T) {
 	}
 	if got := d.Overview.Sessions[0].FilesChanged; got != 2 {
 		t.Errorf("Overview.Sessions[0].FilesChanged: want 2, got %d", got)
+	}
+}
+
+func TestFilesChangedWriteToolAliases(t *testing.T) {
+	t.Parallel()
+	now := baseTime.Add(1 * time.Hour)
+	records := []MergedRecord{
+		fsWriteRec("s1", "a", "fs_write", map[string]string{
+			"command":   "create",
+			"path":      "/tmp/foo.txt",
+			"file_text": "hello\n",
+		}, 0),
+		fsWriteRec("s1", "a", "fsWrite", map[string]string{
+			"command": "str_replace",
+			"path":    "/tmp/foo.txt",
+			"old_str": "hello",
+			"new_str": "hello edited",
+		}, time.Minute),
+	}
+
+	d := mustAggregate(t, records, now)
+	if len(d.Sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(d.Sessions))
+	}
+	s := d.Sessions[0]
+	if s.FilesChanged != 1 {
+		t.Fatalf("FilesChanged = %d, want 1", s.FilesChanged)
+	}
+	if len(s.Changes) != 2 {
+		t.Fatalf("Changes len = %d, want 2: %#v", len(s.Changes), s.Changes)
+	}
+	if s.Changes[0].Command != CommandCreate || s.Changes[0].Content != "hello\n" {
+		t.Fatalf("create change = %#v", s.Changes[0])
+	}
+	if s.Changes[1].Command != CommandStrReplace || s.Changes[1].OldStr != "hello" || s.Changes[1].NewStr != "hello edited" {
+		t.Fatalf("replace change = %#v", s.Changes[1])
 	}
 }
 

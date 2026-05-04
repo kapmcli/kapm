@@ -7,6 +7,17 @@ import (
 	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
+var toolAliases = map[string]string{
+	"execute_bash": apmconfig.ToolShell,
+	"execute_cmd":  apmconfig.ToolShell,
+	"fs_read":      apmconfig.ToolRead,
+	"fsRead":       apmconfig.ToolRead,
+	"fs_write":     apmconfig.ToolWrite,
+	"fsWrite":      apmconfig.ToolWrite,
+	"use_aws":      "aws",
+	"use_subagent": "subagent",
+}
+
 // shellSubAllowlist lists top-level commands whose subcommand is meaningful
 // enough to include in the derived bucket key (e.g. "git push", "go test").
 // Anything outside the list collapses to its top-level token only.
@@ -91,8 +102,16 @@ func classifyShell(rawInput json.RawMessage, cwd string) string {
 // baseToolName returns the original tool name for a (possibly derived) bucket
 // key. For "shell:..." keys this is "shell"; otherwise the key itself.
 func baseToolName(key string) string {
+	base := key
 	if i := strings.IndexByte(key, ':'); i > 0 {
-		return key[:i]
+		base = key[:i]
 	}
-	return key
+	if canonical, ok := toolAliases[base]; ok {
+		return canonical
+	}
+	return base
+}
+
+func isToolName(key, canonical string) bool {
+	return baseToolName(key) == canonical
 }

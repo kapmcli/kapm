@@ -93,7 +93,7 @@ func processRecord(st *aggState, r MergedRecord) {
 	st.hours[ts.Truncate(time.Hour)]++
 	toolName := r.ToolName
 	// Re-key shell tool calls into derived per-command buckets.
-	if toolName == apmconfig.ToolShell && (r.Kind == RecordKindToolUse || r.Kind == RecordKindToolResult) {
+	if isToolName(toolName, apmconfig.ToolShell) && (r.Kind == RecordKindToolUse || r.Kind == RecordKindToolResult) {
 		toolName = classifyShell(r.ToolInput, r.Cwd)
 	}
 	s := touchSessionState(st, r)
@@ -165,7 +165,7 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 	}
 	toolEntry(st.tools, toolName).CallCount++
 
-	if toolName == apmconfig.ToolRead && len(r.ToolInput) > 0 {
+	if isToolName(toolName, apmconfig.ToolRead) && len(r.ToolInput) > 0 {
 		if match := skillPathRe.FindSubmatch(r.ToolInput); match != nil {
 			st.skills[string(match[1])]++
 		}
@@ -174,7 +174,7 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 	if r.ActionState == "Rejected" || r.ActionState == "Error" {
 		return
 	}
-	if toolName == apmconfig.ToolWrite {
+	if isWriteChangeTool(toolName) {
 		if fc, ok := parseWriteInput(r.ToolInput, ts, s.cwd); ok {
 			s.changes = append(s.changes, fc)
 		} else if fc, ok := parseIDEFileChange(r.ToolInput, toolName, ts, s.cwd); ok {
@@ -186,6 +186,10 @@ func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolNam
 			s.changes = append(s.changes, fc)
 		}
 	}
+}
+
+func isWriteChangeTool(toolName string) bool {
+	return isToolName(toolName, apmconfig.ToolWrite)
 }
 
 func processPromptRecord(st *aggState, s *sessionState, r MergedRecord) {

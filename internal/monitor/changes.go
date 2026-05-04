@@ -16,12 +16,15 @@ const maxWriteFieldBytes = 256 << 10 // per-field cap to bound memory
 
 // writeInput is the typed view of the write tool's tool_input payload.
 type writeInput struct {
-	Command string `json:"command"`
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	OldStr  string `json:"oldStr"`
-	NewStr  string `json:"newStr"`
-	Purpose string `json:"__tool_use_purpose"`
+	Command     string `json:"command"`
+	Path        string `json:"path"`
+	Content     string `json:"content"`
+	FileText    string `json:"file_text"`
+	OldStr      string `json:"oldStr"`
+	OldStrSnake string `json:"old_str"`
+	NewStr      string `json:"newStr"`
+	NewStrSnake string `json:"new_str"`
+	Purpose     string `json:"__tool_use_purpose"`
 }
 
 type ideFileInput struct {
@@ -48,36 +51,56 @@ func parseWriteInput(raw json.RawMessage, ts time.Time, cwd string) (FileChange,
 	if in.Path == "" {
 		return FileChange{}, false
 	}
-	switch in.Command {
+	command := normalizeWriteCommand(in.Command)
+	switch command {
 	case CommandCreate, CommandStrReplace, CommandInsert:
 	default:
 		return FileChange{}, false
 	}
+	content := firstNonEmptyWriteField(in.Content, in.FileText)
+	oldStr := firstNonEmptyWriteField(in.OldStr, in.OldStrSnake)
+	newStr := firstNonEmptyWriteField(in.NewStr, in.NewStrSnake)
 
 	fc := FileChange{
 		Path:    normalizeChangePath(in.Path, cwd),
 		Ts:      ts,
-		Command: in.Command,
+		Command: command,
 		Purpose: in.Purpose,
 	}
 
-	if len(in.Content) > maxWriteFieldBytes {
-		in.Content = ""
+	if len(content) > maxWriteFieldBytes {
+		content = ""
 		fc.Oversized = true
 	}
-	if len(in.OldStr) > maxWriteFieldBytes {
-		in.OldStr = ""
+	if len(oldStr) > maxWriteFieldBytes {
+		oldStr = ""
 		fc.Oversized = true
 	}
-	if len(in.NewStr) > maxWriteFieldBytes {
-		in.NewStr = ""
+	if len(newStr) > maxWriteFieldBytes {
+		newStr = ""
 		fc.Oversized = true
 	}
-	fc.Content = in.Content
-	fc.OldStr = in.OldStr
-	fc.NewStr = in.NewStr
+	fc.Content = content
+	fc.OldStr = oldStr
+	fc.NewStr = newStr
 
 	return fc, true
+}
+
+func normalizeWriteCommand(command string) string {
+	if command == "str_replace" {
+		return CommandStrReplace
+	}
+	return command
+}
+
+func firstNonEmptyWriteField(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func parseIDEFileChange(raw json.RawMessage, tool string, ts time.Time, cwd string) (FileChange, bool) {

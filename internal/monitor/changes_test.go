@@ -45,6 +45,23 @@ func TestParseWriteInput(t *testing.T) {
 			wantOldStr:  "old",
 			wantNewStr:  "new",
 		},
+		{
+			name:        "fs write create aliases",
+			raw:         `{"command":"create","path":"/tmp/fs.txt","file_text":"hello"}`,
+			wantOk:      true,
+			wantCommand: CommandCreate,
+			wantPath:    "/tmp/fs.txt",
+			wantContent: "hello",
+		},
+		{
+			name:        "fs write str replace aliases",
+			raw:         `{"command":"str_replace","path":"/tmp/fs.txt","old_str":"old","new_str":"new"}`,
+			wantOk:      true,
+			wantCommand: CommandStrReplace,
+			wantPath:    "/tmp/fs.txt",
+			wantOldStr:  "old",
+			wantNewStr:  "new",
+		},
 		// Happy path: insert (treated as append at EOF)
 		{
 			name:        "insert",
