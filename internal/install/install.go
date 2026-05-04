@@ -12,7 +12,7 @@ import (
 // apmCliPin is the pinned apm-cli PyPI version used by the uvx fallback.
 // Bump deliberately after verifying compatibility with microsoft/apm changes:
 // https://github.com/microsoft/apm/releases
-const apmCliPin = "apm-cli==0.9.1"
+const apmCliPin = "apm-cli==0.12.1"
 
 var lookPath = exec.LookPath
 var newCommand = func(name string, args ...string) *exec.Cmd {

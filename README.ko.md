@@ -135,7 +135,7 @@ kapm install github/awesome-copilot/skills/review-and-refactor
 
 `kapm sync`는 로컬 `.apm/`, 설치된 `apm_modules/`, `apm.yml`의 MCP 의존성을 읽고 Kiro 네이티브 파일을 `.kiro/` 아래에 씁니다. 기존 파일은 `--force`를 사용하지 않으면 건너뜁니다.
 
-`kapm install`은 설치를 `apm install`에 위임합니다. `apm`을 찾을 수 없으면 `uvx --from apm-cli==0.9.1 apm install`로 폴백합니다. 설치 후에는 같은 sync 단계를 실행합니다.
+`kapm install`은 설치를 `apm install`에 위임합니다. `apm`을 찾을 수 없으면 `uvx`를 통해 `apm install`을 실행하는 폴백을 사용합니다. 설치 후에는 같은 sync 단계를 실행합니다.
 
 `install`에서 사용할 수 있는 kapm 전용 플래그:
 

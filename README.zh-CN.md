@@ -135,7 +135,7 @@ kapm install github/awesome-copilot/skills/review-and-refactor
 
 `kapm sync` 会读取本地 `.apm/`、已安装的 `apm_modules/` 以及 `apm.yml` 中的 MCP 依赖，并将 Kiro 原生文件写入 `.kiro/`。除非使用 `--force`，否则会跳过已有文件。
 
-`kapm install` 会把安装过程委托给 `apm install`。如果找不到 `apm`，kapm 会回退到 `uvx --from apm-cli==0.9.1 apm install`。安装完成后会执行相同的 sync 步骤。
+`kapm install` 会把安装过程委托给 `apm install`。如果找不到 `apm`，kapm 会回退为通过 `uvx` 运行 `apm install`。安装完成后会执行相同的 sync 步骤。
 
 `install` 支持的 kapm 专用参数：
 

@@ -115,7 +115,7 @@ func TestInstallFallsBackToUvx(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	assertCommandArgs(t, argsFile, "--from apm-cli==0.9.1 apm install")
+	assertCommandArgs(t, argsFile, "--from apm-cli==0.12.1 apm install")
 	testutil.AssertDirEqual(t, filepath.Join(root, ".kiro"), filepath.Join(repoTestdataRoot(), "install", "manifest-project", "expected", ".kiro"))
 }
 

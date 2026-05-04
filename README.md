@@ -131,7 +131,7 @@ kapm install github/awesome-copilot/skills/review-and-refactor
 
 `kapm sync` reads local `.apm/`, installed `apm_modules/`, and MCP dependencies from `apm.yml`, then writes Kiro-native files under `.kiro/`. Existing files are skipped unless `--force` is used.
 
-`kapm install` delegates installation to `apm install`. If `apm` is not available, kapm falls back to `uvx --from apm-cli==0.9.1 apm install`. After installation, it runs the same sync step.
+`kapm install` delegates installation to `apm install`. If `apm` is not available, kapm falls back to `uvx` to run `apm install`. After installation, it runs the same sync step.
 
 Additional kapm flags for `install`:
 
