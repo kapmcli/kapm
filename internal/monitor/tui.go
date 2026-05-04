@@ -34,11 +34,9 @@ var tabNames = []string{"Overview", "Sessions", "Agents", "Tools", "Skills"}
 var singleLineReplacer = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 type metricsMsg struct {
-	metrics            DetailedMetrics
-	cache              *SessionCache
-	kiroUsage          *kirocliusage.Usage
-	kiroUsageFetchedAt time.Time
-	err                error
+	metrics DetailedMetrics
+	cache   *SessionCache
+	err     error
 }
 
 type kiroUsageMsg struct {
