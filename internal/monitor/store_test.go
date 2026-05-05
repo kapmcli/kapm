@@ -152,6 +152,66 @@ func TestLoadAll_WithIDEHookRecords(t *testing.T) {
 	}
 }
 
+func TestLoadAll_WithLegacyIDEHookInputRecords(t *testing.T) {
+	t.Parallel()
+	cliDir := t.TempDir()
+	hookDir := t.TempDir()
+	ideDir := t.TempDir()
+	wsPath := "/home/user/project-alpha"
+	enc := base64.RawURLEncoding.EncodeToString([]byte(wsPath))
+	wsDir := filepath.Join(ideDir, "workspace-sessions", enc)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 5, 3, 1, 0, 0, 0, time.UTC)
+	sessions := []IDESessionEntry{{SessionID: "ide-sess-legacy", Title: "IDE Legacy", DateCreated: "1777760400000"}}
+	data, _ := json.Marshal(sessions)
+	if err := os.WriteFile(filepath.Join(wsDir, "sessions.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	history := IDESessionHistory{History: []IDEHistoryEntry{{
+		Message: IDEMessage{Role: "user", Content: json.RawMessage(`"legacy ide prompt"`)},
+	}}}
+	hdata, _ := json.Marshal(history)
+	if err := os.WriteFile(filepath.Join(wsDir, "ide-sess-legacy.json"), hdata, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacyHooks := []map[string]any{
+		{"ts": createdAt.Add(time.Second).Format(time.RFC3339Nano), "event": "userPromptSubmit", "agent": "ide", "cwd": wsPath, "stdin": "", "stdin_bytes": 0},
+		{"ts": createdAt.Add(2 * time.Second).Format(time.RFC3339Nano), "event": "stop", "agent": "ide", "cwd": wsPath, "stdin": "", "stdin_bytes": 0},
+	}
+	var lines []byte
+	for _, hook := range legacyHooks {
+		line, err := json.Marshal(hook)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, line...)
+		lines = append(lines, '\n')
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "hook-input.jsonl"), lines, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, _, err := LoadAll(context.Background(), cliDir, hookDir, ideDir, "", time.Time{}, "", nil, nil)
+	if err != nil {
+		t.Fatalf("LoadAll() error = %v", err)
+	}
+	detail, err := AggregateDetail(context.Background(), recs, createdAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("AggregateDetail() error = %v", err)
+	}
+	if len(detail.Sessions) != 1 {
+		t.Fatalf("sessions len = %d, want 1", len(detail.Sessions))
+	}
+	if len(detail.Sessions[0].PromptHistory) != 1 || detail.Sessions[0].PromptHistory[0] != "legacy ide prompt" {
+		t.Fatalf("PromptHistory = %#v", detail.Sessions[0].PromptHistory)
+	}
+	if detail.Sessions[0].Active {
+		t.Fatal("session should be inactive after legacy IDE stop hook")
+	}
+}
+
 func TestLoadAll_EmptyIDEDir(t *testing.T) {
 	t.Parallel()
 	cliDir := t.TempDir()
@@ -233,7 +293,7 @@ func TestLoadAllHookRecords_UnreadableWarn(t *testing.T) {
 	}
 }
 
-func TestLoadAllHookRecordsReadsCLIOnly(t *testing.T) {
+func TestLoadAllHookRecordsReadsCLIAndLegacyRoot(t *testing.T) {
 	t.Parallel()
 	hookDir := t.TempDir()
 	cliDir := filepath.Join(hookDir, "cli")
@@ -248,6 +308,107 @@ func TestLoadAllHookRecordsReadsCLIOnly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cliDir, "cli-session.jsonl"), append(cliLine, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(hookDir, "cli-session.jsonl"), append(cliLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyLine, err := json.Marshal(HookRecord{Ts: ts.Add(time.Second), Session: "legacy-session", Event: "postToolUse", Agent: "reviewer", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "legacy-session.jsonl"), append(legacyLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ignoredLine, err := json.Marshal(HookRecord{Ts: ts.Add(2 * time.Second), Session: "other-session", Event: "preToolUse", Agent: "ide", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "hook-input.jsonl"), append(ignoredLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := loadAllHookRecords(context.Background(), hookDir)
+	if err != nil {
+		t.Fatalf("loadAllHookRecords() error = %v", err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("records len = %d, want 2: %#v", len(recs), recs)
+	}
+	if recs[0].Session != "cli-session" || recs[0].Tool != "shell" {
+		t.Fatalf("cli record = %#v", recs[0])
+	}
+	if recs[1].Session != "legacy-session" || recs[1].Tool != "read" {
+		t.Fatalf("legacy record = %#v", recs[1])
+	}
+}
+
+func TestLoadAllHookRecordsSortsMixedCLIAndLegacyRoot(t *testing.T) {
+	t.Parallel()
+	hookDir := t.TempDir()
+	cliDir := filepath.Join(hookDir, "cli")
+	if err := os.MkdirAll(cliDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ts := time.Date(2026, 5, 3, 1, 2, 3, 0, time.UTC)
+	legacyLine, err := json.Marshal(HookRecord{Ts: ts, Session: "mixed-session", Event: "preToolUse", Agent: "coder", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "mixed-session.jsonl"), append(legacyLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cliLine, err := json.Marshal(HookRecord{Ts: ts.Add(time.Second), Session: "mixed-session", Event: "postToolUse", Agent: "coder", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cliDir, "mixed-session.jsonl"), append(cliLine, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := loadAllHookRecords(context.Background(), hookDir)
+	if err != nil {
+		t.Fatalf("loadAllHookRecords() error = %v", err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("records len = %d, want 2: %#v", len(recs), recs)
+	}
+	if recs[0].Event != "preToolUse" || recs[1].Event != "postToolUse" {
+		t.Fatalf("records not chronological: %#v", recs)
+	}
+}
+
+func TestLoadAllHookRecordsSkipsHookInputSelfMatch(t *testing.T) {
+	t.Parallel()
+	hookDir := t.TempDir()
+	ts := time.Date(2026, 5, 3, 4, 5, 6, 0, time.UTC)
+	line, err := json.Marshal(HookRecord{Ts: ts, Session: "hook-input", Event: "preToolUse", Agent: "ide", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "hook-input.jsonl"), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := loadAllHookRecords(context.Background(), hookDir)
+	if err != nil {
+		t.Fatalf("loadAllHookRecords() error = %v", err)
+	}
+	if len(recs) != 0 {
+		t.Fatalf("records len = %d, want 0: %#v", len(recs), recs)
+	}
+}
+
+func TestLoadAllHookRecordsReadsLegacyRootWithoutCLIDir(t *testing.T) {
+	t.Parallel()
+	hookDir := t.TempDir()
+	ts := time.Date(2026, 5, 3, 4, 5, 6, 0, time.UTC)
+	line, err := json.Marshal(HookRecord{Ts: ts, Session: "legacy-only", Event: "preToolUse", Agent: "reviewer", Tool: "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "legacy-only.jsonl"), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	recs, err := loadAllHookRecords(context.Background(), hookDir)
 	if err != nil {
 		t.Fatalf("loadAllHookRecords() error = %v", err)
@@ -255,8 +416,8 @@ func TestLoadAllHookRecordsReadsCLIOnly(t *testing.T) {
 	if len(recs) != 1 {
 		t.Fatalf("records len = %d, want 1: %#v", len(recs), recs)
 	}
-	if recs[0].Session != "cli-session" || recs[0].Tool != "shell" {
-		t.Fatalf("record = %#v", recs[0])
+	if recs[0].Session != "legacy-only" || recs[0].Agent != "reviewer" {
+		t.Fatalf("legacy-only record = %#v", recs[0])
 	}
 }
 
