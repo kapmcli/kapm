@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Force deterministic, ANSI-free rendering for snapshot tests.
@@ -91,4 +92,55 @@ func TestSnapshotRenderRecentSessionsBox(t *testing.T) {
 	m := newSnapshotModel(tabOverview)
 	got := m.renderRecentSessionsBox(m.contentWidth())
 	assertGolden(t, "overview_recent_sessions", got)
+}
+
+func TestSnapshotRenderSummaryBox(t *testing.T) {
+	base := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
+	sessions := []SessionMetric{
+		{ID: "aaa001", Agent: "coder", Cwd: "/proj/a", StartTime: base, EndTime: base.Add(10 * time.Minute), LastActivity: base.Add(10 * time.Minute), Duration: JSONDuration(10 * time.Minute), Active: true, ToolCalls: 8, Prompts: 3},
+		{ID: "aaa002", Agent: "reviewer", Cwd: "/proj/b", StartTime: base.Add(5 * time.Minute), EndTime: base.Add(15 * time.Minute), LastActivity: base.Add(15 * time.Minute), Duration: JSONDuration(10 * time.Minute), Active: true, ToolCalls: 4, Prompts: 2},
+		{ID: "aaa003", Agent: "coder", Cwd: "/proj/c", StartTime: base.Add(20 * time.Minute), EndTime: base.Add(30 * time.Minute), LastActivity: base.Add(30 * time.Minute), Duration: JSONDuration(10 * time.Minute), ToolCalls: 6, Prompts: 1},
+		{ID: "aaa004", Agent: "tester", Cwd: "/proj/d", StartTime: base.Add(30 * time.Minute), EndTime: base.Add(45 * time.Minute), LastActivity: base.Add(45 * time.Minute), Duration: JSONDuration(15 * time.Minute), ToolCalls: 12, Prompts: 4},
+		{ID: "aaa005", Agent: "explorer", Cwd: "/proj/e", StartTime: base.Add(60 * time.Minute), EndTime: base.Add(70 * time.Minute), LastActivity: base.Add(70 * time.Minute), Duration: JSONDuration(10 * time.Minute), ToolCalls: 3, Prompts: 1},
+		{ID: "aaa006", Agent: "coder", Cwd: "/proj/f", StartTime: base.Add(90 * time.Minute), EndTime: base.Add(100 * time.Minute), LastActivity: base.Add(100 * time.Minute), Duration: JSONDuration(10 * time.Minute), ToolCalls: 5, Prompts: 2},
+	}
+	tools := []ToolMetric{
+		{Name: "bash", CallCount: 15, ErrorCount: 2, ErrorRate: 0.13},
+		{Name: "read_file", CallCount: 22, ErrorCount: 0},
+		{Name: "write_file", CallCount: 18, ErrorCount: 1, ErrorRate: 0.06},
+		{Name: "grep", CallCount: 10, ErrorCount: 3, ErrorRate: 0.30},
+		{Name: "glob", CallCount: 8, ErrorCount: 0},
+		{Name: "str_replace", CallCount: 14, ErrorCount: 0},
+		{Name: "create_file", CallCount: 6, ErrorCount: 0},
+		{Name: "delete_file", CallCount: 2, ErrorCount: 1, ErrorRate: 0.50},
+		{Name: "list_dir", CallCount: 9, ErrorCount: 0},
+		{Name: "run_tests", CallCount: 5, ErrorCount: 2, ErrorRate: 0.40},
+		{Name: "git_status", CallCount: 4, ErrorCount: 0},
+		{Name: "git_diff", CallCount: 3, ErrorCount: 0},
+		{Name: "git_commit", CallCount: 2, ErrorCount: 0},
+		{Name: "search_symbols", CallCount: 7, ErrorCount: 0},
+		{Name: "goto_definition", CallCount: 6, ErrorCount: 0},
+		{Name: "find_references", CallCount: 5, ErrorCount: 0},
+		{Name: "get_hover", CallCount: 4, ErrorCount: 0},
+		{Name: "get_diagnostics", CallCount: 3, ErrorCount: 1, ErrorRate: 0.33},
+		{Name: "pattern_search", CallCount: 2, ErrorCount: 0},
+		{Name: "rename_symbol", CallCount: 1, ErrorCount: 0},
+		{Name: "format", CallCount: 3, ErrorCount: 0},
+		{Name: "web_search", CallCount: 2, ErrorCount: 0},
+		{Name: "fetch_url", CallCount: 1, ErrorCount: 0},
+	}
+	agents := []AgentMetric{
+		{Name: "coder", SessionCount: 3, ToolCalls: 19, Prompts: 6},
+		{Name: "reviewer", SessionCount: 1, ToolCalls: 4, Prompts: 2},
+		{Name: "tester", SessionCount: 1, ToolCalls: 12, Prompts: 4},
+		{Name: "explorer", SessionCount: 1, ToolCalls: 3, Prompts: 1},
+	}
+	m := newSnapshotModel(tabOverview)
+	m.metrics.Overview.Sessions = sessions
+	m.metrics.Overview.Tools = tools
+	m.metrics.Overview.Agents = agents
+	m.kiroUsage = nil
+	m.kiroUsageRead = nil
+	got := m.renderSummaryBox(m.contentWidth())
+	assertGolden(t, "summary_box", got)
 }
