@@ -253,7 +253,7 @@ func (m *model) renderRecentSessionsBox(width int) string {
 	for i, s := range sessions {
 		idCell := shortID(s.ID, 12)
 		if s.ID == prevID {
-			idCell = strings.Repeat(" ", 12)
+			idCell = blankID
 		}
 		prevID = s.ID
 		rows[i] = []string{

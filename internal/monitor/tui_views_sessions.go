@@ -11,6 +11,8 @@ import (
 	"github.com/kapmcli/kapm/internal/apmconfig"
 )
 
+const blankID = "            " // 12 spaces — matches ID column width
+
 func (m *model) renderSessionsList() string {
 	sessions := m.metrics.Sessions
 	interior := m.interiorWidth()
@@ -39,7 +41,7 @@ func (m *model) renderSessionsList() string {
 	for i, s := range sessions {
 		idCell := shortID(s.ID, 12)
 		if s.ID == prevID {
-			idCell = strings.Repeat(" ", 12)
+			idCell = blankID
 		}
 		prevID = s.ID
 		rows[i] = []string{
