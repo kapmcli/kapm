@@ -221,6 +221,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		}
 	}()
 
+	// flockExclusive is a no-op on Windows; see flock_windows.go.
 	if err := flockExclusive(f); err != nil {
 		reportHookErr(stderr, fmt.Sprintf("flock %q", logPath), err)
 		return 0
