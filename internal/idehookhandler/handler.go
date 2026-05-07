@@ -99,6 +99,11 @@ func Handle(opts Options) (err error) {
 			err = fmt.Errorf("close %q: %w", logPath, closeErr)
 		}
 	}()
+	// FlockExclusive is a no-op on Windows; see fileutil/flock_windows.go.
+	if err := fileutil.FlockExclusive(f); err != nil {
+		return fmt.Errorf("flock %q: %w", logPath, err)
+	}
+	defer fileutil.FlockUnlock(f)
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("write %q: %w", logPath, err)
 	}

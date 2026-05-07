@@ -221,12 +221,12 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 		}
 	}()
 
-	// flockExclusive is a no-op on Windows; see flock_windows.go.
-	if err := flockExclusive(f); err != nil {
+	// FlockExclusive is a no-op on Windows; see fileutil/flock_windows.go.
+	if err := fileutil.FlockExclusive(f); err != nil {
 		reportHookErr(stderr, fmt.Sprintf("flock %q", logPath), err)
 		return 0
 	}
-	defer flockUnlock(f)
+	defer fileutil.FlockUnlock(f)
 
 	if _, err := f.Write(line); err != nil {
 		reportHookErr(stderr, fmt.Sprintf("write %q", logPath), err)

@@ -3,8 +3,12 @@ package idehookhandler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -99,5 +103,43 @@ func TestHandleRejectsSymlinkedLogFile(t *testing.T) {
 	}
 	if string(data) != "original\n" {
 		t.Fatalf("symlink target was modified: %q", string(data))
+	}
+}
+
+func TestHandle_ConcurrentAppend(t *testing.T) {
+	root := t.TempDir()
+	const workers, perWorker = 10, 10
+	var wg sync.WaitGroup
+	for i := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range perWorker {
+				_ = Handle(Options{
+					Root:   root,
+					Event:  "PostToolUse",
+					Agent:  fmt.Sprintf("agent-%d-%d", i, j),
+					Now:    func() time.Time { return time.Now() },
+					Getenv: func(string) string { return "" },
+					Err:    io.Discard,
+				})
+			}
+		}()
+	}
+	wg.Wait()
+
+	data, err := os.ReadFile(filepath.Join(root, ".kapm", "logs", "ide", "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != workers*perWorker {
+		t.Fatalf("want %d lines, got %d", workers*perWorker, len(lines))
+	}
+	for i, line := range lines {
+		var rec record
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("line %d invalid JSON: %v", i, err)
+		}
 	}
 }
