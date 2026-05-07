@@ -17,6 +17,9 @@ func init() {
 	if err := os.Setenv("TERM", "dumb"); err != nil {
 		panic(err)
 	}
+	if err := os.Setenv("TZ", "UTC"); err != nil {
+		panic(err)
+	}
 }
 
 // update regenerates golden files when TestSnapshot* tests run. Usage:
