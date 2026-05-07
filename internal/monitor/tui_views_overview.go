@@ -11,6 +11,20 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const (
+	colWidthRecentID      = 12
+	colWidthRecentDur     = 8
+	colWidthRecentStatus  = 9
+	colWidthRecentTools   = 5
+	colWidthRecentPrompts = 7
+	colWidthRecentCredits = 7
+	colWidthRecentLastAct = 11
+	colWidthRecentTitle   = 40
+
+	// recentSessionsFixed = 2(indent) + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct
+	recentSessionsFixed = 2 + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct
+)
+
 // renderOverview renders the overview tab.
 func (m *model) renderOverview() string {
 	full := m.contentWidth()
@@ -215,43 +229,41 @@ func (m *model) renderRecentSessionsBox(width int) string {
 		return borderStyle.Width(width).Render(b.String())
 	}
 
-	// Fixed chars: 2(indent) + 12(ID) + 2 + 8(Dur) + 2 + 9(Status) + 2 + 5(Tools) + 2 + 7(Prompts) + 2 + 7(Credits) + 2 + 11(Last act) = 73
-	fixed := 2 + 12 + 2 + 8 + 2 + 9 + 2 + 5 + 2 + 7 + 2 + 7 + 2 + 11
-	remaining := interior - fixed - 2 // 2 spaces between ID and Agent
-	titleW := 40
-	agentW := min(max(remaining-2-titleW, 10), 16)
+	// Fixed chars: 2(indent) + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct = recentSessionsFixed
+	remaining := interior - recentSessionsFixed - 2 // 2 spaces between ID and Agent
+	agentW := min(max(remaining-2-colWidthRecentTitle, 10), 16)
 
 	cols := []Column{
-		{Header: "ID", Width: 12},
+		{Header: "ID", Width: colWidthRecentID},
 		{Header: "Agent", Width: agentW},
-		{Header: "Title", Width: titleW},
-		{Header: "Duration", Width: 8},
-		{Header: "Status", Width: 9},
-		{Header: "Tools", Width: 5, Right: true},
-		{Header: "Prompts", Width: 7, Right: true},
-		{Header: "Credits", Width: 7, Right: true},
-		{Header: "Last act", Width: 11},
+		{Header: "Title", Width: colWidthRecentTitle},
+		{Header: "Duration", Width: colWidthRecentDur},
+		{Header: "Status", Width: colWidthRecentStatus},
+		{Header: "Tools", Width: colWidthRecentTools, Right: true},
+		{Header: "Prompts", Width: colWidthRecentPrompts, Right: true},
+		{Header: "Credits", Width: colWidthRecentCredits, Right: true},
+		{Header: "Last act", Width: colWidthRecentLastAct},
 	}
 
 	now := time.Now()
 	var prevID string
 	rows := make([][]string, len(sessions))
 	for i, s := range sessions {
-		idCell := shortID(s.ID, 12)
+		idCell := shortID(s.ID, colWidthRecentID)
 		if s.ID == prevID {
 			idCell = blankID
 		}
 		prevID = s.ID
 		rows[i] = []string{
-			fmt.Sprintf("%-12s", idCell),
+			fmt.Sprintf("%-*s", colWidthRecentID, idCell),
 			fmt.Sprintf("%-*s", agentW, truncate(s.Agent, agentW)),
-			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), titleW), titleW),
-			fmt.Sprintf("%-8s", formatDur(time.Duration(s.Duration))),
-			padRightVisible(statusBadge(s.Active), 9),
-			fmt.Sprintf("%5d", s.ToolCalls),
-			fmt.Sprintf("%7d", s.Prompts),
-			fmt.Sprintf("%7s", formatCredits(s.TotalCredits)),
-			fmt.Sprintf("%-11s", formatLastActivity(s.LastActivity, now)),
+			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), colWidthRecentTitle), colWidthRecentTitle),
+			fmt.Sprintf("%-*s", colWidthRecentDur, formatDur(time.Duration(s.Duration))),
+			padRightVisible(statusBadge(s.Active), colWidthRecentStatus),
+			fmt.Sprintf("%*d", colWidthRecentTools, s.ToolCalls),
+			fmt.Sprintf("%*d", colWidthRecentPrompts, s.Prompts),
+			fmt.Sprintf("%*s", colWidthRecentCredits, formatCredits(s.TotalCredits)),
+			fmt.Sprintf("%-*s", colWidthRecentLastAct, formatLastActivity(s.LastActivity, now)),
 		}
 	}
 

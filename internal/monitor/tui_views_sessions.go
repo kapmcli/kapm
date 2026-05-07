@@ -13,48 +13,59 @@ import (
 
 const blankID = "            " // 12 spaces — matches ID column width
 
+const (
+	colWidthSessionID      = 12
+	colWidthSessionDur     = 8
+	colWidthSessionStatus  = 9
+	colWidthSessionTool    = 4
+	colWidthSessionPrompt  = 5
+	colWidthSessionFiles   = 5
+	colWidthSessionCredits = 7
+	colWidthSessionLastAct = 11
+	colWidthSessionTitle   = 40
+)
+
 func (m *model) renderSessionsList() string {
 	sessions := m.metrics.Sessions
 	interior := m.interiorWidth()
 
-	// Fixed: 2(indent) + 12(ID) + 1 + agent + 1 + title + 1 + 8(Dur) + 1 + 9(Status) + 1 + 4(Tool) + 1 + 5(Prompt) + 1 + 5(Files) + 1 + 7(Credits) + 1 + 11(Last act)
-	titleW := 40
-	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 7 + 1 + 11
+	// Fixed: 2(indent) + colWidthSessionID + 1 + agent + 1 + colWidthSessionTitle + 1 + colWidthSessionDur + 1 + colWidthSessionStatus + 1 + colWidthSessionTool + 1 + colWidthSessionPrompt + 1 + colWidthSessionFiles + 1 + colWidthSessionCredits + 1 + colWidthSessionLastAct
+	fixed := 2 + colWidthSessionID + 1 + 1 + colWidthSessionTitle + 1 + colWidthSessionDur + 1 + colWidthSessionStatus + 1 + colWidthSessionTool + 1 + colWidthSessionPrompt + 1 + colWidthSessionFiles + 1 + colWidthSessionCredits + 1 + colWidthSessionLastAct
 	agentW := min(max(interior-fixed, 10), 16)
 
 	cols := []Column{
-		{Header: "ID", Width: 12},
+		{Header: "ID", Width: colWidthSessionID},
 		{Header: "Agent", Width: agentW},
-		{Header: "Title", Width: titleW},
-		{Header: "Dur", Width: 8},
-		{Header: "Status", Width: 9},
-		{Header: "Tool", Width: 4, Right: true},
-		{Header: "Prompt", Width: 5, Right: true},
-		{Header: "Files", Width: 5, Right: true},
-		{Header: "Credits", Width: 7, Right: true},
-		{Header: "Last act", Width: 11},
+		{Header: "Title", Width: colWidthSessionTitle},
+		{Header: "Dur", Width: colWidthSessionDur},
+		{Header: "Status", Width: colWidthSessionStatus},
+		{Header: "Tool", Width: colWidthSessionTool, Right: true},
+		{Header: "Prompt", Width: colWidthSessionPrompt, Right: true},
+		{Header: "Files", Width: colWidthSessionFiles, Right: true},
+		{Header: "Credits", Width: colWidthSessionCredits, Right: true},
+		{Header: "Last act", Width: colWidthSessionLastAct},
 	}
 
 	now := time.Now()
 	var prevID string
 	rows := make([][]string, len(sessions))
 	for i, s := range sessions {
-		idCell := shortID(s.ID, 12)
+		idCell := shortID(s.ID, colWidthSessionID)
 		if s.ID == prevID {
 			idCell = blankID
 		}
 		prevID = s.ID
 		rows[i] = []string{
-			fmt.Sprintf("%-12s", idCell),
+			fmt.Sprintf("%-*s", colWidthSessionID, idCell),
 			fmt.Sprintf("%-*s", agentW, truncate(s.Agent, agentW)),
-			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), titleW), titleW),
-			fmt.Sprintf("%-8s", formatDur(time.Duration(s.Duration))),
-			padRightVisible(statusBadge(s.Active), 9),
-			fmt.Sprintf("%4d", s.ToolCalls),
-			fmt.Sprintf("%5d", s.Prompts),
-			fmt.Sprintf("%5d", s.FilesChanged),
-			fmt.Sprintf("%7s", formatCredits(s.TotalCredits)),
-			fmt.Sprintf("%-11s", formatLastActivity(s.LastActivity, now)),
+			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), colWidthSessionTitle), colWidthSessionTitle),
+			fmt.Sprintf("%-*s", colWidthSessionDur, formatDur(time.Duration(s.Duration))),
+			padRightVisible(statusBadge(s.Active), colWidthSessionStatus),
+			fmt.Sprintf("%*d", colWidthSessionTool, s.ToolCalls),
+			fmt.Sprintf("%*d", colWidthSessionPrompt, s.Prompts),
+			fmt.Sprintf("%*d", colWidthSessionFiles, s.FilesChanged),
+			fmt.Sprintf("%*s", colWidthSessionCredits, formatCredits(s.TotalCredits)),
+			fmt.Sprintf("%-*s", colWidthSessionLastAct, formatLastActivity(s.LastActivity, now)),
 		}
 	}
 

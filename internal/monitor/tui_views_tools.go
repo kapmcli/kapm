@@ -9,17 +9,42 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+const (
+	colWidthCalls   = 7
+	colWidthErrors  = 7
+	colWidthErrPct  = 7
+	colWidthAvgDur  = 10
+	colWidthTime    = 19
+	colWidthTool    = 12
+	colWidthSession = 12
+	colWidthAgent   = 14
+	colWidthReads   = 8
+
+	// indentWidth is the leading "  " on each detail row.
+	indentWidth = 2
+	// errorIconWidth is the "! " prefix on error rows (icon + space).
+	errorIconWidth = 2
+	// separatorWidth is the "  " gap between columns.
+	separatorWidth = 2
+	// minInputWidth is the minimum width for the input summary column.
+	minInputWidth = 10
+
+	// toolsListBaseFixed = 2(indent) + 2 + colWidthCalls + 2 + colWidthErrors + 2 + colWidthErrPct + 2 + colWidthAvgDur
+	toolsListBaseFixed = indentWidth + separatorWidth + colWidthCalls + separatorWidth + colWidthErrors + separatorWidth + colWidthErrPct + separatorWidth + colWidthAvgDur
+
+	// errorRowFixed = indentWidth + errorIconWidth + colWidthTime + sep + colWidthTool + sep + colWidthSession + sep + colWidthAgent + sep
+	errorRowFixed = indentWidth + errorIconWidth + colWidthTime + separatorWidth + colWidthTool + separatorWidth + colWidthSession + separatorWidth + colWidthAgent + separatorWidth
+)
+
 func (m *model) renderToolsList() string {
 	tools := m.metrics.Tools
 	interior := m.interiorWidth()
 
-	// Fixed chars: 2(indent) + 2 + 7(Calls) + 2 + 7(Errors) + 2 + 7(Err%) + 2 + 10(Avg dur) = 41
-	const baseFixed = 41
-	barW := min(20, interior-baseFixed-2-16)
+	barW := min(20, interior-toolsListBaseFixed-2-16)
 	showBar := barW >= 3
-	fixed := baseFixed
+	fixed := toolsListBaseFixed
 	if showBar {
-		fixed = baseFixed + 2 + barW
+		fixed = toolsListBaseFixed + 2 + barW
 	}
 	nameW := max(interior-fixed, 16)
 
@@ -32,19 +57,19 @@ func (m *model) renderToolsList() string {
 	if showBar {
 		cols = []Column{
 			{Header: "Name", Width: nameW},
-			{Header: "Calls", Width: 7, Right: true},
+			{Header: "Calls", Width: colWidthCalls, Right: true},
 			{Header: "Bar", Width: barW},
-			{Header: "Errors", Width: 7, Right: true},
-			{Header: "Err%", Width: 7, Right: true},
-			{Header: "Avg dur", Width: 10, Right: true},
+			{Header: "Errors", Width: colWidthErrors, Right: true},
+			{Header: "Err%", Width: colWidthErrPct, Right: true},
+			{Header: "Avg dur", Width: colWidthAvgDur, Right: true},
 		}
 	} else {
 		cols = []Column{
 			{Header: "Name", Width: nameW},
-			{Header: "Calls", Width: 7, Right: true},
-			{Header: "Errors", Width: 7, Right: true},
-			{Header: "Err%", Width: 7, Right: true},
-			{Header: "Avg dur", Width: 10, Right: true},
+			{Header: "Calls", Width: colWidthCalls, Right: true},
+			{Header: "Errors", Width: colWidthErrors, Right: true},
+			{Header: "Err%", Width: colWidthErrPct, Right: true},
+			{Header: "Avg dur", Width: colWidthAvgDur, Right: true},
 		}
 	}
 
@@ -112,16 +137,16 @@ func (m *model) renderToolDetail() string {
 	if len(t.RecentCalls) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
-		fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %10s\n", "Time", "Tool", "Session", "Agent", "Duration")
+		fmt.Fprintf(&b, "  %-*s  %-*s  %-*s  %-*s  %*s\n", colWidthTime, "Time", colWidthTool, "Tool", colWidthSession, "Session", colWidthAgent, "Agent", colWidthAvgDur, "Duration")
 		limit := min(len(t.RecentCalls), 15)
 		for i := range limit {
 			c := t.RecentCalls[i]
-			fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %10s\n",
-				c.Ts.Local().Format(tsLayout),
-				truncate(c.Tool, 12),
-				shortID(c.Session, 12),
-				truncate(c.Agent, 14),
-				formatDur(time.Duration(c.Duration)),
+			fmt.Fprintf(&b, "  %-*s  %-*s  %-*s  %-*s  %*s\n",
+				colWidthTime, c.Ts.Local().Format(tsLayout),
+				colWidthTool, truncate(c.Tool, colWidthTool),
+				colWidthSession, shortID(c.Session, colWidthSession),
+				colWidthAgent, truncate(c.Agent, colWidthAgent),
+				colWidthAvgDur, formatDur(time.Duration(c.Duration)),
 			)
 		}
 	}
@@ -131,18 +156,17 @@ func (m *model) renderToolDetail() string {
 	if len(t.Errors) == 0 {
 		b.WriteString(mutedStyle.Render("  (none)\n"))
 	} else {
-		fmt.Fprintf(&b, "  %-19s  %-12s  %-12s  %-14s  %s\n", "Time", "Tool", "Session", "Agent", "Input")
+		fmt.Fprintf(&b, "  %-*s  %-*s  %-*s  %-*s  %s\n", colWidthTime, "Time", colWidthTool, "Tool", colWidthSession, "Session", colWidthAgent, "Agent", "Input")
 		limit := min(len(t.Errors), 10)
-		// Reserve space: 2(indent) + 2(!+space) + 19(time) + 2 + 12(tool) + 2 + 12(session) + 2 + 14(agent) + 2 = 69
-		inputWidth := max(m.interiorWidth()-69, 10)
+		inputWidth := max(m.interiorWidth()-errorRowFixed, minInputWidth)
 		for i := range limit {
 			c := t.Errors[i]
-			fmt.Fprintf(&b, "  %s %-19s  %-12s  %-12s  %-14s  %s\n",
+			fmt.Fprintf(&b, "  %s %-*s  %-*s  %-*s  %-*s  %s\n",
 				errorStyle.Render("!"),
-				c.Ts.Local().Format(tsLayout),
-				truncate(c.Tool, 12),
-				shortID(c.Session, 12),
-				truncate(c.Agent, 14),
+				colWidthTime, c.Ts.Local().Format(tsLayout),
+				colWidthTool, truncate(c.Tool, colWidthTool),
+				colWidthSession, shortID(c.Session, colWidthSession),
+				colWidthAgent, truncate(c.Agent, colWidthAgent),
 				truncateVisible(c.InputSummary, inputWidth),
 			)
 		}
@@ -183,12 +207,12 @@ func truncateVisible(s string, n int) string {
 func (m *model) renderSkillsTab() string {
 	skills := m.metrics.Skills
 	interior := m.interiorWidth()
-	// Fixed: 2(indent) + 1 + 8(Reads) = 11 + name
+	// Fixed: 2(indent) + 1 + colWidthReads(Reads) = 11 + name
 	nameW := max(interior-11, 20)
 
 	if len(skills) == 0 {
 		var b strings.Builder
-		fmt.Fprintf(&b, "  %-*s %8s\n", nameW, "Name", "Reads")
+		fmt.Fprintf(&b, "  %-*s %*s\n", nameW, "Name", colWidthReads, "Reads")
 		b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
 		b.WriteString("\n")
 		b.WriteString(mutedStyle.Render("  no skill reads"))
@@ -197,14 +221,14 @@ func (m *model) renderSkillsTab() string {
 
 	cols := []Column{
 		{Header: "Name", Width: nameW},
-		{Header: "Reads", Width: 8, Right: true},
+		{Header: "Reads", Width: colWidthReads, Right: true},
 	}
 
 	rows := make([][]string, len(skills))
 	for i, sk := range skills {
 		rows[i] = []string{
 			fmt.Sprintf("%-*s", nameW, truncate(sk.Name, nameW)),
-			fmt.Sprintf("%8d", sk.ReadCount),
+			fmt.Sprintf("%*d", colWidthReads, sk.ReadCount),
 		}
 	}
 

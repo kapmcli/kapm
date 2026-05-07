@@ -7,30 +7,37 @@ import (
 	"time"
 )
 
+const (
+	colWidthAgentSessions = 8
+	colWidthAgentTools    = 7
+	colWidthAgentPrompts  = 8
+	colWidthAgentErrors   = 8
+)
+
 func (m *model) renderAgentsList() string {
 	agents := m.metrics.Agents
 	interior := m.interiorWidth()
 
-	// Fixed chars: 2(indent) + 2 + 8(Sessions) + 2 + 7(Tools) + 2 + 8(Prompts) + 2 + 8(Errors) = 41
-	fixed := 2 + 2 + 8 + 2 + 7 + 2 + 8 + 2 + 8
+	// Fixed chars: 2(indent) + 2 + colWidthAgentSessions + 2 + colWidthAgentTools + 2 + colWidthAgentPrompts + 2 + colWidthAgentErrors
+	fixed := 2 + 2 + colWidthAgentSessions + 2 + colWidthAgentTools + 2 + colWidthAgentPrompts + 2 + colWidthAgentErrors
 	nameW := max(interior-fixed, 16)
 
 	cols := []Column{
 		{Header: "Name", Width: nameW},
-		{Header: "Sessions", Width: 8, Right: true},
-		{Header: "Tools", Width: 7, Right: true},
-		{Header: "Prompts", Width: 8, Right: true},
-		{Header: "Errors", Width: 8, Right: true},
+		{Header: "Sessions", Width: colWidthAgentSessions, Right: true},
+		{Header: "Tools", Width: colWidthAgentTools, Right: true},
+		{Header: "Prompts", Width: colWidthAgentPrompts, Right: true},
+		{Header: "Errors", Width: colWidthAgentErrors, Right: true},
 	}
 
 	rows := make([][]string, len(agents))
 	for i, a := range agents {
 		rows[i] = []string{
 			fmt.Sprintf("%-*s", nameW, truncate(a.Name, nameW)),
-			fmt.Sprintf("%8d", a.SessionCount),
-			fmt.Sprintf("%7d", a.ToolCalls),
-			fmt.Sprintf("%8d", a.Prompts),
-			fmt.Sprintf("%8d", a.ToolErrorCnt),
+			fmt.Sprintf("%*d", colWidthAgentSessions, a.SessionCount),
+			fmt.Sprintf("%*d", colWidthAgentTools, a.ToolCalls),
+			fmt.Sprintf("%*d", colWidthAgentPrompts, a.Prompts),
+			fmt.Sprintf("%*d", colWidthAgentErrors, a.ToolErrorCnt),
 		}
 	}
 
