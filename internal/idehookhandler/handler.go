@@ -77,35 +77,18 @@ func Handle(opts Options) (err error) {
 	line = append(line, '\n')
 
 	logDir := filepath.Join(opts.Root, paths.KapmDir, paths.LogsSubdir, paths.IDESubdir)
-	if err := fileutil.RefuseSymlinkPathUnder(opts.Root, logDir); err != nil {
-		return fmt.Errorf("%w, refusing to write logs", err)
-	}
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		return fmt.Errorf("mkdir %q: %w", logDir, err)
-	}
-	if err := fileutil.RefuseSymlinkPathUnder(opts.Root, logDir); err != nil {
-		return fmt.Errorf("%w, refusing to write logs", err)
-	}
-	logPath := filepath.Join(logDir, ideHookLogFile)
-	if err := fileutil.RefuseSymlinkPathUnder(opts.Root, logPath); err != nil {
-		return fmt.Errorf("%w, refusing to write logs", err)
-	}
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := fileutil.OpenSafeLogFile(opts.Root, logDir, ideHookLogFile)
 	if err != nil {
-		return fmt.Errorf("open %q: %w", logPath, err)
+		return fmt.Errorf("%w, refusing to write logs", err)
 	}
 	defer func() {
 		if closeErr := f.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("close %q: %w", logPath, closeErr)
+			err = fmt.Errorf("close %q: %w", f.Name(), closeErr)
 		}
 	}()
-	// FlockExclusive is a no-op on Windows; see fileutil/flock_windows.go.
-	if err := fileutil.FlockExclusive(f); err != nil {
-		return fmt.Errorf("flock %q: %w", logPath, err)
-	}
 	defer fileutil.FlockUnlock(f)
 	if _, err := f.Write(line); err != nil {
-		return fmt.Errorf("write %q: %w", logPath, err)
+		return fmt.Errorf("write %q: %w", f.Name(), err)
 	}
 	return nil
 }

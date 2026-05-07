@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -129,7 +128,8 @@ func PrepareHandlerInput(opts HandlerInputOptions) (io.Reader, string, error) {
 func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDir, agent string) (exitCode int) {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("hook-handler recovered panic", "panic", r, "stack", string(debug.Stack()))
+			slog.Error("hook-handler recovered panic", "panic", r)
+			slog.Debug("hook-handler panic stack", "stack", string(debug.Stack()))
 			exitCode = 0
 		}
 	}()
@@ -192,44 +192,20 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	line = append(line, '\n')
 
 	logDir := filepath.Join(rootDir, paths.KapmDir, paths.LogsSubdir, paths.CLISubdir)
-	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logDir); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
-		return 0
-	}
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		reportHookErr(stderr, fmt.Sprintf("mkdir %q", logDir), err)
-		return 0
-	}
-	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logDir); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
-		return 0
-	}
-
-	logPath := filepath.Join(logDir, sessionID+".jsonl")
-	if err := fileutil.RefuseSymlinkPathUnder(rootDir, logPath); err != nil {
-		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
-		return 0
-	}
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := fileutil.OpenSafeLogFile(rootDir, logDir, sessionID+".jsonl")
 	if err != nil {
-		reportHookErr(stderr, fmt.Sprintf("open %q", logPath), err)
+		_, _ = fmt.Fprintf(stderr, "hook-handler: %v, refusing to write logs\n", err)
 		return 0
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
-			reportHookErr(stderr, fmt.Sprintf("close %q", logPath), cerr)
+			reportHookErr(stderr, "close log", cerr)
 		}
 	}()
-
-	// FlockExclusive is a no-op on Windows; see fileutil/flock_windows.go.
-	if err := fileutil.FlockExclusive(f); err != nil {
-		reportHookErr(stderr, fmt.Sprintf("flock %q", logPath), err)
-		return 0
-	}
 	defer fileutil.FlockUnlock(f)
 
 	if _, err := f.Write(line); err != nil {
-		reportHookErr(stderr, fmt.Sprintf("write %q", logPath), err)
+		reportHookErr(stderr, fmt.Sprintf("write %q", f.Name()), err)
 	}
 
 	return 0
