@@ -134,52 +134,53 @@ func parseGitHubShorthandSource(raw string) (PowerSource, bool) {
 	}
 
 	trimmed := strings.Trim(raw, "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) < 2 {
+	owner, rest, ok := strings.Cut(trimmed, "/")
+	if !ok {
 		return PowerSource{}, false
 	}
-	if !isGitHubShorthandSegment(parts[0]) || !isGitHubShorthandSegment(parts[1]) {
+	repo, pathRest, hasPath := strings.Cut(rest, "/")
+	if !isGitHubShorthandSegment(owner) || !isGitHubShorthandSegment(repo) {
 		return PowerSource{}, false
 	}
 
-	rootURL := "https://github.com/" + parts[0] + "/" + parts[1]
-	if len(parts) == 2 {
+	rootURL := "https://github.com/" + owner + "/" + repo
+	if !hasPath {
 		return PowerSource{
 			Kind:  SourceGitRoot,
 			URL:   rootURL,
-			Owner: parts[0],
-			Repo:  parts[1],
+			Owner: owner,
+			Repo:  repo,
 		}, true
 	}
 
-	if parts[2] == "tree" {
-		if len(parts) < 4 || parts[3] == "" {
+	seg, afterSeg, _ := strings.Cut(pathRest, "/")
+	if seg == "tree" {
+		ref, pathInRepo, _ := strings.Cut(afterSeg, "/")
+		if ref == "" {
 			return PowerSource{}, false
 		}
-		pathInRepo := strings.Join(parts[4:], "/")
 		if !validPathInRepo(pathInRepo) {
 			return PowerSource{}, false
 		}
 		return PowerSource{
 			Kind:       SourceGitHubSubdir,
 			URL:        rootURL,
-			Owner:      parts[0],
-			Repo:       parts[1],
-			Ref:        parts[3],
+			Owner:      owner,
+			Repo:       repo,
+			Ref:        ref,
 			PathInRepo: pathInRepo,
 		}, true
 	}
 
-	pathInRepo := strings.Join(parts[2:], "/")
-	if !validPathInRepo(pathInRepo) {
+	if !validPathInRepo(pathRest) {
 		return PowerSource{}, false
 	}
 	return PowerSource{
 		Kind:       SourceGitHubSubdir,
 		URL:        rootURL,
-		Owner:      parts[0],
-		Repo:       parts[1],
-		PathInRepo: pathInRepo,
+		Owner:      owner,
+		Repo:       repo,
+		PathInRepo: pathRest,
 	}, true
 }
 
@@ -196,11 +197,11 @@ func validPathInRepo(p string) bool {
 }
 
 func splitOwnerRepo(repoPath string) (string, string, bool) {
-	parts := strings.Split(strings.Trim(repoPath, "/"), "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, repo, ok := strings.Cut(strings.Trim(repoPath, "/"), "/")
+	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
 		return "", "", false
 	}
-	return parts[0], parts[1], true
+	return owner, repo, true
 }
 
 func isGitHubHost(host string) bool {
