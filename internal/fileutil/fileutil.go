@@ -63,13 +63,25 @@ func writeTempFile(path string, data []byte) (string, error) {
 	}
 	tmp := f.Name()
 	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
+		closeErr := f.Close()
 		_ = os.Remove(tmp)
+		if closeErr != nil {
+			return "", errors.Join(
+				fmt.Errorf("write temp %q: %w", path, err),
+				fmt.Errorf("close temp %q: %w", path, closeErr),
+			)
+		}
 		return "", fmt.Errorf("write temp %q: %w", path, err)
 	}
 	if err := f.Chmod(0o644); err != nil {
-		_ = f.Close()
+		closeErr := f.Close()
 		_ = os.Remove(tmp)
+		if closeErr != nil {
+			return "", errors.Join(
+				fmt.Errorf("chmod temp %q: %w", path, err),
+				fmt.Errorf("close temp %q: %w", path, closeErr),
+			)
+		}
 		return "", fmt.Errorf("chmod temp %q: %w", path, err)
 	}
 	if err := f.Close(); err != nil {

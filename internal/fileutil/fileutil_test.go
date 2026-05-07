@@ -299,3 +299,43 @@ func TestWriteFilePair_RollbackPreservesOriginalMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteFileAtomic_ForceHappyPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	written, err := fileutil.WriteFileAtomic(path, []byte("data"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !written {
+		t.Fatal("expected written=true")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "data" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWriteFileAtomic_ChmodErrorPropagates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod semantics differ on Windows")
+	}
+	dir := t.TempDir()
+	// Make dir read-only so Chmod on the temp file fails.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	path := filepath.Join(dir, "out.txt")
+	_, err := fileutil.WriteFileAtomic(path, []byte("data"), true)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	// Temp file must have been cleaned up.
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Errorf("temp file not cleaned up: %s", e.Name())
+		}
+	}
+}
