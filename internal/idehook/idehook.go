@@ -160,16 +160,16 @@ func Init(opts Options) error {
 
 func install(root, executablePath string, out io.Writer) error {
 	if err := removeObsolete(root); err != nil {
-		return err
+		return fmt.Errorf("remove obsolete hooks: %w", err)
 	}
 	for _, spec := range hookSpecs {
 		path := hookPath(root, spec.FileName)
 		data, err := renderHook(spec, hookCommand(executablePath, spec.Event))
 		if err != nil {
-			return err
+			return fmt.Errorf("render hook %s: %w", spec.Name, err)
 		}
 		if _, err := fileutil.WriteFileAtomic(path, data, true); err != nil {
-			return err
+			return fmt.Errorf("write hook %s: %w", path, err)
 		}
 		_, _ = fmt.Fprintf(out, "  ✓ %s\n", path)
 	}
