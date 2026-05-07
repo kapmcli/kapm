@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -675,11 +676,11 @@ func snapshotDir(t *testing.T, root string) map[string]string {
 	t.Helper()
 
 	files := make(map[string]string)
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -703,11 +704,11 @@ func snapshotDirExcluding(t *testing.T, root string, excluded map[string]struct{
 	t.Helper()
 
 	files := make(map[string]string)
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
