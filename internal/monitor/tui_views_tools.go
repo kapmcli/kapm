@@ -28,45 +28,57 @@ func (m *model) renderToolsList() string {
 		maxCall = tools[0].CallCount
 	}
 
-	var b strings.Builder
+	var cols []Column
 	if showBar {
-		fmt.Fprintf(&b, "  %-*s  %7s  %-*s  %7s  %7s  %10s\n",
-			nameW, "Name", "Calls", barW, "Bar", "Errors", "Err%", "Avg dur")
+		cols = []Column{
+			{Header: "Name", Width: nameW},
+			{Header: "Calls", Width: 7, Right: true},
+			{Header: "Bar", Width: barW},
+			{Header: "Errors", Width: 7, Right: true},
+			{Header: "Err%", Width: 7, Right: true},
+			{Header: "Avg dur", Width: 10, Right: true},
+		}
 	} else {
-		fmt.Fprintf(&b, "  %-*s  %7s  %7s  %7s  %10s\n",
-			nameW, "Name", "Calls", "Errors", "Err%", "Avg dur")
+		cols = []Column{
+			{Header: "Name", Width: nameW},
+			{Header: "Calls", Width: 7, Right: true},
+			{Header: "Errors", Width: 7, Right: true},
+			{Header: "Err%", Width: 7, Right: true},
+			{Header: "Avg dur", Width: 10, Right: true},
+		}
 	}
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
-	b.WriteString("\n")
 
-	rows := m.viewportHeight()
-	start := clampOffset(m.cursor[tabTools], len(tools), rows)
-	end := min(start+rows, len(tools))
-	for i := start; i < end; i++ {
-		t := tools[i]
-		var row string
+	rows := make([][]string, len(tools))
+	for i, t := range tools {
 		if showBar {
 			bar := ""
 			if maxCall > 0 {
 				bar = barChart(t.CallCount, maxCall, barW)
 			}
-			row = fmt.Sprintf("  %-*s  %7d  %-*s  %7d  %7s  %10s",
-				nameW, truncate(t.Name, nameW), t.CallCount, barW, bar,
-				t.ErrorCount, formatErrRate(t.ErrorRate), formatDur(time.Duration(t.AvgDuration)))
+			rows[i] = []string{
+				fmt.Sprintf("%-*s", nameW, truncate(t.Name, nameW)),
+				fmt.Sprintf("%7d", t.CallCount),
+				fmt.Sprintf("%-*s", barW, bar),
+				fmt.Sprintf("%7d", t.ErrorCount),
+				fmt.Sprintf("%7s", formatErrRate(t.ErrorRate)),
+				fmt.Sprintf("%10s", formatDur(time.Duration(t.AvgDuration))),
+			}
 		} else {
-			row = fmt.Sprintf("  %-*s  %7d  %7d  %7s  %10s",
-				nameW, truncate(t.Name, nameW), t.CallCount, t.ErrorCount,
-				formatErrRate(t.ErrorRate), formatDur(time.Duration(t.AvgDuration)))
+			rows[i] = []string{
+				fmt.Sprintf("%-*s", nameW, truncate(t.Name, nameW)),
+				fmt.Sprintf("%7d", t.CallCount),
+				fmt.Sprintf("%7d", t.ErrorCount),
+				fmt.Sprintf("%7s", formatErrRate(t.ErrorRate)),
+				fmt.Sprintf("%10s", formatDur(time.Duration(t.AvgDuration))),
+			}
 		}
-		if i == m.cursor[tabTools] {
-			b.WriteString(selectedStyle.Render("▸ " + row[2:]))
-		} else {
-			b.WriteString(row)
-		}
-		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "\n%s  %d/%d", mutedStyle.Render("showing"), end-start, len(tools))
-	return borderStyle.Width(m.contentWidth()).Render(b.String())
+
+	return m.renderListView(listViewOpts{
+		columns: cols,
+		rows:    rows,
+		cursor:  m.cursor[tabTools],
+	})
 }
 
 func (m *model) renderToolDetail() string {
@@ -140,7 +152,14 @@ func (m *model) renderToolDetail() string {
 
 // truncateVisible truncates s so lipgloss.Width(s) <= n, preserving simple ASCII content.
 func truncateVisible(s string, n int) string {
-	if n <= 0 || lipgloss.Width(s) <= n {
+	if n <= 0 {
+		return s
+	}
+	// ASCII fast path: when every byte is one visible cell, len == visible width.
+	if len(s) <= n {
+		return s
+	}
+	if lipgloss.Width(s) <= n {
 		return s
 	}
 	// Walk runes building output until we reach n-1 visible cells, then append '…'.
@@ -168,29 +187,34 @@ func (m *model) renderSkillsTab() string {
 	// Fixed: 2(indent) + 1 + 8(Reads) = 11 + name
 	nameW := max(interior-11, 20)
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "  %-*s %8s\n", nameW, "Name", "Reads")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
-	b.WriteString("\n")
 	if len(skills) == 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "  %-*s %8s\n", nameW, "Name", "Reads")
+		b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
+		b.WriteString("\n")
 		b.WriteString(mutedStyle.Render("  no skill reads"))
 		return borderStyle.Width(m.contentWidth()).Render(b.String())
 	}
-	rows := m.viewportHeight()
-	start := clampOffset(m.cursor[tabSkills], len(skills), rows)
-	end := min(start+rows, len(skills))
-	for i := start; i < end; i++ {
-		sk := skills[i]
-		row := fmt.Sprintf("  %-*s %8d", nameW, truncate(sk.Name, nameW), sk.ReadCount)
-		if i == m.cursor[tabSkills] {
-			b.WriteString(selectedStyle.Render("▸ " + row[2:]))
-		} else {
-			b.WriteString(row)
-		}
-		b.WriteString("\n")
+
+	cols := []Column{
+		{Header: "Name", Width: nameW},
+		{Header: "Reads", Width: 8, Right: true},
 	}
-	fmt.Fprintf(&b, "\n%s  %d/%d", mutedStyle.Render("showing"), end-start, len(skills))
-	return borderStyle.Width(m.contentWidth()).Render(b.String())
+
+	rows := make([][]string, len(skills))
+	for i, sk := range skills {
+		rows[i] = []string{
+			fmt.Sprintf("%-*s", nameW, truncate(sk.Name, nameW)),
+			fmt.Sprintf("%8d", sk.ReadCount),
+		}
+	}
+
+	return m.renderListView(listViewOpts{
+		columns: cols,
+		rows:    rows,
+		cursor:  m.cursor[tabSkills],
+		gap:     1,
+	})
 }
 
 func (m *model) renderSkillDetail() string {

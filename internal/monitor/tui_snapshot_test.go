@@ -86,3 +86,9 @@ func TestSnapshotRenderSessionsList(t *testing.T) {
 	got := m.renderSessionsList()
 	assertGolden(t, "sessions_list", got)
 }
+
+func TestSnapshotRenderRecentSessionsBox(t *testing.T) {
+	m := newSnapshotModel(tabOverview)
+	got := m.renderRecentSessionsBox(m.contentWidth())
+	assertGolden(t, "overview_recent_sessions", got)
+}

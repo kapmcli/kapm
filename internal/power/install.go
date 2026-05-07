@@ -255,7 +255,7 @@ func loadPowerSteering(srcDir string) ([]PowerSteeringDoc, []string, error) {
 		if err != nil {
 			return fmt.Errorf("rel %q: %w", path, err)
 		}
-		data, err := os.ReadFile(path)
+		data, err := fileutil.ReadFileNoFollow(path)
 		if err != nil {
 			return fmt.Errorf("read %q: %w", path, err)
 		}

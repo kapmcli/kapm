@@ -220,10 +220,11 @@ func (m *model) renderRecentSessionsBox(width int) string {
 	}
 	interior := interiorOf(width)
 
-	var b strings.Builder
-	b.WriteString(sectionStyle.Render("▸ Recent active sessions"))
-	b.WriteString("\n")
+	prefix := sectionStyle.Render("▸ Recent active sessions") + "\n"
+
 	if len(sessions) == 0 {
+		var b strings.Builder
+		b.WriteString(prefix)
 		b.WriteString(mutedStyle.Render("  (none)"))
 		return borderStyle.Width(width).Render(b.String())
 	}
@@ -232,38 +233,50 @@ func (m *model) renderRecentSessionsBox(width int) string {
 	fixed := 2 + 12 + 2 + 8 + 2 + 9 + 2 + 5 + 2 + 7 + 2 + 7 + 2 + 11
 	remaining := interior - fixed - 2 // 2 spaces between ID and Agent
 	titleW := 40
-	agentW := min(
-		// 2 spaces between Agent and Title
-		max(
+	agentW := min(max(remaining-2-titleW, 10), 16)
 
-			remaining-2-titleW, 10), 16)
+	cols := []Column{
+		{Header: "ID", Width: 12},
+		{Header: "Agent", Width: agentW},
+		{Header: "Title", Width: titleW},
+		{Header: "Duration", Width: 8},
+		{Header: "Status", Width: 9},
+		{Header: "Tools", Width: 5, Right: true},
+		{Header: "Prompts", Width: 7, Right: true},
+		{Header: "Credits", Width: 7, Right: true},
+		{Header: "Last act", Width: 11},
+	}
 
-	fmt.Fprintf(&b, "  %-12s  %-*s  %-*s  %-8s  %-9s  %5s  %7s  %7s  %-11s\n",
-		"ID", agentW, "Agent", titleW, "Title", "Duration", "Status", "Tools", "Prompts", "Credits", "Last act")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
-	b.WriteString("\n")
 	now := time.Now()
 	var prevID string
-	for _, s := range sessions {
+	rows := make([][]string, len(sessions))
+	for i, s := range sessions {
 		idCell := shortID(s.ID, 12)
-		agentCell := truncate(s.Agent, agentW)
 		if s.ID == prevID {
 			idCell = strings.Repeat(" ", 12)
 		}
 		prevID = s.ID
-		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
-		fmt.Fprintf(&b, "  %-12s  %-*s  %s  %-8s  %s  %5d  %7d  %7s  %-11s\n",
-			idCell,
-			agentW, agentCell,
-			padRightVisible(titleCell, titleW),
-			formatDur(time.Duration(s.Duration)),
+		rows[i] = []string{
+			fmt.Sprintf("%-12s", idCell),
+			fmt.Sprintf("%-*s", agentW, truncate(s.Agent, agentW)),
+			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), titleW), titleW),
+			fmt.Sprintf("%-8s", formatDur(time.Duration(s.Duration))),
 			padRightVisible(statusBadge(s.Active), 9),
-			s.ToolCalls, s.Prompts,
-			formatCredits(s.TotalCredits),
-			formatLastActivity(s.LastActivity, now),
-		)
+			fmt.Sprintf("%5d", s.ToolCalls),
+			fmt.Sprintf("%7d", s.Prompts),
+			fmt.Sprintf("%7s", formatCredits(s.TotalCredits)),
+			fmt.Sprintf("%-11s", formatLastActivity(s.LastActivity, now)),
+		}
 	}
-	return borderStyle.Width(width).Render(b.String())
+
+	return m.renderListView(listViewOpts{
+		columns: cols,
+		rows:    rows,
+		cursor:  -1,
+		gap:     2,
+		width:   width,
+		prefix:  prefix,
+	})
 }
 
 // abbrevHome replaces the user's home-directory prefix with "~".

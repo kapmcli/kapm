@@ -1499,6 +1499,35 @@ func TestTUIRenderSessionChanges_DiffHiddenByDefault(t *testing.T) {
 	}
 }
 
+func TestRecomputeDetailCacheInvariant(t *testing.T) {
+	t.Parallel()
+
+	// Non-empty body: len(cachedDetailLines) == strings.Count(body, "\n") + 1.
+	m := newTestModel()
+	m = press(m, "2")     // sessions tab
+	m = press(m, "enter") // enter detail — triggers recomputeDetailCache
+	if !m.detail {
+		t.Fatal("expected detail mode")
+	}
+	body := m.cachedDetailBody
+	if body == "" {
+		t.Fatal("expected non-empty cachedDetailBody in session detail")
+	}
+	want := strings.Count(body, "\n") + 1
+	if got := len(m.cachedDetailLines); got != want {
+		t.Errorf("non-empty body: len(cachedDetailLines) = %d, want %d", got, want)
+	}
+
+	// Empty body: cachedDetailLines must be nil.
+	m2 := newTestModel()
+	// detail=false → recomputeDetailCache clears everything.
+	m2.detail = false
+	m2.recomputeDetailCache()
+	if m2.cachedDetailLines != nil {
+		t.Errorf("empty body: expected cachedDetailLines == nil, got %v", m2.cachedDetailLines)
+	}
+}
+
 // TestTUISessionsOnlyMode verifies that the TUI renders correctly when
 // hookLogsDir is empty (sessions-only mode, no hook log data).
 func TestTUISessionsOnlyMode(t *testing.T) {

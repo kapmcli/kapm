@@ -20,46 +20,48 @@ func (m *model) renderSessionsList() string {
 	fixed := 2 + 12 + 1 + 1 + titleW + 1 + 8 + 1 + 9 + 1 + 4 + 1 + 5 + 1 + 5 + 1 + 7 + 1 + 11
 	agentW := min(max(interior-fixed, 10), 16)
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "  %-12s %-*s %-*s %-8s %-9s %4s %5s %5s %7s %-11s\n",
-		"ID", agentW, "Agent", titleW, "Title", "Dur", "Status", "Tool", "Prompt", "Files", "Credits", "Last act")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
-	b.WriteString("\n")
+	cols := []Column{
+		{Header: "ID", Width: 12},
+		{Header: "Agent", Width: agentW},
+		{Header: "Title", Width: titleW},
+		{Header: "Dur", Width: 8},
+		{Header: "Status", Width: 9},
+		{Header: "Tool", Width: 4, Right: true},
+		{Header: "Prompt", Width: 5, Right: true},
+		{Header: "Files", Width: 5, Right: true},
+		{Header: "Credits", Width: 7, Right: true},
+		{Header: "Last act", Width: 11},
+	}
 
-	rows := m.viewportHeight()
-	start := clampOffset(m.cursor[tabSessions], len(sessions), rows)
-	end := min(start+rows, len(sessions))
 	now := time.Now()
 	var prevID string
-	for i := start; i < end; i++ {
-		s := sessions[i]
+	rows := make([][]string, len(sessions))
+	for i, s := range sessions {
 		idCell := shortID(s.ID, 12)
-		agentCell := truncate(s.Agent, agentW)
 		if s.ID == prevID {
 			idCell = strings.Repeat(" ", 12)
 		}
 		prevID = s.ID
-		titleCell := truncateVisible(cmp.Or(s.Title, "—"), titleW)
-		status := statusBadge(s.Active)
-		row := fmt.Sprintf("  %-12s %-*s %s %-8s %s %4d %5d %5d %7s %-11s",
-			idCell,
-			agentW, agentCell,
-			padRightVisible(titleCell, titleW),
-			formatDur(time.Duration(s.Duration)),
-			padRightVisible(status, 9),
-			s.ToolCalls, s.Prompts, s.FilesChanged,
-			formatCredits(s.TotalCredits),
-			formatLastActivity(s.LastActivity, now),
-		)
-		if i == m.cursor[tabSessions] {
-			b.WriteString(selectedStyle.Render("▸ " + row[2:]))
-		} else {
-			b.WriteString(row)
+		rows[i] = []string{
+			fmt.Sprintf("%-12s", idCell),
+			fmt.Sprintf("%-*s", agentW, truncate(s.Agent, agentW)),
+			padRightVisible(truncateVisible(cmp.Or(s.Title, "—"), titleW), titleW),
+			fmt.Sprintf("%-8s", formatDur(time.Duration(s.Duration))),
+			padRightVisible(statusBadge(s.Active), 9),
+			fmt.Sprintf("%4d", s.ToolCalls),
+			fmt.Sprintf("%5d", s.Prompts),
+			fmt.Sprintf("%5d", s.FilesChanged),
+			fmt.Sprintf("%7s", formatCredits(s.TotalCredits)),
+			fmt.Sprintf("%-11s", formatLastActivity(s.LastActivity, now)),
 		}
-		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "\n%s  %d/%d", mutedStyle.Render("showing"), end-start, len(sessions))
-	return borderStyle.Width(m.contentWidth()).Render(b.String())
+
+	return m.renderListView(listViewOpts{
+		columns: cols,
+		rows:    rows,
+		cursor:  m.cursor[tabSessions],
+		gap:     1,
+	})
 }
 
 func formatCount(n int) string {

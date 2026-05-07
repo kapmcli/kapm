@@ -115,7 +115,7 @@ func Parse(output string) (Usage, error) {
 
 	var usage Usage
 	var sawHeader, sawCredits bool
-	for _, rawLine := range strings.Split(clean, "\n") {
+	for rawLine := range strings.SplitSeq(clean, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" || strings.HasPrefix(line, "WARNING:") {
 			continue

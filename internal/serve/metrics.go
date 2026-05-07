@@ -109,8 +109,13 @@ func (s *Server) refreshKiroUsageAsync(now time.Time) {
 	if s.kiroUsageRead == nil {
 		return
 	}
+	ctx := s.rootCtx
+	if ctx == nil {
+		slog.Warn("serve refreshKiroUsageAsync: rootCtx is nil, falling back to context.Background()")
+		ctx = context.Background()
+	}
 	s.kiroUsageSF.DoChan("kiro-usage", func() (any, error) {
-		return s.readAndStoreKiroUsage(context.Background(), now), nil
+		return s.readAndStoreKiroUsage(ctx, now), nil
 	})
 }
 

@@ -15,28 +15,30 @@ func (m *model) renderAgentsList() string {
 	fixed := 2 + 2 + 8 + 2 + 7 + 2 + 8 + 2 + 8
 	nameW := max(interior-fixed, 16)
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "  %-*s  %8s  %7s  %8s  %8s\n",
-		nameW, "Name", "Sessions", "Tools", "Prompts", "Errors")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", interior)))
-	b.WriteString("\n")
-
-	rows := m.viewportHeight()
-	start := clampOffset(m.cursor[tabAgents], len(agents), rows)
-	end := min(start+rows, len(agents))
-	for i := start; i < end; i++ {
-		a := agents[i]
-		row := fmt.Sprintf("  %-*s  %8d  %7d  %8d  %8d",
-			nameW, truncate(a.Name, nameW), a.SessionCount, a.ToolCalls, a.Prompts, a.ToolErrorCnt)
-		if i == m.cursor[tabAgents] {
-			b.WriteString(selectedStyle.Render("▸ " + row[2:]))
-		} else {
-			b.WriteString(row)
-		}
-		b.WriteString("\n")
+	cols := []Column{
+		{Header: "Name", Width: nameW},
+		{Header: "Sessions", Width: 8, Right: true},
+		{Header: "Tools", Width: 7, Right: true},
+		{Header: "Prompts", Width: 8, Right: true},
+		{Header: "Errors", Width: 8, Right: true},
 	}
-	fmt.Fprintf(&b, "\n%s  %d/%d", mutedStyle.Render("showing"), end-start, len(agents))
-	return borderStyle.Width(m.contentWidth()).Render(b.String())
+
+	rows := make([][]string, len(agents))
+	for i, a := range agents {
+		rows[i] = []string{
+			fmt.Sprintf("%-*s", nameW, truncate(a.Name, nameW)),
+			fmt.Sprintf("%8d", a.SessionCount),
+			fmt.Sprintf("%7d", a.ToolCalls),
+			fmt.Sprintf("%8d", a.Prompts),
+			fmt.Sprintf("%8d", a.ToolErrorCnt),
+		}
+	}
+
+	return m.renderListView(listViewOpts{
+		columns: cols,
+		rows:    rows,
+		cursor:  m.cursor[tabAgents],
+	})
 }
 
 func (m *model) renderAgentDetail() string {

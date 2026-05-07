@@ -39,6 +39,8 @@ func TestTruncateVisibleRuneWidth(t *testing.T) {
 		{"a😀b", 4, "a😀b"},            // lipgloss.Width("a😀b")==4 <= 4, early return
 		{"", 5, ""},                    // empty
 		{"x", 1, "x"},                  // lipgloss.Width("x")==1 <= 1, early return
+		{"hello", 5, "hello"},          // ASCII fast path: len(s) == n
+		{"hi", 5, "hi"},                // ASCII fast path: len(s) < n
 	}
 	for _, c := range cases {
 		if got := truncateVisible(c.in, c.n); got != c.want {

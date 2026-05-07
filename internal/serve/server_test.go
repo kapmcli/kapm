@@ -317,11 +317,12 @@ func TestCurrentKiroUsageDoesNotBlockOnColdRefresh(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
+	var startOnce sync.Once
 	srv := New(Options{
 		KiroUsageTTL: time.Hour,
 		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
 			calls.Add(1)
-			close(started)
+			startOnce.Do(func() { close(started) })
 			<-release
 			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
 		},

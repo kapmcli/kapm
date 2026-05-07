@@ -72,8 +72,9 @@ type model struct {
 	cursor           [5]int // per-tab selection
 	detail           bool   // true when drilled into a detail view
 	detailScroll     int    // top line of detail viewport
-	cachedDetailMax  int    // cached result of detailMaxScroll computation
-	cachedDetailBody string // cached rendered detail view
+	cachedDetailMax   int      // cached result of detailMaxScroll computation
+	cachedDetailBody  string   // cached rendered detail view
+	cachedDetailLines []string // cached split lines of cachedDetailBody
 	updatedAt        time.Time
 	promptExpanded   bool // toggle for prompt full display
 	changesExpanded  bool // toggle for diff previews in Changes section
@@ -162,14 +163,14 @@ func (m *model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 			m.detailScroll--
 		}
 	case "down", "j":
-		m.detailScroll = clampDetailScroll(m.detailScroll+1, m.detailMaxScroll())
+		m.detailScroll = max(0, min(m.detailScroll+1, m.detailMaxScroll()))
 	case "pgup":
 		m.detailScroll -= m.viewportHeight() / 2
 		if m.detailScroll < 0 {
 			m.detailScroll = 0
 		}
 	case "pgdown":
-		m.detailScroll = clampDetailScroll(m.detailScroll+m.viewportHeight()/2, m.detailMaxScroll())
+		m.detailScroll = max(0, min(m.detailScroll+m.viewportHeight()/2, m.detailMaxScroll()))
 	case "g", "home":
 		m.detailScroll = 0
 	case "G", "end":
@@ -240,10 +241,6 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-
-func clampDetailScroll(v, maxVal int) int {
-	return max(0, min(v, maxVal))
 }
 
 func (m *model) listLen(tab int) int {
@@ -410,7 +407,7 @@ func (m *model) scrollDetail(body string) string {
 	if body == "" {
 		return body
 	}
-	lines := strings.Split(body, "\n")
+	lines := m.cachedDetailLines
 	vh := m.viewportHeight()
 	total := len(lines)
 	var out string
@@ -418,9 +415,9 @@ func (m *model) scrollDetail(body string) string {
 		out = body
 	} else {
 		start := m.detailScroll
-		max := total - vh
-		if start > max {
-			start = max
+		maxStart := total - vh
+		if start > maxStart {
+			start = maxStart
 		}
 		if start < 0 {
 			start = 0
@@ -458,6 +455,7 @@ func (m *model) recomputeDetailCache() {
 	if !m.detail {
 		m.cachedDetailMax = 0
 		m.cachedDetailBody = ""
+		m.cachedDetailLines = nil
 		return
 	}
 	switch m.tab {
@@ -471,15 +469,17 @@ func (m *model) recomputeDetailCache() {
 		m.cachedDetailBody = m.renderSkillDetail()
 	}
 	if m.cachedDetailBody == "" {
+		m.cachedDetailLines = nil
 		m.cachedDetailMax = 0
 		return
 	}
-	total := strings.Count(m.cachedDetailBody, "\n") + 1
-	max := total - m.viewportHeight()
-	if max < 0 {
-		max = 0
+	m.cachedDetailLines = strings.Split(m.cachedDetailBody, "\n")
+	total := len(m.cachedDetailLines)
+	maxScroll := total - m.viewportHeight()
+	if maxScroll < 0 {
+		maxScroll = 0
 	}
-	m.cachedDetailMax = max
+	m.cachedDetailMax = maxScroll
 }
 
 func (m *model) helpLine() string {

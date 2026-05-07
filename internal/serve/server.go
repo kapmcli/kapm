@@ -68,6 +68,7 @@ type kiroUsageCacheEntry struct {
 // Server serves the kapm WebUI.
 type Server struct {
 	opts           Options
+	rootCtx        context.Context
 	now            func() time.Time
 	handler        http.Handler
 	cache          *monitor.SessionCache
@@ -118,6 +119,7 @@ func (s *Server) Handler() http.Handler { return s.handler }
 // Run listens on 127.0.0.1:<Port> and serves until ctx is canceled.
 // It returns a clear error on port conflict.
 func (s *Server) Run(ctx context.Context) error {
+	s.rootCtx = ctx
 	ln, err := net.Listen("tcp", s.Addr())
 	if err != nil {
 		return fmt.Errorf("serve listen %q: %w", s.Addr(), err)
