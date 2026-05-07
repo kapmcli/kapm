@@ -242,14 +242,8 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func clampDetailScroll(v, max int) int {
-	if v > max {
-		return max
-	}
-	if v < 0 {
-		return 0
-	}
-	return v
+func clampDetailScroll(v, maxVal int) int {
+	return max(0, min(v, maxVal))
 }
 
 func (m *model) listLen(tab int) int {
@@ -616,7 +610,7 @@ func RunTUIWithKiroUsage(ctx context.Context, sessionsDir, hookLogsDir, ideBaseD
 	m := NewModel(ctx, sessionsDir, hookLogsDir, ideBaseDir, cwdFilter, since)
 	m.sqliteDBPath = sqliteDBPath
 	m.kiroUsageRead = usageRead
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithContext(ctx))
 	_, err := p.Run()
 	return err
 }
