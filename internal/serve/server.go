@@ -196,6 +196,7 @@ func securityHeaders(h http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
+		// CSP headers don't apply to text/event-stream: browsers don't parse SSE as HTML.
 		if r.URL.Path != "/sse" {
 			w.Header().Set("Content-Security-Policy", cspHeader)
 		}
