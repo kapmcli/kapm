@@ -357,10 +357,12 @@ func TestCurrentKiroUsageReturnsStaleWhileRefreshing(t *testing.T) {
 	srv := New(Options{
 		KiroUsageTTL: time.Hour,
 		KiroUsageRead: func(context.Context) (kirocliusage.Usage, bool, error) {
-			calls.Add(1)
-			if calls.Load() == 2 {
-				close(started)
-				<-release
+			n := calls.Add(1)
+			if n >= 2 {
+				if n == 2 {
+					close(started)
+					<-release
+				}
 				return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO POWER", UsedCredits: 2, TotalCredits: 10000, Percent: 0.02}, true, nil
 			}
 			return kirocliusage.Usage{ResetDate: "2026-06-01", Plan: "KIRO FREE", UsedCredits: 1, TotalCredits: 50, Percent: 2}, true, nil
@@ -376,7 +378,7 @@ func TestCurrentKiroUsageReturnsStaleWhileRefreshing(t *testing.T) {
 	}
 	<-started
 	close(release)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if got, _ := srv.currentKiroUsage(now.Add(2*time.Hour + time.Minute)); got != nil && got.Plan == "KIRO POWER" {
 			return
