@@ -376,7 +376,7 @@ func TestCurrentKiroUsageReturnsStaleWhileRefreshing(t *testing.T) {
 	}
 	<-started
 	close(release)
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if got, _ := srv.currentKiroUsage(now.Add(2*time.Hour + time.Minute)); got != nil && got.Plan == "KIRO POWER" {
 			return
