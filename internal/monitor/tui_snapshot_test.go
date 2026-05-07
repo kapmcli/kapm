@@ -141,6 +141,7 @@ func TestSnapshotRenderSummaryBox(t *testing.T) {
 	m.metrics.Overview.Agents = agents
 	m.kiroUsage = nil
 	m.kiroUsageRead = nil
+	m.recomputeSummaryTotals()
 	got := m.renderSummaryBox(m.contentWidth())
 	assertGolden(t, "summary_box", got)
 }

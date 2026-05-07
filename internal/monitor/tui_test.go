@@ -94,6 +94,7 @@ func newTestModel() *model {
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40
+	m.recomputeSummaryTotals()
 	return m
 }
 

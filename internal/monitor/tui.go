@@ -80,6 +80,11 @@ type model struct {
 	changesExpanded  bool // toggle for diff previews in Changes section
 	timelineExpanded bool // toggle for full tool input in Timeline
 
+	activeSessions int
+	totalTools     int
+	totalPrompts   int
+	totalErrors    int
+
 	kiroUsage          *kirocliusage.Usage
 	kiroUsageRead      KiroUsageReadFunc
 	kiroUsageTTL       time.Duration
@@ -116,6 +121,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cache = msg.cache
 		m.err = msg.err
 		m.updatedAt = time.Now()
+		m.recomputeSummaryTotals()
 		m.clampCursors()
 		if m.detail {
 			m.recomputeDetailCache()
@@ -480,6 +486,22 @@ func (m *model) recomputeDetailCache() {
 		maxScroll = 0
 	}
 	m.cachedDetailMax = maxScroll
+}
+
+// recomputeSummaryTotals eagerly caches summary box counters from current metrics.
+func (m *model) recomputeSummaryTotals() {
+	m.activeSessions = 0
+	m.totalTools, m.totalPrompts, m.totalErrors = 0, 0, 0
+	for _, s := range m.metrics.Overview.Sessions {
+		if s.Active {
+			m.activeSessions++
+		}
+		m.totalTools += s.ToolCalls
+		m.totalPrompts += s.Prompts
+	}
+	for _, t := range m.metrics.Overview.Tools {
+		m.totalErrors += t.ErrorCount
+	}
 }
 
 func (m *model) helpLine() string {

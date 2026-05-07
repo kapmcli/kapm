@@ -47,20 +47,6 @@ func (m *model) renderOverview() string {
 // renderSummaryBox draws the Summary panel with logs dir + counters, fitted to width.
 func (m *model) renderSummaryBox(width int) string {
 	ov := m.metrics.Overview
-	active := 0
-	totalTools := 0
-	totalPrompts := 0
-	for _, s := range ov.Sessions {
-		if s.Active {
-			active++
-		}
-		totalTools += s.ToolCalls
-		totalPrompts += s.Prompts
-	}
-	totalErrors := 0
-	for _, t := range ov.Tools {
-		totalErrors += t.ErrorCount
-	}
 
 	interior := interiorOf(width)
 	logsDir := abbrevHome(m.homeDir, m.hookLogsDir)
@@ -73,11 +59,11 @@ func (m *model) renderSummaryBox(width int) string {
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Summary"))
 	fmt.Fprintf(&b, "  logs dir: %s\n", mutedStyle.Render(logsDir))
 	fmt.Fprintf(&b, "  sessions:   %-5d  active: %s\n",
-		len(ov.Sessions), activeStyle.Render(fmt.Sprintf("%d", active)))
+		len(ov.Sessions), activeStyle.Render(fmt.Sprintf("%d", m.activeSessions)))
 	fmt.Fprintf(&b, "  agents:     %-5d  errors: %s\n",
-		len(ov.Agents), errorCountText(totalErrors))
+		len(ov.Agents), errorCountText(m.totalErrors))
 	fmt.Fprintf(&b, "  tool calls: %-5d  prompts: %d",
-		totalTools, totalPrompts)
+		m.totalTools, m.totalPrompts)
 	if m.kiroUsage != nil {
 		fmt.Fprintf(&b, "\n  kiro usage: %s", m.kiroUsage.CreditLabel())
 		fmt.Fprintf(&b, "\n  usage:      %s · resets %s", m.kiroUsage.PercentLabel(), m.kiroUsage.ResetDate)
