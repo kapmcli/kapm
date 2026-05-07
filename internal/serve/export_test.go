@@ -21,8 +21,8 @@ func AggregateDetailFnForTest(fn func(context.Context, []monitor.MergedRecord, t
 // DashboardSessionsFromCache returns the cached dashboardSessions slice for
 // the current cache entry, or nil if the cache is empty.
 func (s *Server) DashboardSessionsFromCache() []monitor.SessionMetric {
-	s.metricsMu.Lock()
-	defer s.metricsMu.Unlock()
+	s.metricsMu.RLock()
+	defer s.metricsMu.RUnlock()
 	if s.metricsCache == nil {
 		return nil
 	}

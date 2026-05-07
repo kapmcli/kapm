@@ -48,8 +48,8 @@ func (s *Server) loadMetrics(ctx context.Context) (loadedMetrics, error) {
 }
 
 func (s *Server) cachedMetrics(now time.Time) (loadedMetrics, bool) {
-	s.metricsMu.Lock()
-	defer s.metricsMu.Unlock()
+	s.metricsMu.RLock()
+	defer s.metricsMu.RUnlock()
 
 	if s.metricsCache == nil || now.Sub(s.metricsCache.storedAt) >= s.ttl {
 		return loadedMetrics{}, false
@@ -156,8 +156,8 @@ func (s *Server) readAndStoreKiroUsage(ctx context.Context, now time.Time) *kiro
 }
 
 func (s *Server) cachedKiroUsage(now time.Time) (*kirocliusage.Usage, bool, bool) {
-	s.kiroUsageMu.Lock()
-	defer s.kiroUsageMu.Unlock()
+	s.kiroUsageMu.RLock()
+	defer s.kiroUsageMu.RUnlock()
 
 	if s.kiroUsageCache == nil {
 		return nil, false, false

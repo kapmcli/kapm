@@ -74,10 +74,10 @@ type Server struct {
 	cache          *monitor.SessionCache
 	sqliteCache    *monitor.SQLiteCache
 	ttl            time.Duration
-	metricsMu      sync.Mutex
+	metricsMu      sync.RWMutex
 	metricsCache   *metricsCacheEntry
 	metricsSF      singleflight.Group
-	kiroUsageMu    sync.Mutex
+	kiroUsageMu    sync.RWMutex
 	kiroUsageCache *kiroUsageCacheEntry
 	kiroUsageSF    singleflight.Group
 	kiroUsageRead  KiroUsageReadFunc
