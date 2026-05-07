@@ -132,17 +132,27 @@ func stripCdToCwd(cmd, cwd string) string {
 }
 
 // cleanSummary collapses whitespace/control chars and truncates to 120 chars.
+// Single-pass: maps all whitespace (space, tab, CR, LF, controls) to a single
+// space, coalesces runs, and trims leading/trailing whitespace.
 func cleanSummary(s string) string {
 	var sb strings.Builder
 	sb.Grow(len(s))
+	prevSpace := true // treat start as space to trim leading whitespace
 	for _, r := range s {
-		if r == '\n' || r == '\r' || r == '\t' || (r < 0x20) {
-			sb.WriteByte(' ')
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' || r < 0x20 {
+			if !prevSpace {
+				sb.WriteByte(' ')
+				prevSpace = true
+			}
 			continue
 		}
 		sb.WriteRune(r)
+		prevSpace = false
 	}
-	out := strings.Join(strings.Fields(sb.String()), " ")
+	out := sb.String()
+	if len(out) > 0 && out[len(out)-1] == ' ' {
+		out = out[:len(out)-1]
+	}
 	if len(out) > maxSummaryLength {
 		out = truncateUTF8(out, maxSummaryLength-len("…")) + "…"
 	}

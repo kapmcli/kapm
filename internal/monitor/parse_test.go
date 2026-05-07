@@ -135,3 +135,33 @@ func TestResolvePostToolUseWiresErrorDetail(t *testing.T) {
 		t.Errorf("timeline[1].ErrorDetail = %q; want empty", tl[1].ErrorDetail)
 	}
 }
+
+func TestCleanSummary(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("a", maxSummaryLength+10)
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"all whitespace", "   \t\n\r  ", ""},
+		{"multi-space", "  hello  world  ", "hello world"},
+		{"tabs", "\thello\tworld\t", "hello world"},
+		{"cr lf", "hello\r\nworld", "hello world"},
+		{"control chars", "a\x01\x02b", "a b"},
+		{"leading trailing", "  hi  ", "hi"},
+		{"cjk preserved", "\u65e5\u672c  \u8a9e", "\u65e5\u672c \u8a9e"},
+		{"long truncated", long, strings.Repeat("a", maxSummaryLength-len("\u2026")) + "\u2026"},
+		{"ansi sequence", "\x1b[31mred\x1b[0m", "[31mred [0m"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := cleanSummary(c.in)
+			if got != c.want {
+				t.Errorf("cleanSummary(%q) = %q; want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
