@@ -56,7 +56,8 @@ type dataCacheEntry struct {
 // sessionJSONLMaxBytes caps the size of a single session .jsonl file that
 // kapm will parse. Files beyond this size are skipped with a Warn log to
 // avoid OOM on pathologically large logs. 100 MiB.
-const sessionJSONLMaxBytes = 100 << 20
+const mebibyte = 1 << 20
+const sessionJSONLMaxBytes = 100 * mebibyte
 
 const sessionLoadParallelism = 8
 
