@@ -30,7 +30,7 @@ func NewSQLiteCache() *SQLiteCache { return &SQLiteCache{} }
 
 // Load returns cached v1 sessions, re-reading only when the DB file mtime changes.
 // Returns ALL sessions (unfiltered). Caller applies since/cwdFilter post-cache.
-func (sc *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession, error) {
+func (c *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession, error) {
 	if dbPath == "" {
 		return nil, nil
 	}
@@ -42,17 +42,17 @@ func (sc *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession
 		return nil, fmt.Errorf("stat sqlite db: %w", err)
 	}
 
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-	if info.ModTime().Equal(sc.mtime) {
-		return sc.sessions, nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if info.ModTime().Equal(c.mtime) {
+		return c.sessions, nil
 	}
 	sessions, err := LoadSessionsSQLite(ctx, dbPath, time.Time{}, "")
 	if err != nil {
 		return nil, err
 	}
-	sc.mtime = info.ModTime()
-	sc.sessions = sessions
+	c.mtime = info.ModTime()
+	c.sessions = sessions
 	return sessions, nil
 }
 
