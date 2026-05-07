@@ -116,20 +116,20 @@ func processExecutionLog(path string, executionIDs map[string]struct{}, results 
 
 	toolCalls := 0
 	var toolActions []IDEAction
-	for i, a := range log.Actions {
-		switch a.ActionType {
+	for i, action := range log.Actions {
+		switch action.ActionType {
 		case ActionReadFiles, ActionRunCommand, ActionWrite, ActionCreate, ActionDelete, ActionSearch, ActionInvokeSubAgent, ActionSubAgentResponse:
 			// Estimate duration from gap to next action's emittedAt, or execution endTime.
 			nextTs := log.EndTime
 			for j := i + 1; j < len(log.Actions); j++ {
-				if log.Actions[j].EmittedAt > a.EmittedAt {
+				if log.Actions[j].EmittedAt > action.EmittedAt {
 					nextTs = log.Actions[j].EmittedAt
 					break
 				}
 			}
-			a.EstimatedDuration = time.Duration(nextTs-a.EmittedAt) * time.Millisecond
+			action.EstimatedDuration = time.Duration(nextTs-action.EmittedAt) * time.Millisecond
 			toolCalls++
-			toolActions = append(toolActions, a)
+			toolActions = append(toolActions, action)
 		}
 	}
 
@@ -253,11 +253,15 @@ func parseSubAgentCall(a IDEAction, ts time.Time, dur time.Duration) *SubAgentCa
 		Explanation  string `json:"explanation"`
 		Prompt       string `json:"prompt"`
 	}
-	_ = json.Unmarshal(a.Input, &inp)
+	if err := json.Unmarshal(a.Input, &inp); err != nil {
+		slog.Warn("ide executions: parse action", "action_id", a.ActionID, "err", err)
+	}
 	var out struct {
 		Response string `json:"response"`
 	}
-	_ = json.Unmarshal(a.Output, &out)
+	if err := json.Unmarshal(a.Output, &out); err != nil {
+		slog.Warn("ide executions: parse action", "action_id", a.ActionID, "err", err)
+	}
 	return &SubAgentCall{
 		AgentName:   inp.SubAgentName,
 		Explanation: inp.Explanation,
