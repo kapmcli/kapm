@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-runewidth"
 )
 
 func (m *model) renderToolsList() string {
@@ -150,7 +151,7 @@ func truncateVisible(s string, n int) string {
 	var sb strings.Builder
 	var w int
 	for _, r := range runes {
-		rw := lipgloss.Width(string(r))
+		rw := runewidth.RuneWidth(r)
 		if w+rw > n-1 {
 			break
 		}

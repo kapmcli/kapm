@@ -27,3 +27,22 @@ func TestTruncateUTF8(t *testing.T) {
 		}
 	}
 }
+
+func TestTruncateVisibleRuneWidth(t *testing.T) {
+	cases := []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"hello world", 7, "hello …"}, // ASCII: space has width 1, fits before ellipsis
+		{"あいうえお", 6, "あい…"},        // CJK wide (each 2 cells)
+		{"a😀b", 4, "a😀b"},            // lipgloss.Width("a😀b")==4 <= 4, early return
+		{"", 5, ""},                    // empty
+		{"x", 1, "x"},                  // lipgloss.Width("x")==1 <= 1, early return
+	}
+	for _, c := range cases {
+		if got := truncateVisible(c.in, c.n); got != c.want {
+			t.Errorf("truncateVisible(%q,%d)=%q want %q", c.in, c.n, got, c.want)
+		}
+	}
+}
