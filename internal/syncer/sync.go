@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -217,11 +218,7 @@ func discoverPackageSources(modulesRoot string) (map[string]string, error) {
 }
 
 func orderedModuleSources(manifest projectManifest, packageSources map[string]string) ([]string, error) {
-	orderedKeys := make([]string, 0, len(packageSources))
-	for key := range packageSources {
-		orderedKeys = append(orderedKeys, key)
-	}
-	slices.Sort(orderedKeys)
+	orderedKeys := slices.Sorted(maps.Keys(packageSources))
 
 	candidates := make([][]string, 0, len(manifest.Dependencies.APM))
 	for _, dep := range manifest.Dependencies.APM {

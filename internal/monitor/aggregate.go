@@ -780,11 +780,7 @@ func AggregateToolTimeseries(calls []ToolCall, now time.Time) []TimeseriesPoint 
 	if len(m) < 2 {
 		return nil
 	}
-	keys := make([]time.Time, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.SortFunc(keys, sortTimeAsc)
+	keys := slices.SortedFunc(maps.Keys(m), sortTimeAsc)
 	pts := make([]TimeseriesPoint, len(keys))
 	for i, k := range keys {
 		a := m[k]
