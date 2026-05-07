@@ -163,13 +163,12 @@ func truncateVisible(s string, n int) string {
 		return s
 	}
 	// Walk runes building output until we reach n-1 visible cells, then append '…'.
-	runes := []rune(s)
 	if n == 1 {
 		return "…"
 	}
 	var sb strings.Builder
 	var w int
-	for _, r := range runes {
+	for _, r := range s {
 		rw := runewidth.RuneWidth(r)
 		if w+rw > n-1 {
 			break
