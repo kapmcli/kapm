@@ -444,8 +444,16 @@ func buildSessionDetails(st *aggState) {
 			changes = slices.Clone(s.changes)
 			slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
 		}
+		var hasShell bool
+		for _, ev := range s.timeline {
+			if ev.Tool == apmconfig.ToolShell || strings.HasPrefix(ev.Tool, "shell:") {
+				hasShell = true
+				break
+			}
+		}
 		st.sessionDetails = append(st.sessionDetails, SessionDetail{
 			SessionMetric:      base,
+			HasShell:           hasShell,
 			PromptHistory:      prompts,
 			Timeline:           s.timeline,
 			ToolSummary:        sessionToolSummary(s.timeline),

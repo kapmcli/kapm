@@ -8,6 +8,7 @@ import (
 
 // Kind values of MergedRecord. These are internal but flow into aggregation
 // and WebUI payloads; wire-format stability is desirable.
+// RecordKind* values use camelCase to match the JSONL record format (wire format; do not change).
 const (
 	RecordKindPrompt        = "prompt"
 	RecordKindToolUse       = "toolUse"
@@ -187,6 +188,7 @@ type SessionToolSummary struct {
 // SessionDetail is the per-session drill-down payload.
 type SessionDetail struct {
 	SessionMetric
+	HasShell           bool                 // true if any timeline entry used the shell tool
 	PromptHistory      []string             // raw prompts, oldest first
 	Timeline           []EventEntry         // full ordered event list for this session
 	ToolSummary        []SessionToolSummary // per-tool breakdown, sorted by CallCount desc

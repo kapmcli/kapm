@@ -1177,6 +1177,7 @@ func TestTUIRenderSessionChanges_ShellWarning(t *testing.T) {
 	base.Sessions[0].Timeline = append(base.Sessions[0].Timeline, EventEntry{
 		Ts: ts, Event: apmconfig.EventPreToolUse, Tool: apmconfig.ToolShell,
 	})
+	base.Sessions[0].HasShell = true
 	m.metrics = base
 	out := m.renderSessionChanges(&m.metrics.Sessions[0])
 	if !strings.Contains(out, "also ran shell") {
