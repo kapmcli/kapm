@@ -104,41 +104,33 @@ func (s *Server) writeHTML(w http.ResponseWriter, r *http.Request, status int, b
 	}
 }
 
-// withMetrics calls fn with the current metrics. If loading fails, it
-// writes an error response and fn is not called.
-func (s *Server) withMetrics(w http.ResponseWriter, r *http.Request, fn func(loadedMetrics)) {
-	loaded, err := s.loadMetrics(r.Context())
-	if err != nil {
-		s.handleError(w, r, err, http.StatusInternalServerError)
-		return
-	}
-	fn(loaded)
-}
-
 // handleDashboard renders the Overview page from embedded templates.
 // Overview.Sessions is capped to dashboardSessionLimit distinct session IDs
 // (paginateByID page=1 semantics) so the Recent Sessions panel stays bounded.
 // Depends on computeDashboardSessions returning rows in LastActivity-desc order
 // so that page 1 of 50 is the most-recent 50 distinct IDs.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		capped, _ := paginateByID(loaded.sessions, 1, dashboardSessionLimit)
-		overview := loaded.dm.Overview
-		overview.Sessions = capped
-		usage, usageChecked := s.currentKiroUsage(s.now())
-		overviewJSON, err := marshalForTemplate(overview)
-		if err != nil {
-			s.handleError(w, r, err, http.StatusInternalServerError)
-			return
-		}
-		s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
-			"Title":        "Overview",
-			"Active":       "overview",
-			"Overview":     overview,
-			"Summary":      newOverviewSummary(overview, usage, s.kiroUsageRead != nil, usageChecked),
-			"Skills":       loaded.dm.Skills,
-			"OverviewJSON": overviewJSON,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	capped, _ := paginateByID(loaded.sessions, 1, dashboardSessionLimit)
+	overview := loaded.dm.Overview
+	overview.Sessions = capped
+	usage, usageChecked := s.currentKiroUsage(s.now())
+	overviewJSON, err := marshalForTemplate(overview)
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
+		"Title":        "Overview",
+		"Active":       "overview",
+		"Overview":     overview,
+		"Summary":      newOverviewSummary(overview, usage, s.kiroUsageRead != nil, usageChecked),
+		"Skills":       loaded.dm.Skills,
+		"OverviewJSON": overviewJSON,
 	})
 }
 
@@ -146,34 +138,37 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // Distinct session IDs are paginated at sessionsPerPage per page.
 // Invalid or out-of-range page values are clamped: <1 → 1, >totalPages → totalPages.
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		// Parse ?page= — default 1, clamp <1 to 1.
-		requested := 1
-		if p := r.URL.Query().Get("page"); p != "" {
-			if n, err := strconv.Atoi(p); err == nil && n >= 1 {
-				requested = n
-			}
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	// Parse ?page= — default 1, clamp <1 to 1.
+	requested := 1
+	if p := r.URL.Query().Get("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n >= 1 {
+			requested = n
 		}
+	}
 
-		all := loaded.dm.Overview.Sessions
-		rows, total := paginateByID(all, requested, sessionsPerPage)
+	all := loaded.dm.Overview.Sessions
+	rows, total := paginateByID(all, requested, sessionsPerPage)
 
-		totalPages := max((total+sessionsPerPage-1)/sessionsPerPage, 1)
-		currentPage := requested
-		if currentPage > totalPages {
-			currentPage = totalPages
-			rows, _ = paginateByID(all, currentPage, sessionsPerPage)
-		}
+	totalPages := max((total+sessionsPerPage-1)/sessionsPerPage, 1)
+	currentPage := requested
+	if currentPage > totalPages {
+		currentPage = totalPages
+		rows, _ = paginateByID(all, currentPage, sessionsPerPage)
+	}
 
-		s.renderPage(w, r, http.StatusOK, sessionsTmpl, map[string]any{
-			"Title":      "Sessions",
-			"Active":     "sessions",
-			"Sessions":   rows,
-			"Page":       currentPage,
-			"TotalPages": totalPages,
-			"HasPrev":    currentPage > 1,
-			"HasNext":    currentPage < totalPages,
-		})
+	s.renderPage(w, r, http.StatusOK, sessionsTmpl, map[string]any{
+		"Title":      "Sessions",
+		"Active":     "sessions",
+		"Sessions":   rows,
+		"Page":       currentPage,
+		"TotalPages": totalPages,
+		"HasPrev":    currentPage > 1,
+		"HasNext":    currentPage < totalPages,
 	})
 }
 
@@ -181,20 +176,23 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 // 404 if no SessionDetail has that id.
 func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		matches := sessionDetailsByID(loaded.dm.Sessions, id)
-		if len(matches) == 0 {
-			s.handleNotFound(w, r)
-			return
-		}
-		merged, refs := monitor.MergeSessionDetails(matches)
-		s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
-			"Title":      "Session " + id,
-			"Active":     "sessions",
-			"Session":    merged,
-			"AgentLinks": buildAgentLinks(id, refs),
-			"SelfURL":    "/sessions/" + id,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	matches := sessionDetailsByID(loaded.dm.Sessions, id)
+	if len(matches) == 0 {
+		s.handleNotFound(w, r)
+		return
+	}
+	merged, refs := monitor.MergeSessionDetails(matches)
+	s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
+		"Title":      "Session " + id,
+		"Active":     "sessions",
+		"Session":    merged,
+		"AgentLinks": buildAgentLinks(id, refs),
+		"SelfURL":    "/sessions/" + id,
 	})
 }
 
@@ -209,58 +207,70 @@ func (s *Server) handleSessionAgentDetail(w http.ResponseWriter, r *http.Request
 		s.handleError(w, r, fmt.Errorf("serve decode agent %q: %w", rawAgent, err), http.StatusBadRequest)
 		return
 	}
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		target, others, ok := sessionDetailByIDAndAgent(loaded.dm.Sessions, id, agent)
-		if !ok {
-			s.handleNotFound(w, r)
-			return
-		}
-		s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
-			"Title":      "Session " + id + " / " + agent,
-			"Active":     "sessions",
-			"Session":    target,
-			"AgentLinks": buildAgentLinks(id, others),
-			"SelfURL":    "/sessions/" + id + "/" + url.PathEscape(agent),
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	target, others, ok := sessionDetailByIDAndAgent(loaded.dm.Sessions, id, agent)
+	if !ok {
+		s.handleNotFound(w, r)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, sessionDetailTmpl, map[string]any{
+		"Title":      "Session " + id + " / " + agent,
+		"Active":     "sessions",
+		"Session":    target,
+		"AgentLinks": buildAgentLinks(id, others),
+		"SelfURL":    "/sessions/" + id + "/" + url.PathEscape(agent),
 	})
 }
 
 // handleAgents renders the agents list page.
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		s.renderPage(w, r, http.StatusOK, agentsTmpl, map[string]any{
-			"Title":  "Agents",
-			"Active": "agents",
-			"Agents": loaded.dm.Agents,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, agentsTmpl, map[string]any{
+		"Title":  "Agents",
+		"Active": "agents",
+		"Agents": loaded.dm.Agents,
 	})
 }
 
 // handleAgentDetail serves the agent detail page; 404 if the name is unknown.
 func (s *Server) handleAgentDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		agent, ok := agentDetailByName(loaded.dm.Agents, name)
-		if !ok {
-			s.handleNotFound(w, r)
-			return
-		}
-		s.renderPage(w, r, http.StatusOK, agentDetailTmpl, map[string]any{
-			"Title":  "Agent " + name,
-			"Active": "agents",
-			"Agent":  agent,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	agent, ok := agentDetailByName(loaded.dm.Agents, name)
+	if !ok {
+		s.handleNotFound(w, r)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, agentDetailTmpl, map[string]any{
+		"Title":  "Agent " + name,
+		"Active": "agents",
+		"Agent":  agent,
 	})
 }
 
 // handleTools renders the tools list page.
 func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		s.renderPage(w, r, http.StatusOK, toolsTmpl, map[string]any{
-			"Title":  "Tools",
-			"Active": "tools",
-			"Tools":  loaded.dm.Tools,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, toolsTmpl, map[string]any{
+		"Title":  "Tools",
+		"Active": "tools",
+		"Tools":  loaded.dm.Tools,
 	})
 }
 
@@ -284,34 +294,40 @@ func buildToolDetailVM(td monitor.ToolDetail, now time.Time) toolDetailVM {
 // handleToolDetail serves the tool detail page; 404 if the name is unknown.
 func (s *Server) handleToolDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		tool, ok := toolDetailByName(loaded.dm.Tools, name)
-		if !ok {
-			s.handleNotFound(w, r)
-			return
-		}
-		toolDetailJSON, err := marshalForTemplate(buildToolDetailVM(tool, s.now()))
-		if err != nil {
-			s.handleError(w, r, err, http.StatusInternalServerError)
-			return
-		}
-		s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
-			"Title":          "Tool " + tool.Name,
-			"Active":         "tools",
-			"Tool":           tool,
-			"ToolDetailJSON": toolDetailJSON,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	tool, ok := toolDetailByName(loaded.dm.Tools, name)
+	if !ok {
+		s.handleNotFound(w, r)
+		return
+	}
+	toolDetailJSON, err := marshalForTemplate(buildToolDetailVM(tool, s.now()))
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, toolDetailTmpl, map[string]any{
+		"Title":          "Tool " + tool.Name,
+		"Active":         "tools",
+		"Tool":           tool,
+		"ToolDetailJSON": toolDetailJSON,
 	})
 }
 
 // handleSkills renders the skills list page.
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
-	s.withMetrics(w, r, func(loaded loadedMetrics) {
-		s.renderPage(w, r, http.StatusOK, skillsTmpl, map[string]any{
-			"Title":  "Skills",
-			"Active": "skills",
-			"Skills": loaded.dm.Skills,
-		})
+	loaded, err := s.loadMetrics(r.Context())
+	if err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, r, http.StatusOK, skillsTmpl, map[string]any{
+		"Title":  "Skills",
+		"Active": "skills",
+		"Skills": loaded.dm.Skills,
 	})
 }
 
