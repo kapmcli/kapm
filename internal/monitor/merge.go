@@ -376,7 +376,7 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		}
 		hookBySession[h.Session] = append(hookBySession[h.Session], h)
 	}
-	unknownUsed := make([]bool, len(unknownHooks))
+	idx := buildHookIndex(unknownHooks)
 
 	var out []MergedRecord
 	for _, s := range sessions {
@@ -385,8 +385,8 @@ func MergeSessions(sessions []ParsedSession, hookLogs []HookRecord) []MergedReco
 		updatedAt := time.Time(meta.UpdatedAt)
 
 		sessionHooks := hookBySession[meta.SessionID]
-		if len(unknownHooks) > 0 {
-			sessionHooks = append(sessionHooks, matchUnknownHooks(s, unknownHooks, unknownUsed)...)
+		if len(idx) > 0 {
+			sessionHooks = append(sessionHooks, matchUnknownHooks(s, idx)...)
 		}
 		preHooks, postHooks, spawnHooks, stopHooks := groupHooksByEvent(sessionHooks)
 		currentAgent := resolveInitialAgent(meta, sessionHooks)
@@ -439,7 +439,40 @@ func isUnknownHookSession(sessionID string) bool {
 	return sessionID == "unknown" || strings.HasPrefix(sessionID, "unknown-")
 }
 
-func matchUnknownHooks(session ParsedSession, unknownHooks []HookRecord, used []bool) []HookRecord {
+type hookKey struct {
+	event    string
+	toolName string // canonical
+}
+
+type hookBucket struct {
+	hooks []HookRecord // sorted by Ts
+	used  []bool
+}
+
+type hookIndex map[hookKey]*hookBucket
+
+func buildHookIndex(unknownHooks []HookRecord) hookIndex {
+	if len(unknownHooks) == 0 {
+		return nil
+	}
+	idx := make(hookIndex)
+	for _, h := range unknownHooks {
+		k := hookKey{event: h.Event, toolName: CanonicalToolNameForAggregation(h.Tool)}
+		b := idx[k]
+		if b == nil {
+			b = &hookBucket{}
+			idx[k] = b
+		}
+		b.hooks = append(b.hooks, h)
+	}
+	for _, b := range idx {
+		slices.SortFunc(b.hooks, func(x, y HookRecord) int { return x.Ts.Compare(y.Ts) })
+		b.used = make([]bool, len(b.hooks))
+	}
+	return idx
+}
+
+func matchUnknownHooks(session ParsedSession, idx hookIndex) []HookRecord {
 	toolNames := sessionToolNames(session.Messages, session.Meta.SessionID)
 	if len(toolNames) == 0 {
 		return nil
@@ -455,22 +488,32 @@ func matchUnknownHooks(session ParsedSession, unknownHooks []HookRecord, used []
 	var matched []HookRecord
 	searchAfter := start
 	for _, toolName := range toolNames {
-		preIdx := findUnknownHook(unknownHooks, used, apmconfig.EventPreToolUse, toolName, searchAfter, end)
-		if preIdx < 0 {
+		preHook, ok := findUnknownHook(idx, apmconfig.EventPreToolUse, toolName, searchAfter, end)
+		if !ok {
 			continue
 		}
-		used[preIdx] = true
-		preHook := unknownHooks[preIdx]
 		matched = append(matched, preHook)
-
-		postIdx := findUnknownHook(unknownHooks, used, apmconfig.EventPostToolUse, toolName, preHook.Ts, end)
-		if postIdx >= 0 {
-			used[postIdx] = true
-			matched = append(matched, unknownHooks[postIdx])
+		if postHook, ok := findUnknownHook(idx, apmconfig.EventPostToolUse, toolName, preHook.Ts, end); ok {
+			matched = append(matched, postHook)
 		}
 		searchAfter = preHook.Ts
 	}
 	return matched
+}
+
+func findUnknownHook(idx hookIndex, event, toolName string, start, end time.Time) (HookRecord, bool) {
+	b := idx[hookKey{event: event, toolName: CanonicalToolNameForAggregation(toolName)}]
+	if b == nil {
+		return HookRecord{}, false
+	}
+	for i, h := range b.hooks {
+		if b.used[i] || h.Ts.Before(start) || h.Ts.After(end) {
+			continue
+		}
+		b.used[i] = true
+		return h, true
+	}
+	return HookRecord{}, false
 }
 
 func sessionToolNames(messages []SessionMessage, sessionID string) []string {
@@ -494,29 +537,6 @@ func sessionToolNames(messages []SessionMessage, sessionID string) []string {
 		}
 	}
 	return names
-}
-
-func findUnknownHook(
-	hooks []HookRecord,
-	used []bool,
-	event string,
-	toolName string,
-	start time.Time,
-	end time.Time,
-) int {
-	bestIdx := -1
-	for i, hook := range hooks {
-		if used[i] || hook.Event != event || !sameToolAggregationFamily(hook.Tool, toolName) {
-			continue
-		}
-		if hook.Ts.Before(start) || hook.Ts.After(end) {
-			continue
-		}
-		if bestIdx < 0 || hook.Ts.Before(hooks[bestIdx].Ts) {
-			bestIdx = i
-		}
-	}
-	return bestIdx
 }
 
 func hookToolNameForMergedRecord(sessionToolName string, hook HookRecord) string {
