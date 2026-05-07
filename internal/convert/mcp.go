@@ -56,12 +56,6 @@ type mcpServerEntry struct {
 type MCPConfig = mcpConfig
 type MCPServerEntry = mcpServerEntry
 
-// ConvertMCP merges MCP dependencies from `apm.yml` into `.kiro/settings/mcp.json`.
-func ConvertMCP(srcDir, dstDir string, force bool) error {
-	_, err := ConvertMCPWithReport(srcDir, dstDir, force)
-	return err
-}
-
 // ConvertMCPWithReport converts MCP dependencies and reports converted or skipped servers.
 func ConvertMCPWithReport(srcDir, dstDir string, force bool) (Report, error) {
 	manifestPath := filepath.Join(filepath.Dir(srcDir), paths.APMManifest)

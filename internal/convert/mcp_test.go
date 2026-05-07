@@ -25,7 +25,7 @@ func TestConvertMCPNoMCPDeps(t *testing.T) {
 	t.Parallel()
 
 	dst := t.TempDir()
-	if err := convert.ConvertMCP(filepath.Join(repoTestdataRoot(), "convert", "mcp", "no-mcp-deps", "input"), dst, false); err != nil {
+	if _, err := convert.ConvertMCPWithReport(filepath.Join(repoTestdataRoot(), "convert", "mcp", "no-mcp-deps", "input"), dst, false); err != nil {
 		t.Fatalf("ConvertMCP() error = %v", err)
 	}
 
@@ -41,7 +41,7 @@ func TestConvertMCPMissingCommandAndURL(t *testing.T) {
 		t.Fatalf("MkdirAll(): %v", err)
 	}
 
-	err := convert.ConvertMCP(filepath.Join(root, ".apm"), t.TempDir(), false)
+	_, err := convert.ConvertMCPWithReport(filepath.Join(root, ".apm"), t.TempDir(), false)
 	if err == nil {
 		t.Fatal("ConvertMCP() error = nil, want validation error")
 	}
@@ -60,7 +60,7 @@ func TestConvertMCPRejectsLargeManifest(t *testing.T) {
 		t.Fatalf("MkdirAll(): %v", err)
 	}
 
-	err := convert.ConvertMCP(filepath.Join(root, ".apm"), t.TempDir(), false)
+	_, err := convert.ConvertMCPWithReport(filepath.Join(root, ".apm"), t.TempDir(), false)
 	if err == nil {
 		t.Fatal("ConvertMCP() error = nil, want error for oversized manifest")
 	}
@@ -84,7 +84,7 @@ func TestConvertMCPMergeSkipsExisting(t *testing.T) {
 		},
 	})
 
-	if err := convert.ConvertMCP(src, dst, false); err != nil {
+	if _, err := convert.ConvertMCPWithReport(src, dst, false); err != nil {
 		t.Fatalf("ConvertMCP() error = %v", err)
 	}
 
@@ -120,7 +120,7 @@ func TestConvertMCPMergeForce(t *testing.T) {
 		},
 	})
 
-	if err := convert.ConvertMCP(src, dst, true); err != nil {
+	if _, err := convert.ConvertMCPWithReport(src, dst, true); err != nil {
 		t.Fatalf("ConvertMCP() error = %v", err)
 	}
 
@@ -148,7 +148,7 @@ func runConverterMCPTest(t *testing.T, srcFixture, expectedFixture string) {
 	t.Helper()
 
 	dst := t.TempDir()
-	if err := convert.ConvertMCP(srcFixture, dst, false); err != nil {
+	if _, err := convert.ConvertMCPWithReport(srcFixture, dst, false); err != nil {
 		t.Fatalf("ConvertMCP() error = %v", err)
 	}
 	testutil.AssertDirEqual(t, dst, expectedFixture)

@@ -11,15 +11,6 @@ import (
 	"github.com/kapmcli/kapm/internal/paths"
 )
 
-// ConvertSkills copies APM skills into `.kiro/skills`.
-func ConvertSkills(srcDir, dstDir string, force bool) error {
-	_, err := ConvertSkillsWithReport(srcDir, dstDir, force)
-	if err != nil {
-		return fmt.Errorf("convert skills: %w", err)
-	}
-	return nil
-}
-
 // ConvertSkillsWithReport copies skills and reports converted or skipped directories.
 func ConvertSkillsWithReport(srcDir, dstDir string, force bool) (Report, error) {
 	skillsDir := filepath.Join(srcDir, paths.SkillsSubdir)

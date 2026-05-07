@@ -11,7 +11,7 @@ import (
 
 func TestConvertInstructions(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "instructions", "input"), filepath.Join(repoTestdataRoot(), "convert", "instructions", "expected"), convert.ConvertInstructions)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "instructions", "input"), filepath.Join(repoTestdataRoot(), "convert", "instructions", "expected"), convert.ConvertInstructionsWithReport)
 }
 
 func TestConvertInstructionsSkipExisting(t *testing.T) {
@@ -28,7 +28,7 @@ func TestConvertInstructionsSkipExisting(t *testing.T) {
 		t.Fatalf("WriteFile(): %v", err)
 	}
 
-	if err := convert.ConvertInstructions(src, dst, false); err != nil {
+	if _, err := convert.ConvertInstructionsWithReport(src, dst, false); err != nil {
 		t.Fatalf("ConvertInstructions() error = %v", err)
 	}
 
@@ -54,7 +54,7 @@ func TestConvertInstructionsForce(t *testing.T) {
 		t.Fatalf("WriteFile(): %v", err)
 	}
 
-	if err := convert.ConvertInstructions(src, dst, true); err != nil {
+	if _, err := convert.ConvertInstructionsWithReport(src, dst, true); err != nil {
 		t.Fatalf("ConvertInstructions() error = %v", err)
 	}
 
@@ -63,12 +63,12 @@ func TestConvertInstructionsForce(t *testing.T) {
 
 func TestConvertPrompts(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "prompts", "input"), filepath.Join(repoTestdataRoot(), "convert", "prompts", "expected"), convert.ConvertPrompts)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "prompts", "input"), filepath.Join(repoTestdataRoot(), "convert", "prompts", "expected"), convert.ConvertPromptsWithReport)
 }
 
 func TestConvertCommands(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "commands", "input"), filepath.Join(repoTestdataRoot(), "convert", "commands", "expected"), convert.ConvertCommands)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "commands", "input"), filepath.Join(repoTestdataRoot(), "convert", "commands", "expected"), convert.ConvertCommandsWithReport)
 }
 
 func TestConvertCommandsNoDir(t *testing.T) {
@@ -76,7 +76,7 @@ func TestConvertCommandsNoDir(t *testing.T) {
 
 	src := t.TempDir()
 	dst := t.TempDir()
-	if err := convert.ConvertCommands(src, dst, false); err != nil {
+	if _, err := convert.ConvertCommandsWithReport(src, dst, false); err != nil {
 		t.Fatalf("ConvertCommands() error = %v", err)
 	}
 }
@@ -137,22 +137,22 @@ func TestMarkdownConvertersWithReport(t *testing.T) {
 
 func TestConvertSkills(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "skills", "input"), filepath.Join(repoTestdataRoot(), "convert", "skills", "expected"), convert.ConvertSkills)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "skills", "input"), filepath.Join(repoTestdataRoot(), "convert", "skills", "expected"), convert.ConvertSkillsWithReport)
 }
 
 func TestConvertAgentsDescriptionOnly(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-description-only", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-description-only", "expected"), convert.ConvertAgents)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-description-only", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-description-only", "expected"), convert.ConvertAgentsWithReport)
 }
 
 func TestConvertAgentsWithModel(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-with-model", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-with-model", "expected"), convert.ConvertAgents)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-with-model", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-with-model", "expected"), convert.ConvertAgentsWithReport)
 }
 
 func TestConvertAgentsChatmode(t *testing.T) {
 	t.Parallel()
-	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-chatmode", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-chatmode", "expected"), convert.ConvertAgents)
+	runConverterGoldenTest(t, filepath.Join(repoTestdataRoot(), "convert", "agents-chatmode", "input"), filepath.Join(repoTestdataRoot(), "convert", "agents-chatmode", "expected"), convert.ConvertAgentsWithReport)
 }
 
 func TestConvertAgentsRejectsInvalidName(t *testing.T) {
@@ -160,17 +160,17 @@ func TestConvertAgentsRejectsInvalidName(t *testing.T) {
 
 	src := filepath.Join(repoTestdataRoot(), "convert", "agents-invalid-name", "input")
 	dst := t.TempDir()
-	err := convert.ConvertAgents(src, dst, false)
+	_, err := convert.ConvertAgentsWithReport(src, dst, false)
 	if err == nil {
 		t.Fatal("ConvertAgents() error = nil, want invalid name error")
 	}
 }
 
-func runConverterGoldenTest(t *testing.T, srcFixture, expectedFixture string, run func(string, string, bool) error) {
+func runConverterGoldenTest(t *testing.T, srcFixture, expectedFixture string, run func(string, string, bool) (convert.Report, error)) {
 	t.Helper()
 
 	dst := t.TempDir()
-	if err := run(srcFixture, dst, false); err != nil {
+	if _, err := run(srcFixture, dst, false); err != nil {
 		t.Fatalf("converter error = %v", err)
 	}
 	testutil.AssertDirEqual(t, dst, expectedFixture)
