@@ -105,6 +105,11 @@ func (s *Server) currentKiroUsage(now time.Time) (*kirocliusage.Usage, bool) {
 	return usage, checked
 }
 
+// refreshKiroUsageAsync triggers a background refresh via singleflight.DoChan.
+// The returned channel is intentionally ignored (fire-and-forget): the internal
+// goroutine completes regardless of whether the channel is received from, and
+// per-key deduplication still applies. Using DoChan (rather than go func()) is
+// deliberate — a plain goroutine would lose the singleflight dedup benefit.
 func (s *Server) refreshKiroUsageAsync(now time.Time) {
 	if s.kiroUsageRead == nil {
 		return
