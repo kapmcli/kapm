@@ -3,6 +3,7 @@ package fileutil
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -286,4 +287,19 @@ func WarnIfKapmSymlink(logsDir string) {
 	if isLink {
 		slog.Warn(".kapm directory is a symlink; proceed with caution", "path", kapmDir)
 	}
+}
+
+// ReadFileNoFollow opens path via OpenNoFollow, reads all contents, and closes.
+// On Unix uses O_NOFOLLOW atomically; on Windows uses Lstat-before-open.
+func ReadFileNoFollow(path string) ([]byte, error) {
+	f, err := OpenNoFollow(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			slog.Warn("ReadFileNoFollow close", "path", path, slog.Any("err", cerr))
+		}
+	}()
+	return io.ReadAll(f)
 }

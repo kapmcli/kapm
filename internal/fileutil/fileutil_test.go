@@ -1,6 +1,7 @@
 package fileutil_test
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -337,5 +338,70 @@ func TestWriteFileAtomic_ChmodErrorPropagates(t *testing.T) {
 		if strings.Contains(e.Name(), ".tmp-") {
 			t.Errorf("temp file not cleaned up: %s", e.Name())
 		}
+	}
+}
+
+func TestOpenNoFollow_RegularFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := fileutil.OpenNoFollow(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer f.Close()
+	got, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestOpenNoFollow_Symlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "link")
+	if err := os.WriteFile(target, []byte("ok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("os.Symlink not available: %v", err)
+	}
+	if _, err := fileutil.OpenNoFollow(link); err == nil {
+		t.Fatal("expected error for symlink, got nil")
+	}
+}
+
+func TestReadFileNoFollow_RegularFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := fileutil.ReadFileNoFollow(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestReadFileNoFollow_Symlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "link")
+	if err := os.WriteFile(target, []byte("ok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("os.Symlink not available: %v", err)
+	}
+	if _, err := fileutil.ReadFileNoFollow(link); err == nil {
+		t.Fatal("expected error for symlink, got nil")
 	}
 }

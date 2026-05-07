@@ -13,7 +13,7 @@ import (
 )
 
 func copyFile(src, dst string, mode os.FileMode) (err error) {
-	in, err := openNoFollow(src)
+	in, err := fileutil.OpenNoFollow(src)
 	if err != nil {
 		return fmt.Errorf("convert open %q: %w", src, err)
 	}

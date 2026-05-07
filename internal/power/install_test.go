@@ -108,8 +108,8 @@ func TestReadPower_SymlinkRejected(t *testing.T) {
 	}
 
 	_, err := readPower(root)
-	if err == nil || !strings.Contains(err.Error(), "refusing to read symlink") {
-		t.Fatalf("readPower() error = %v, want refusing to read symlink", err)
+	if err == nil || (!strings.Contains(err.Error(), "refusing to read symlink") && !strings.Contains(err.Error(), "too many levels of symbolic links")) {
+		t.Fatalf("readPower() error = %v, want symlink rejection", err)
 	}
 }
 
@@ -127,8 +127,8 @@ func TestParseSourceMCP_SymlinkRejected(t *testing.T) {
 	}
 
 	_, _, err := parseSourceMCP(root)
-	if err == nil || !strings.Contains(err.Error(), "refusing to read symlink") {
-		t.Fatalf("parseSourceMCP() error = %v, want refusing to read symlink", err)
+	if err == nil || (!strings.Contains(err.Error(), "refusing to read symlink") && !strings.Contains(err.Error(), "too many levels of symbolic links")) {
+		t.Fatalf("parseSourceMCP() error = %v, want symlink rejection", err)
 	}
 }
 
