@@ -76,17 +76,6 @@ func parseSessionMetaFile(path string) (SessionMeta, error) {
 }
 
 func parseSessionJSONLFile(path string) ([]SessionMessage, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > sessionJSONLMaxBytes {
-		slog.Warn("session jsonl too large; skipping",
-			"path", path,
-			"size_bytes", info.Size(),
-			"max_bytes", sessionJSONLMaxBytes)
-		return nil, nil
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -264,6 +253,16 @@ func loadSessionEntry(ctx context.Context, sessionsDir string, since time.Time, 
 		return sessionLoadResult{}, fmt.Errorf("stat %q: %w", jsonlPath, err)
 	}
 	jmtime, jsize := jsonlInfo.ModTime(), jsonlInfo.Size()
+
+	if jsize > sessionJSONLMaxBytes {
+		slog.Warn("session jsonl too large; skipping",
+			"path", jsonlPath,
+			"size_bytes", jsize,
+			"max_bytes", sessionJSONLMaxBytes)
+		result.session = ParsedSession{Meta: meta}
+		result.hasSession = true
+		return result, nil
+	}
 
 	var msgs []SessionMessage
 	if prev, ok := oldData[jsonlPath]; ok && prev.mtime.Equal(jmtime) && prev.size == jsize {
