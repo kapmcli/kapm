@@ -26,7 +26,7 @@ func ParseDuration(s string) (time.Duration, error) {
 	case 'd':
 		return time.Duration(n) * 24 * time.Hour, nil
 	case 'w':
-		return time.Duration(n) * 168 * time.Hour, nil
+		return time.Duration(n) * 7 * 24 * time.Hour, nil
 	default:
 		return 0, fmt.Errorf("invalid duration %q", s)
 	}
