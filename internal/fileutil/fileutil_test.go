@@ -351,7 +351,7 @@ func TestOpenNoFollow_RegularFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	got, err := io.ReadAll(f)
 	if err != nil {
 		t.Fatal(err)

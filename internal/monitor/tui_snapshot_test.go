@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,9 +60,12 @@ func assertGolden(t *testing.T, name, got string) {
 	if err != nil {
 		t.Fatalf("golden %s: %v (run with -update to create)", path, err)
 	}
-	if string(want) != got {
+	// Normalize CRLF → LF so golden files work on Windows where git may
+	// check out files with \r\n line endings.
+	wantStr := strings.ReplaceAll(string(want), "\r\n", "\n")
+	if wantStr != got {
 		t.Errorf("%s snapshot mismatch; rerun with -update to refresh\n--- want ---\n%s\n--- got ---\n%s",
-			name, string(want), got)
+			name, wantStr, got)
 	}
 }
 
