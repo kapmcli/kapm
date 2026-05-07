@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +35,7 @@ type record struct {
 }
 
 // Handle appends one minimal JSONL record to .kapm/logs/ide/events.jsonl.
-func Handle(opts Options) error {
+func Handle(opts Options) (err error) {
 	if opts.Root == "" {
 		opts.Root = "."
 	}
@@ -59,7 +60,10 @@ func Handle(opts Options) error {
 		}
 	}
 
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		slog.Warn("ide-hook-handler: get cwd", "err", err)
+	}
 	rec := record{
 		Ts:    opts.Now().UTC().Format(time.RFC3339Nano),
 		Event: opts.Event,
@@ -90,7 +94,11 @@ func Handle(opts Options) error {
 	if err != nil {
 		return fmt.Errorf("open %q: %w", logPath, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close %q: %w", logPath, closeErr)
+		}
+	}()
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("write %q: %w", logPath, err)
 	}
