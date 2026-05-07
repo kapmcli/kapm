@@ -27,7 +27,12 @@ func LoadSessionsSQLite(ctx context.Context, dbPath string, since time.Time, cwd
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
-	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			slog.Warn("v1 sqlite close", slog.Any("err", cerr))
+		}
+	}()
 
 	const query = `
 SELECT key, conversation_id, value, created_at, updated_at
