@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -108,8 +109,15 @@ func renderDiffString(diffStr string) template.HTML {
 			continue
 		}
 		if m := hunkHeaderRE.FindStringSubmatch(line); m != nil {
-			oldLn, _ = strconv.Atoi(m[1])
-			newLn, _ = strconv.Atoi(m[2])
+			var err error
+			if oldLn, err = strconv.Atoi(m[1]); err != nil {
+				slog.Warn("diff hunk old-line parse failed", "value", m[1], slog.Any("err", err))
+				oldLn = 0
+			}
+			if newLn, err = strconv.Atoi(m[2]); err != nil {
+				slog.Warn("diff hunk new-line parse failed", "value", m[2], slog.Any("err", err))
+				newLn = 0
+			}
 			b.WriteString(`<div class="diff-hunk">`)
 			b.WriteString(html.EscapeString(line))
 			b.WriteString(`</div>`)

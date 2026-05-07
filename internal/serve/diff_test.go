@@ -8,6 +8,20 @@ import (
 	"github.com/kapmcli/kapm/internal/monitor"
 )
 
+func TestRenderDiffStringMalformedHunk(t *testing.T) {
+	t.Parallel()
+	// Oversized line number exceeds int range — strconv.Atoi must fail gracefully.
+	malformed := "@@ -99999999999999999999,1 +1,1 @@\n-old\n+new\n"
+	out := string(renderDiffString(malformed))
+	if !strings.Contains(out, "99999999999999999999") {
+		t.Errorf("want hunk header in output, got: %s", out)
+	}
+	// oldLn falls back to 0; context/del lines should show "0" in ln-old column.
+	if !regexp.MustCompile(`<span class="ln ln-old">0</span>`).MatchString(out) {
+		t.Errorf("want ln-old=0 after parse failure, got: %s", out)
+	}
+}
+
 func TestRenderDiff_EscapesHTML(t *testing.T) {
 	t.Parallel()
 	fc := monitor.FileChange{
