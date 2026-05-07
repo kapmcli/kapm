@@ -64,6 +64,7 @@ func (m *model) renderSummaryBox(width int) string {
 
 	interior := interiorOf(width)
 	logsDir := abbrevHome(m.homeDir, m.hookLogsDir)
+	logsDir = filepath.ToSlash(logsDir)
 	// Reserve 12 chars for "logs dir:  " prefix.
 	if n := interior - len("logs dir: "); n > 0 && len(logsDir) > n {
 		logsDir = truncateLeft(logsDir, n)
