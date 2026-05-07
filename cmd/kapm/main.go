@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/agent"
@@ -305,7 +307,10 @@ func runPowerInstall(args []string) error {
 		return err
 	}
 
-	result, err := powerInstallRun(context.Background(), installOpts)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	result, err := powerInstallRun(ctx, installOpts)
 	if err != nil {
 		return err
 	}
