@@ -214,7 +214,7 @@ func TestBuildSSEFramesUsesKiroUsageInsteadOfAggregateCreditsCard(t *testing.T) 
 	}
 }
 
-func TestBuildSSEFramesCapsSummarySessions(t *testing.T) {
+func TestBuildSSEFramesSummaryUsesFullSessions(t *testing.T) {
 	t.Parallel()
 	sessions := make([]monitor.SessionMetric, dashboardSessionLimit+1)
 	for i := range sessions {
@@ -226,8 +226,8 @@ func TestBuildSSEFramesCapsSummarySessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildSSEFrames() error = %v", err)
 	}
-	if body := string(summaryHTML); !strings.Contains(body, `<div class="card-title">Sessions</div><div class="card-value">50</div>`) {
-		t.Fatalf("summary Sessions card not capped to 50: %s", body)
+	if body := string(summaryHTML); !strings.Contains(body, `<div class="card-title">Sessions</div><div class="card-value">51</div>`) {
+		t.Fatalf("summary Sessions card should show full count (51): %s", body)
 	}
 }
 

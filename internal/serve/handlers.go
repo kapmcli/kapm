@@ -116,10 +116,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	capped, _ := paginateByID(loaded.sessions, 1, dashboardSessionLimit)
-	overview := loaded.dm.Overview
-	overview.Sessions = capped
+	tableOverview := loaded.dm.Overview
+	tableOverview.Sessions = capped
 	usage, usageChecked := s.currentKiroUsage(s.now())
-	overviewJSON, err := marshalForTemplate(overview)
+	overviewJSON, err := marshalForTemplate(tableOverview)
 	if err != nil {
 		s.handleError(w, r, err, http.StatusInternalServerError)
 		return
@@ -127,8 +127,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.renderPage(w, r, http.StatusOK, overviewTmpl, map[string]any{
 		"Title":        "Overview",
 		"Active":       "overview",
-		"Overview":     overview,
-		"Summary":      newOverviewSummary(overview, usage, s.kiroUsageRead != nil, usageChecked),
+		"Overview":     tableOverview,
+		"Summary":      newOverviewSummary(loaded.dm.Overview, usage, s.kiroUsageRead != nil, usageChecked),
 		"Skills":       loaded.dm.Skills,
 		"OverviewJSON": overviewJSON,
 	})

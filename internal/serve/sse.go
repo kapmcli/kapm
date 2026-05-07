@@ -65,12 +65,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 // buildSSEFrames computes SSE payload bytes from loaded metrics.
 func buildSSEFrames(lm loadedMetrics, usage *kirocliusage.Usage, usageEnabled, usageChecked bool) (summaryHTML, overviewJSON []byte, err error) {
 	var htmlBuf bytes.Buffer
-	summaryOverview := lm.dm.Overview
-	if lm.sessions != nil {
-		capped, _ := paginateByID(lm.sessions, 1, dashboardSessionLimit)
-		summaryOverview.Sessions = capped
-	}
-	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", newOverviewSummary(summaryOverview, usage, usageEnabled, usageChecked)); err != nil {
+	if err := overviewTmpl.ExecuteTemplate(&htmlBuf, "summary-cards", newOverviewSummary(lm.dm.Overview, usage, usageEnabled, usageChecked)); err != nil {
 		return nil, nil, fmt.Errorf("serve sse render summary: %w", err)
 	}
 	summaryHTML = bytes.ReplaceAll(htmlBuf.Bytes(), []byte("\n"), []byte(" "))
