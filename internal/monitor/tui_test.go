@@ -911,9 +911,8 @@ func TestTUISessionsListGroupingIndent(t *testing.T) {
 	m.tab = tabSessions
 	out := m.renderSessionsList()
 
-	lines := strings.Split(out, "\n")
 	var orchLine, leadLine string
-	for _, l := range lines {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(l, "orchestrator") {
 			orchLine = l
 		}
@@ -981,9 +980,8 @@ func TestTUIRecentSessionsBoxGroupingIndent(t *testing.T) {
 	m.metrics = base
 	out := m.renderRecentSessionsBox(m.contentWidth())
 
-	lines := strings.Split(out, "\n")
 	var orchLine, leadLine string
-	for _, l := range lines {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(l, "orchestrator") {
 			orchLine = l
 		}
@@ -1418,8 +1416,7 @@ func TestTUIRenderSessionChanges_OversizedFallback(t *testing.T) {
 		t.Errorf("expected '(oversized — diff unavailable)', got:\n%s", out)
 	}
 	// Must NOT show +/- badge on edit line.
-	lines := strings.Split(out, "\n")
-	for _, l := range lines {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(l, "• [create]") && (strings.Contains(l, "+0") || strings.Contains(l, "-0")) {
 			t.Errorf("oversized edit line should not have +/- badge: %q", l)
 		}
