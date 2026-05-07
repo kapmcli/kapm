@@ -98,17 +98,15 @@ func mergeSessionTimestamps(src []SessionDetail) (start, end, lastActivity time.
 
 // mergeSessionTitleCwd picks Title and Cwd from the detail with the latest LastActivity.
 func mergeSessionTitleCwd(src []SessionDetail) (title, cwd string) {
-	byActivity := slices.Clone(src)
-	slices.SortStableFunc(byActivity, func(a, b SessionDetail) int { return b.LastActivity.Compare(a.LastActivity) })
-	for _, sd := range byActivity {
-		if title == "" && sd.Title != "" {
+	var titleLatest, cwdLatest time.Time
+	for _, sd := range src {
+		if sd.Title != "" && sd.LastActivity.After(titleLatest) {
+			titleLatest = sd.LastActivity
 			title = sd.Title
 		}
-		if cwd == "" && sd.Cwd != "" {
+		if sd.Cwd != "" && sd.LastActivity.After(cwdLatest) {
+			cwdLatest = sd.LastActivity
 			cwd = sd.Cwd
-		}
-		if title != "" && cwd != "" {
-			break
 		}
 	}
 	return
