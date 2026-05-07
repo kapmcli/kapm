@@ -1,5 +1,11 @@
 package monitor
 
+// Types in this file prefixed v1 deserialize rows from the legacy kiro-cli
+// SQLite conversations_v2 schema. They are unexported and used only by
+// v1_convert.go (conversion to kapm's canonical session shape) and
+// session_store_sqlite.go (raw scan). See the 2026-04-30-v1-sqlite-store
+// plan for the migration background.
+
 import (
 	"encoding/json"
 	"fmt"
