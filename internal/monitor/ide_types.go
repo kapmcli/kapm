@@ -20,6 +20,17 @@ const (
 	ToolNameShell = "shell"
 )
 
+// Session-identifier naming across IDE and Kiro schemas
+//
+// The "session identifier" concept appears under three distinct JSON field names
+// because the IDE format is an external schema not under kapm's control:
+//
+//   - [IDESessionEntry].SessionID     → JSON "sessionId"      (external IDE schema)
+//   - [IDEExecutionLog].ChatSessionID → JSON "chatSessionId"  (external IDE schema)
+//   - SessionMeta.SessionID           → JSON "session_id"     (internal Kiro schema, defined in types.go)
+//
+// The conversion boundary is in ide_sessions.go and v1_convert.go.
+
 // IDESessionEntry is one entry in workspace-sessions/{base64}/sessions.json.
 type IDESessionEntry struct {
 	SessionID          string `json:"sessionId"`
