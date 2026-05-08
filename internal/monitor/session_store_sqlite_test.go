@@ -178,6 +178,30 @@ func TestLoadSessionsSQLite_TempDir(t *testing.T) {
 	}
 }
 
+func TestLoadSessionsSQLite_MissingTable(t *testing.T) {
+	// DB file exists but has no conversations_v2 table — should return empty, no error.
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "other.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	// Create a different table so the DB file is valid but lacks conversations_v2.
+	_, err = db.Exec(`CREATE TABLE other_table (id INTEGER PRIMARY KEY)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	_ = db.Close()
+
+	sessions, err := LoadSessionsSQLite(context.Background(), dbPath, time.Time{}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("want 0 sessions, got %d", len(sessions))
+	}
+}
+
 func TestLoadSessionsSQLite_SkipBadRow(t *testing.T) {
 	dbPath, db := createTestSQLiteDB(t)
 	defer func() { _ = db.Close() }()

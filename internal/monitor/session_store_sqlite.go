@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -44,6 +45,10 @@ ORDER BY updated_at DESC`
 	sinceMS := since.UnixMilli()
 	rows, err := db.QueryContext(ctx, query, sinceMS, cwdFilter, cwdFilter, cwdFilter)
 	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			slog.Debug("v1 sqlite: conversations_v2 table not found, skipping")
+			return []ParsedSession{}, nil
+		}
 		return nil, fmt.Errorf("query conversations_v2: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
