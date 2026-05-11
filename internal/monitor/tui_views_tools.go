@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,50 +54,34 @@ func (m *model) renderToolsList() string {
 		maxCall = tools[0].CallCount
 	}
 
-	var cols []Column
+	cols := []Column{
+		{Header: "Name", Width: nameW},
+		{Header: "Calls", Width: colWidthCalls, Right: true},
+		{Header: "Errors", Width: colWidthErrors, Right: true},
+		{Header: "Err%", Width: colWidthErrPct, Right: true},
+		{Header: "Avg dur", Width: colWidthAvgDur, Right: true},
+	}
 	if showBar {
-		cols = []Column{
-			{Header: "Name", Width: nameW},
-			{Header: "Calls", Width: colWidthCalls, Right: true},
-			{Header: "Bar", Width: barW},
-			{Header: "Errors", Width: colWidthErrors, Right: true},
-			{Header: "Err%", Width: colWidthErrPct, Right: true},
-			{Header: "Avg dur", Width: colWidthAvgDur, Right: true},
-		}
-	} else {
-		cols = []Column{
-			{Header: "Name", Width: nameW},
-			{Header: "Calls", Width: colWidthCalls, Right: true},
-			{Header: "Errors", Width: colWidthErrors, Right: true},
-			{Header: "Err%", Width: colWidthErrPct, Right: true},
-			{Header: "Avg dur", Width: colWidthAvgDur, Right: true},
-		}
+		cols = slices.Insert(cols, 2, Column{Header: "Bar", Width: barW})
 	}
 
 	rows := make([][]string, len(tools))
 	for i, t := range tools {
+		row := []string{
+			fmt.Sprintf("%-*s", nameW, truncate(t.Name, nameW)),
+			fmt.Sprintf("%7d", t.CallCount),
+			fmt.Sprintf("%7d", t.ErrorCount),
+			fmt.Sprintf("%7s", formatErrRate(t.ErrorRate)),
+			fmt.Sprintf("%10s", formatDur(time.Duration(t.AvgDuration))),
+		}
 		if showBar {
 			bar := ""
 			if maxCall > 0 {
 				bar = barChart(t.CallCount, maxCall, barW)
 			}
-			rows[i] = []string{
-				fmt.Sprintf("%-*s", nameW, truncate(t.Name, nameW)),
-				fmt.Sprintf("%7d", t.CallCount),
-				fmt.Sprintf("%-*s", barW, bar),
-				fmt.Sprintf("%7d", t.ErrorCount),
-				fmt.Sprintf("%7s", formatErrRate(t.ErrorRate)),
-				fmt.Sprintf("%10s", formatDur(time.Duration(t.AvgDuration))),
-			}
-		} else {
-			rows[i] = []string{
-				fmt.Sprintf("%-*s", nameW, truncate(t.Name, nameW)),
-				fmt.Sprintf("%7d", t.CallCount),
-				fmt.Sprintf("%7d", t.ErrorCount),
-				fmt.Sprintf("%7s", formatErrRate(t.ErrorRate)),
-				fmt.Sprintf("%10s", formatDur(time.Duration(t.AvgDuration))),
-			}
+			row = slices.Insert(row, 2, fmt.Sprintf("%-*s", barW, bar))
 		}
+		rows[i] = row
 	}
 
 	return m.renderListView(listViewOpts{
