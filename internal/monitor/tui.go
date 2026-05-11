@@ -406,6 +406,9 @@ func (m *model) renderBody() string {
 	if len(m.metrics.Overview.Sessions) == 0 {
 		return mutedStyle.Render("Waiting for session data in " + m.sessionsDir)
 	}
+	if m.detail && m.tab != tabOverview {
+		return m.scrollDetail(m.cachedDetailBody)
+	}
 	switch m.tab {
 	case tabOverview:
 		body := m.renderOverview()
@@ -429,24 +432,12 @@ func (m *model) renderBody() string {
 		}
 		return out
 	case tabSessions:
-		if m.detail {
-			return m.scrollDetail(m.cachedDetailBody)
-		}
 		return m.renderSessionsList()
 	case tabAgents:
-		if m.detail {
-			return m.scrollDetail(m.cachedDetailBody)
-		}
 		return m.renderAgentsList()
 	case tabTools:
-		if m.detail {
-			return m.scrollDetail(m.cachedDetailBody)
-		}
 		return m.renderToolsList()
 	case tabSkills:
-		if m.detail {
-			return m.scrollDetail(m.cachedDetailBody)
-		}
 		return m.renderSkillsTab()
 	}
 	return ""
