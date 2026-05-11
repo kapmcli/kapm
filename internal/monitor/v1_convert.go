@@ -3,6 +3,7 @@ package monitor
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -132,20 +133,21 @@ func buildPromptContent(e v1HistoryEntry) (json.RawMessage, error) {
 func buildToolResultContent(e v1HistoryEntry) (json.RawMessage, error) {
 	items := make([]ContentItem, len(e.User.Content.ToolUseResults.Results))
 	for i, r := range e.User.Content.ToolUseResults.Results {
-		status := "success"
+		status := ToolStatusSuccess
 		if r.Status == "Error" || r.Status == "error" {
-			status = "error"
+			status = ToolStatusError
 		}
 		var resultContent []ContentItem
-		text := ""
+		var sb strings.Builder
 		for _, tc := range r.Content {
 			if tc.Text != "" {
-				text += tc.Text
+				sb.WriteString(tc.Text)
 			}
 			if len(tc.JSON) > 0 && string(tc.JSON) != "null" {
 				resultContent = append(resultContent, ContentItem{Kind: ContentKindJSON, Data: tc.JSON})
 			}
 		}
+		text := sb.String()
 		if text != "" || len(resultContent) == 0 {
 			textData, err := json.Marshal(text)
 			if err != nil {
