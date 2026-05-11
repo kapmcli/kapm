@@ -8,6 +8,16 @@ const tsLayout = "2006-01-02 15:04:05"
 
 const maxRecentSessions = 10
 
+// Overview layout breakpoints.
+// avail = height - 6 (top bar + tabs + help). Each row (Summary, Activity, Top boxes, Recent sessions) takes ~10 lines.
+const (
+	overviewRow2MinHeight      = 24
+	overviewActivityMinHeight  = 34
+	overviewFullMinHeight      = 44
+	overviewDualMinWidth       = 80
+	overviewWideMinWidth       = 100
+)
+
 // splitBoxWidths returns n outer-widths that sum to total, separated by gap
 // cells between boxes. Remainder is distributed to leftmost boxes.
 func splitBoxWidths(total, n, gap int) []int {
@@ -69,20 +79,20 @@ func (m *model) overviewLayout() overviewParams {
 
 	var p overviewParams
 	switch {
-	case avail >= 44:
+	case avail >= overviewFullMinHeight:
 		p = overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true}
-	case avail >= 34:
+	case avail >= overviewActivityMinHeight:
 		p = overviewParams{topN: 5, recentN: 5, showActivity: true, showRow2: true}
-	case avail >= 24:
+	case avail >= overviewRow2MinHeight:
 		p = overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: true}
-	default: // < 24 (covers 18-23 and < 18)
+	default: // < overviewRow2MinHeight (covers 18-23 and < 18)
 		p = overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: false}
 	}
 
 	switch {
-	case m.width >= 100:
+	case m.width >= overviewWideMinWidth:
 		p.columns = 3
-	case m.width >= 80:
+	case m.width >= overviewDualMinWidth:
 		p.columns = 2
 	default:
 		p.columns = 1
