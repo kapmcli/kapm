@@ -238,6 +238,11 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		return ""
 	}
 
+	cacheKey := fmt.Sprintf("%s:%v:%d:%d:%v", s.ID, m.changesExpanded, len(s.Changes), m.width, s.HasShell)
+	if m.cachedChangesSession == cacheKey {
+		return m.cachedChangesRender
+	}
+
 	groups := prepareSessionChanges(s.Changes)
 
 	nFiles := s.FilesChanged
@@ -315,7 +320,10 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		}
 	}
 	b.WriteString("\n")
-	return b.String()
+	result := b.String()
+	m.cachedChangesSession = cacheKey
+	m.cachedChangesRender = result
+	return result
 }
 
 const previewIndent = "         " // 9 spaces

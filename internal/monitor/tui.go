@@ -92,6 +92,9 @@ type model struct {
 	changesExpanded  bool // toggle for diff previews in Changes section
 	timelineExpanded bool // toggle for full tool input in Timeline
 
+	cachedChangesRender  string
+	cachedChangesSession string // "<sessionID>:<changesExpanded>:<nChanges>:<width>:<hasShell>"
+
 	activeSessions int
 	totalTools     int
 	totalPrompts   int
