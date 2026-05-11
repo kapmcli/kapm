@@ -55,6 +55,14 @@ type KiroUsageReadFunc func(context.Context) (kirocliusage.Usage, bool, error)
 
 type tickMsg time.Time
 
+// detailCache holds the rendered detail body and scroll metadata that's
+// recomputed when the selection changes or content updates.
+type detailCache struct {
+	body      string
+	lines     []string
+	maxScroll int
+}
+
 type model struct {
 	metrics     DetailedMetrics
 	sessionsDir string
@@ -78,9 +86,7 @@ type model struct {
 	detail           bool   // true when drilled into a detail view
 	detailScroll     int    // top line of detail viewport
 	overviewScroll   int    // top line of overview viewport
-	cachedDetailMax   int      // cached result of detailMaxScroll computation
-	cachedDetailBody  string   // cached rendered detail view
-	cachedDetailLines []string // cached split lines of cachedDetailBody
+	cachedDetail     detailCache
 	updatedAt        time.Time
 	promptExpanded   bool // toggle for prompt full display
 	changesExpanded  bool // toggle for diff previews in Changes section
@@ -407,7 +413,7 @@ func (m *model) renderBody() string {
 		return mutedStyle.Render("Waiting for session data in " + m.sessionsDir)
 	}
 	if m.detail && m.tab != tabOverview {
-		return m.scrollDetail(m.cachedDetailBody)
+		return m.scrollDetail(m.cachedDetail.body)
 	}
 	switch m.tab {
 	case tabOverview:
@@ -435,7 +441,7 @@ func (m *model) scrollDetail(body string) string {
 	if body == "" {
 		return body
 	}
-	out, scroll := sliceWithScrollFooter(m.cachedDetailLines, m.detailScroll, m.viewportHeight())
+	out, scroll := sliceWithScrollFooter(m.cachedDetail.lines, m.detailScroll, m.viewportHeight())
 	m.detailScroll = scroll
 	return borderStyle.Width(m.contentWidth()).Render(out)
 }
@@ -479,7 +485,7 @@ func (m *model) overviewViewportHeight() int {
 
 // detailMaxScroll returns the cached max scroll offset for the current detail view.
 func (m *model) detailMaxScroll() int {
-	return m.cachedDetailMax
+	return m.cachedDetail.maxScroll
 }
 
 // switchToTab resets the model to the given tab's list view.
@@ -493,33 +499,33 @@ func (m *model) switchToTab(tab int) {
 // recomputeDetailCache recomputes and stores the rendered detail body and max scroll offset.
 func (m *model) recomputeDetailCache() {
 	if !m.detail {
-		m.cachedDetailMax = 0
-		m.cachedDetailBody = ""
-		m.cachedDetailLines = nil
+		m.cachedDetail.maxScroll = 0
+		m.cachedDetail.body = ""
+		m.cachedDetail.lines = nil
 		return
 	}
 	switch m.tab {
 	case tabSessions:
-		m.cachedDetailBody = m.renderSessionDetail()
+		m.cachedDetail.body = m.renderSessionDetail()
 	case tabAgents:
-		m.cachedDetailBody = m.renderAgentDetail()
+		m.cachedDetail.body = m.renderAgentDetail()
 	case tabTools:
-		m.cachedDetailBody = m.renderToolDetail()
+		m.cachedDetail.body = m.renderToolDetail()
 	case tabSkills:
-		m.cachedDetailBody = m.renderSkillDetail()
+		m.cachedDetail.body = m.renderSkillDetail()
 	}
-	if m.cachedDetailBody == "" {
-		m.cachedDetailLines = nil
-		m.cachedDetailMax = 0
+	if m.cachedDetail.body == "" {
+		m.cachedDetail.lines = nil
+		m.cachedDetail.maxScroll = 0
 		return
 	}
-	m.cachedDetailLines = strings.Split(m.cachedDetailBody, "\n")
-	total := len(m.cachedDetailLines)
+	m.cachedDetail.lines = strings.Split(m.cachedDetail.body, "\n")
+	total := len(m.cachedDetail.lines)
 	maxScroll := total - m.viewportHeight()
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
-	m.cachedDetailMax = maxScroll
+	m.cachedDetail.maxScroll = maxScroll
 }
 
 // recomputeSummaryTotals eagerly caches summary box counters from current metrics.

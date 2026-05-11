@@ -1547,29 +1547,29 @@ func TestTUIRenderSessionChanges_DiffHiddenByDefault(t *testing.T) {
 func TestRecomputeDetailCacheInvariant(t *testing.T) {
 	t.Parallel()
 
-	// Non-empty body: len(cachedDetailLines) == strings.Count(body, "\n") + 1.
+	// Non-empty body: len(cachedDetail.lines) == strings.Count(body, "\n") + 1.
 	m := newTestModel()
 	m = press(m, "2")     // sessions tab
 	m = press(m, "enter") // enter detail — triggers recomputeDetailCache
 	if !m.detail {
 		t.Fatal("expected detail mode")
 	}
-	body := m.cachedDetailBody
+	body := m.cachedDetail.body
 	if body == "" {
-		t.Fatal("expected non-empty cachedDetailBody in session detail")
+		t.Fatal("expected non-empty cachedDetail.body in session detail")
 	}
 	want := strings.Count(body, "\n") + 1
-	if got := len(m.cachedDetailLines); got != want {
-		t.Errorf("non-empty body: len(cachedDetailLines) = %d, want %d", got, want)
+	if got := len(m.cachedDetail.lines); got != want {
+		t.Errorf("non-empty body: len(cachedDetail.lines) = %d, want %d", got, want)
 	}
 
-	// Empty body: cachedDetailLines must be nil.
+	// Empty body: cachedDetail.lines must be nil.
 	m2 := newTestModel()
 	// detail=false → recomputeDetailCache clears everything.
 	m2.detail = false
 	m2.recomputeDetailCache()
-	if m2.cachedDetailLines != nil {
-		t.Errorf("empty body: expected cachedDetailLines == nil, got %v", m2.cachedDetailLines)
+	if m2.cachedDetail.lines != nil {
+		t.Errorf("empty body: expected cachedDetail.lines == nil, got %v", m2.cachedDetail.lines)
 	}
 }
 
