@@ -138,6 +138,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		reportHookErr(stderr, "read stdin", err)
+		slog.Warn("hook handler error", "op", "read stdin", "err", err)
 		return 0
 	}
 	if int64(len(data)) > maxHookEvent {
@@ -152,6 +153,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	var ev hookEvent
 	if err := json.Unmarshal(data, &ev); err != nil {
 		reportHookErr(stderr, "parse json", err)
+		slog.Warn("hook handler error", "op", "parse json", "err", err)
 		return 0
 	}
 
@@ -187,6 +189,7 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	line, err := json.Marshal(rec)
 	if err != nil {
 		reportHookErr(stderr, "marshal record", err)
+		slog.Warn("hook handler error", "op", "marshal record", "err", err)
 		return 0
 	}
 	line = append(line, '\n')
@@ -200,12 +203,14 @@ func Handle(in io.Reader, stdout, stderr io.Writer, now func() time.Time, rootDi
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
 			reportHookErr(stderr, "close log", cerr)
+			slog.Warn("hook handler error", "op", "close log", "err", cerr)
 		}
 	}()
 	defer fileutil.FlockUnlock(f)
 
 	if _, err := f.Write(line); err != nil {
 		reportHookErr(stderr, fmt.Sprintf("write %q", f.Name()), err)
+		slog.Warn("hook handler error", "op", "write log", "err", err)
 	}
 
 	return 0
