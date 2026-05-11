@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -201,6 +202,64 @@ func TestLoadSessionsSQLite_MissingTable(t *testing.T) {
 		t.Fatalf("want 0 sessions, got %d", len(sessions))
 	}
 }
+
+func TestLoadSessionsSQLite_MissingTablePreflightProbed(t *testing.T) {
+	// Verifies the pre-flight probe path: DB exists, no conversations_v2 table,
+	// returns empty slice with no error and emits the expected slog.Debug message.
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "probe.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE other_table (id INTEGER PRIMARY KEY)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	_ = db.Close()
+
+	// Capture slog records.
+	var records []slog.Record
+	handler := &captureHandler{records: &records, level: slog.LevelDebug}
+	old := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	sessions, err := LoadSessionsSQLite(context.Background(), dbPath, time.Time{}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sessions == nil || len(sessions) != 0 {
+		t.Fatalf("want non-nil empty slice, got %v", sessions)
+	}
+
+	var found bool
+	for _, r := range records {
+		if r.Level == slog.LevelDebug && r.Message == "v1 sqlite: conversations_v2 table not found, skipping" {
+			found = true
+		}
+		if r.Level >= slog.LevelWarn {
+			t.Errorf("unexpected warn/error log: %s", r.Message)
+		}
+	}
+	if !found {
+		t.Error("expected slog.Debug message not emitted")
+	}
+}
+
+// captureHandler is a minimal slog.Handler that collects records.
+type captureHandler struct {
+	records *[]slog.Record
+	level   slog.Level
+}
+
+func (h *captureHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	*h.records = append(*h.records, r)
+	return nil
+}
+func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler  { return h }
+func (h *captureHandler) WithGroup(_ string) slog.Handler       { return h }
 
 func TestLoadSessionsSQLite_SkipBadRow(t *testing.T) {
 	dbPath, db := createTestSQLiteDB(t)

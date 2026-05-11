@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -35,6 +34,18 @@ func LoadSessionsSQLite(ctx context.Context, dbPath string, since time.Time, cwd
 		}
 	}()
 
+	var one int
+	err = db.QueryRowContext(ctx,
+		`SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversations_v2'`).
+		Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		slog.Debug("v1 sqlite: conversations_v2 table not found, skipping")
+		return []ParsedSession{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("probe conversations_v2 schema: %w", err)
+	}
+
 	const query = `
 SELECT key, conversation_id, value, created_at, updated_at
 FROM conversations_v2
@@ -45,10 +56,6 @@ ORDER BY updated_at DESC`
 	sinceMS := since.UnixMilli()
 	rows, err := db.QueryContext(ctx, query, sinceMS, cwdFilter, cwdFilter, cwdFilter)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			slog.Debug("v1 sqlite: conversations_v2 table not found, skipping")
-			return []ParsedSession{}, nil
-		}
 		return nil, fmt.Errorf("query conversations_v2: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
