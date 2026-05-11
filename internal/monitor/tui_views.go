@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"strconv"
 )
 
 const tsLayout = "2006-01-02 15:04:05"
@@ -50,7 +51,7 @@ func errorCountText(n int) string {
 	if n == 0 {
 		return mutedStyle.Render("0")
 	}
-	return errorStyle.Render(fmt.Sprintf("%d", n))
+	return errorStyle.Render(strconv.Itoa(n))
 }
 
 func formatErrRate(r float64) string {

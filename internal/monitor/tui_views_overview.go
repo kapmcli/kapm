@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,7 +100,7 @@ func (m *model) renderSummaryBox(width int) string {
 	fmt.Fprintf(&b, "%s\n", sectionStyle.Render("▸ Summary"))
 	fmt.Fprintf(&b, "  logs dir: %s\n", mutedStyle.Render(logsDir))
 	fmt.Fprintf(&b, "  sessions:   %-5d  active: %s\n",
-		len(ov.Sessions), activeStyle.Render(fmt.Sprintf("%d", m.activeSessions)))
+		len(ov.Sessions), activeStyle.Render(strconv.Itoa(m.activeSessions)))
 	fmt.Fprintf(&b, "  agents:     %-5d  errors: %s\n",
 		len(ov.Agents), errorCountText(m.totalErrors))
 	fmt.Fprintf(&b, "  tool calls: %-5d  prompts: %d",

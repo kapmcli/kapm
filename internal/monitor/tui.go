@@ -550,10 +550,7 @@ func (m *model) recomputeDetailCache() {
 	}
 	m.cachedDetail.lines = strings.Split(m.cachedDetail.body, "\n")
 	total := len(m.cachedDetail.lines)
-	maxScroll := total - m.viewportHeight()
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(total-m.viewportHeight(), 0)
 	m.cachedDetail.maxScroll = maxScroll
 }
 

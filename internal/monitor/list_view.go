@@ -34,10 +34,7 @@ func (m *model) renderListView(opts listViewOpts) string {
 	if boxWidth == 0 {
 		boxWidth = m.contentWidth()
 	}
-	interior := boxWidth - 4
-	if interior < 10 {
-		interior = 10
-	}
+	interior := max(boxWidth-4, 10)
 
 	gap := opts.gap
 	if gap == 0 {

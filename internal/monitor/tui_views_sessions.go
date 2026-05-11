@@ -431,10 +431,7 @@ func (m *model) renderSessionPrompts(s *SessionDetail) string {
 
 // writeWrapped writes text word-wrapped to width with the given indent prefix.
 func (m *model) writeWrapped(b *strings.Builder, text string, width int, indent string) {
-	maxW := width - len(indent)
-	if maxW < 20 {
-		maxW = 20
-	}
+	maxW := max(width-len(indent), 20)
 	words := strings.Fields(text)
 	var line strings.Builder
 	for _, w := range words {
