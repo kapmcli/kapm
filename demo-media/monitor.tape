@@ -3,7 +3,7 @@ Output demo-media/monitor.ascii
 Require ./kapm
 
 Set Width 1400
-Set Height 900
+Set Height 1300
 Set WaitTimeout 15s
 
 Hide
