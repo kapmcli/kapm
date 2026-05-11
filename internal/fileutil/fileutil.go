@@ -54,6 +54,37 @@ func WriteFileAtomic(path string, data []byte, force bool) (written bool, err er
 	return true, nil
 }
 
+// WriteTempFileFrom creates a temp file in the same directory as dst, copies
+// content from r, sets perm, and atomically renames to dst. On error the temp
+// file is cleaned up.
+func WriteTempFileFrom(dst string, r io.Reader, perm os.FileMode) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp %q: %w", dst, err)
+	}
+	tmp := f.Name()
+	defer func() {
+		if removeErr := os.Remove(tmp); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) && err == nil {
+			err = fmt.Errorf("remove temp %q: %w", tmp, removeErr)
+		}
+	}()
+	if _, err := io.Copy(f, r); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write temp %q: %w", dst, err)
+	}
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("chmod temp %q: %w", dst, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close temp %q: %w", dst, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("rename %q: %w", dst, err)
+	}
+	return nil
+}
+
 // writeTempFile creates a temp file in the same directory as path, writes data
 // to it with mode 0o644, and returns the temp file path. The parent directory
 // must already exist.

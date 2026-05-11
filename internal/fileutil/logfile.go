@@ -34,7 +34,7 @@ func OpenSafeLogFile(root, logDir, filename string) (*os.File, error) {
 	if err := RefuseSymlinkPathUnder(root, logPath); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND|openNoFollow, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open %q: %w", logPath, err)
 	}

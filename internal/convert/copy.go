@@ -3,7 +3,6 @@ package convert
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -22,39 +21,10 @@ func copyFile(src, dst string, mode os.FileMode) (err error) {
 			err = fmt.Errorf("convert close %q: %w", src, closeErr)
 		}
 	}()
-
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("convert mkdir %q: %w", filepath.Dir(dst), err)
 	}
-
-	tempFile, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("convert create temp %q: %w", dst, err)
-	}
-	tempPath := tempFile.Name()
-	defer func() {
-		if removeErr := os.Remove(tempPath); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) && err == nil {
-			err = fmt.Errorf("convert remove temp %q: %w", tempPath, removeErr)
-		}
-	}()
-
-	if _, err := io.Copy(tempFile, in); err != nil {
-		// best-effort cleanup; defer will remove the temp file regardless
-		_ = tempFile.Close()
-		return fmt.Errorf("convert copy %q: %w", dst, err)
-	}
-	if err := tempFile.Chmod(mode.Perm() & 0o755); err != nil {
-		// best-effort cleanup; defer will remove the temp file regardless
-		_ = tempFile.Close()
-		return fmt.Errorf("convert chmod temp %q: %w", tempPath, err)
-	}
-	if err := tempFile.Close(); err != nil {
-		return fmt.Errorf("convert close temp %q: %w", tempPath, err)
-	}
-	if err := os.Rename(tempPath, dst); err != nil {
-		return fmt.Errorf("convert rename %q: %w", dst, err)
-	}
-	return nil
+	return fileutil.WriteTempFileFrom(dst, in, mode.Perm()&0o755)
 }
 
 // CopyDirectoryContents recursively copies src into dst while skipping symlinks
