@@ -141,6 +141,45 @@ func TestGitFetcher_FullCloneArgv(t *testing.T) {
 	}
 }
 
+func TestGitFetcher_FullCloneCommitSHA(t *testing.T) {
+	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	binDir, logPath := writeFakeGitScript(t, fakeGitOptions{
+		commit: sha,
+	})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	f := gitFetcher{}
+	src := PowerSource{
+		Kind: SourceGitRoot,
+		URL:  "https://github.com/o/r",
+		Ref:  sha,
+	}
+
+	localDir, commit, cleanup, err := f.Fetch(context.Background(), src)
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if commit != sha {
+		t.Fatalf("commit = %q, want %q", commit, sha)
+	}
+	if got := filepath.ToSlash(localDir); !strings.HasSuffix(got, "/repo") {
+		t.Fatalf("localDir = %q, want repo root", got)
+	}
+	defer cleanup()
+
+	got := readGitLog(t, logPath)
+	want := []string{
+		"0|init",
+		"0|remote add origin -- https://github.com/o/r",
+		"0|fetch --depth=1 origin " + sha,
+		"0|checkout FETCH_HEAD",
+		"0|rev-parse HEAD",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("git argv mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
 func TestGitFetcher_CleanupRemovesTempDir(t *testing.T) {
 	binDir, _ := writeFakeGitScript(t, fakeGitOptions{commit: "abc123"})
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))

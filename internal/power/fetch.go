@@ -160,20 +160,31 @@ func fetchFullClone(ctx context.Context, repoDir string, src PowerSource) (strin
 			return "", err
 		}
 	}
-	cloneArgs := []string{"clone", "--depth=1"}
-	if src.Ref != "" && !looksLikeCommitSHA(src.Ref) {
-		cloneArgs = append(cloneArgs, "--branch", src.Ref)
-	}
-	cloneArgs = append(cloneArgs, "--", gitRemoteURL(src), repoDir)
-	if err := gitRun(ctx, "", cloneArgs...); err != nil {
-		return "", err
-	}
 
 	if src.Ref != "" && looksLikeCommitSHA(src.Ref) {
-		if err := gitRun(ctx, repoDir, "fetch", "--depth=1", "origin", src.Ref); err != nil {
-			return "", err
+		// Use init+fetch pattern to avoid downloading default branch
+		if err := os.MkdirAll(repoDir, 0o700); err != nil {
+			return "", fmt.Errorf("create repo dir %q: %w", repoDir, err)
 		}
-		if err := gitRun(ctx, repoDir, "checkout", src.Ref); err != nil {
+		commands := [][]string{
+			{"init"},
+			{"remote", "add", "origin", "--", gitRemoteURL(src)},
+			{"fetch", "--depth=1", "origin", src.Ref},
+			{"checkout", "FETCH_HEAD"},
+		}
+		for _, args := range commands {
+			if err := gitRun(ctx, repoDir, args...); err != nil {
+				return "", err
+			}
+		}
+	} else {
+		// Branch/tag/empty ref: use clone
+		cloneArgs := []string{"clone", "--depth=1"}
+		if src.Ref != "" {
+			cloneArgs = append(cloneArgs, "--branch", src.Ref)
+		}
+		cloneArgs = append(cloneArgs, "--", gitRemoteURL(src), repoDir)
+		if err := gitRun(ctx, "", cloneArgs...); err != nil {
 			return "", err
 		}
 	}
