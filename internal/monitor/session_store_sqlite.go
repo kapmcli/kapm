@@ -46,15 +46,27 @@ func LoadSessionsSQLite(ctx context.Context, dbPath string, since time.Time, cwd
 		return nil, fmt.Errorf("probe conversations_v2 schema: %w", err)
 	}
 
-	const query = `
+	// Two queries: no-filter path avoids binding cwdFilter entirely; filtered path binds it twice.
+	const queryAll = `
 SELECT key, conversation_id, value, created_at, updated_at
 FROM conversations_v2
 WHERE updated_at >= ?
-  AND (? = '' OR key = ? OR key LIKE ? || '/%')
+ORDER BY updated_at DESC`
+
+	const queryFiltered = `
+SELECT key, conversation_id, value, created_at, updated_at
+FROM conversations_v2
+WHERE updated_at >= ?
+  AND (key = ? OR key LIKE ? || '/%')
 ORDER BY updated_at DESC`
 
 	sinceMS := since.UnixMilli()
-	rows, err := db.QueryContext(ctx, query, sinceMS, cwdFilter, cwdFilter, cwdFilter)
+	var rows *sql.Rows
+	if cwdFilter == "" {
+		rows, err = db.QueryContext(ctx, queryAll, sinceMS)
+	} else {
+		rows, err = db.QueryContext(ctx, queryFiltered, sinceMS, cwdFilter, cwdFilter)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("query conversations_v2: %w", err)
 	}
