@@ -100,68 +100,69 @@ func buildUserMessage(e v1HistoryEntry) (*SessionMessage, error) {
 	c := e.User.Content
 	switch {
 	case c.Prompt != nil:
-		textData, err := json.Marshal(c.Prompt.Prompt)
-		if err != nil {
-			return nil, err
-		}
-		pd := PromptData{
-			Content: []ContentItem{{Kind: "text", Data: json.RawMessage(textData)}},
-			Meta:    PromptMeta{Timestamp: parseTimestamp(e.User.Timestamp)},
-		}
-		data, err := json.Marshal(pd)
+		data, err := buildPromptContent(e)
 		if err != nil {
 			return nil, err
 		}
 		return &SessionMessage{Kind: MessageKindPrompt, Data: data}, nil
-
 	case c.ToolUseResults != nil:
-		items := make([]ContentItem, len(c.ToolUseResults.Results))
-		for i, r := range c.ToolUseResults.Results {
-			status := "success"
-			if r.Status == "Error" || r.Status == "error" {
-				status = "error"
-			}
-			var resultContent []ContentItem
-			text := ""
-			for _, tc := range r.Content {
-				if tc.Text != "" {
-					text += tc.Text
-				}
-				if len(tc.JSON) > 0 && string(tc.JSON) != "null" {
-					resultContent = append(resultContent, ContentItem{Kind: ContentKindJSON, Data: tc.JSON})
-				}
-			}
-			if text != "" || len(resultContent) == 0 {
-				textData, err := json.Marshal(text)
-				if err != nil {
-					return nil, err
-				}
-				resultContent = append([]ContentItem{{Kind: ContentKindText, Data: json.RawMessage(textData)}}, resultContent...)
-			}
-			trd := ToolResultData{
-				ToolUseID: r.ToolUseID,
-				Content:   resultContent,
-				Status:    status,
-			}
-			d, err := json.Marshal(trd)
-			if err != nil {
-				return nil, err
-			}
-			items[i] = ContentItem{Kind: "toolResult", Data: d}
-		}
-		trs := struct {
-			Content []ContentItem `json:"content"`
-		}{Content: items}
-		data, err := json.Marshal(trs)
+		data, err := buildToolResultContent(e)
 		if err != nil {
 			return nil, err
 		}
 		return &SessionMessage{Kind: MessageKindToolResults, Data: data}, nil
-
 	default:
 		// CancelledToolUses or unknown — skip
 		return nil, nil
 	}
+}
+
+func buildPromptContent(e v1HistoryEntry) (json.RawMessage, error) {
+	textData, err := json.Marshal(e.User.Content.Prompt.Prompt)
+	if err != nil {
+		return nil, err
+	}
+	pd := PromptData{
+		Content: []ContentItem{{Kind: "text", Data: json.RawMessage(textData)}},
+		Meta:    PromptMeta{Timestamp: parseTimestamp(e.User.Timestamp)},
+	}
+	return json.Marshal(pd)
+}
+
+func buildToolResultContent(e v1HistoryEntry) (json.RawMessage, error) {
+	items := make([]ContentItem, len(e.User.Content.ToolUseResults.Results))
+	for i, r := range e.User.Content.ToolUseResults.Results {
+		status := "success"
+		if r.Status == "Error" || r.Status == "error" {
+			status = "error"
+		}
+		var resultContent []ContentItem
+		text := ""
+		for _, tc := range r.Content {
+			if tc.Text != "" {
+				text += tc.Text
+			}
+			if len(tc.JSON) > 0 && string(tc.JSON) != "null" {
+				resultContent = append(resultContent, ContentItem{Kind: ContentKindJSON, Data: tc.JSON})
+			}
+		}
+		if text != "" || len(resultContent) == 0 {
+			textData, err := json.Marshal(text)
+			if err != nil {
+				return nil, err
+			}
+			resultContent = append([]ContentItem{{Kind: ContentKindText, Data: json.RawMessage(textData)}}, resultContent...)
+		}
+		trd := ToolResultData{ToolUseID: r.ToolUseID, Content: resultContent, Status: status}
+		d, err := json.Marshal(trd)
+		if err != nil {
+			return nil, err
+		}
+		items[i] = ContentItem{Kind: "toolResult", Data: d}
+	}
+	return json.Marshal(struct {
+		Content []ContentItem `json:"content"`
+	}{Content: items})
 }
 
 func buildAssistantMessage(e v1HistoryEntry) (*SessionMessage, error) {
