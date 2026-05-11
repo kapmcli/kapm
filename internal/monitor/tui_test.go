@@ -15,6 +15,51 @@ import (
 	"github.com/kapmcli/kapm/internal/kirocliusage"
 )
 
+func TestOverviewLayout(t *testing.T) {
+	cases := []struct {
+		name   string
+		width  int
+		height int
+		want   overviewParams
+	}{
+		// Full-size terminal
+		{"full size 120x50", 120, 50, overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true, columns: 3}},
+		// Height boundary: avail=44 (height=50)
+		{"avail=44 boundary", 120, 50, overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true, columns: 3}},
+		// Height boundary: avail=43 (height=49)
+		{"avail=43 boundary", 120, 49, overviewParams{topN: 5, recentN: 5, showActivity: true, showRow2: true, columns: 3}},
+		// Height boundary: avail=34 (height=40)
+		{"avail=34 boundary", 120, 40, overviewParams{topN: 5, recentN: 5, showActivity: true, showRow2: true, columns: 3}},
+		// Height boundary: avail=33 (height=39)
+		{"avail=33 boundary", 120, 39, overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: true, columns: 3}},
+		// Height boundary: avail=24 (height=30)
+		{"avail=24 boundary", 120, 30, overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: true, columns: 3}},
+		// Height boundary: avail=23 (height=29) → showRow2=false
+		{"avail=23 boundary", 120, 29, overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: false, columns: 3}},
+		// 80x24 terminal: avail=18, width=80
+		{"80x24 terminal", 80, 24, overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: false, columns: 2}},
+		// Width boundary: width=100
+		{"width=100 boundary", 100, 50, overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true, columns: 3}},
+		// Width boundary: width=99
+		{"width=99 boundary", 99, 50, overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true, columns: 2}},
+		// Width boundary: width=80
+		{"width=80 boundary", 80, 50, overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true, columns: 2}},
+		// Width boundary: width=79 → narrow rule caps topN/recentN to 3
+		{"width=79 boundary", 79, 50, overviewParams{topN: 3, recentN: 3, showActivity: true, showRow2: true, columns: 1}},
+		// Narrow terminal: width=60, height=50
+		{"narrow 60x50", 60, 50, overviewParams{topN: 3, recentN: 3, showActivity: true, showRow2: true, columns: 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &model{width: tc.width, height: tc.height}
+			got := m.overviewLayout()
+			if got != tc.want {
+				t.Errorf("overviewLayout() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // fixture builds a small but realistic DetailedMetrics value.
 func fixture() DetailedMetrics {
 	start := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
@@ -465,6 +510,7 @@ func largeSkillsFixture() DetailedMetrics {
 func TestTUIOverviewSkillsCapTen(t *testing.T) {
 	t.Parallel()
 	m := newTestModel()
+	m.height = 50 // avail=44 → topN=10
 	m.metrics = largeSkillsFixture()
 	out := m.renderView()
 	// First 10 names should render; 11th and 12th must be excluded.
@@ -498,7 +544,7 @@ func TestTUIRecentSessionsCapTen(t *testing.T) {
 		})
 	}
 	m.metrics = base
-	recent := m.renderRecentSessionsBox(m.contentWidth())
+	recent := m.renderRecentSessionsBox(m.contentWidth(), maxRecentSessions)
 	// Each session row contains its unique 12-char ID "sessNNNNNNNN".
 	// Expect IDs 0..9 present; 10 and 11 absent (top 10).
 	for i := 0; i < 10; i++ {
@@ -979,7 +1025,7 @@ func TestTUIRecentSessionsBoxGroupingIndent(t *testing.T) {
 		{SessionMetric: SessionMetric{ID: sid, Agent: "lead", LastActivity: time.Now().Add(-time.Second)}},
 	}
 	m.metrics = base
-	out := m.renderRecentSessionsBox(m.contentWidth())
+	out := m.renderRecentSessionsBox(m.contentWidth(), maxRecentSessions)
 
 	var orchLine, leadLine string
 	for l := range strings.SplitSeq(out, "\n") {
@@ -1548,5 +1594,89 @@ func TestTUISessionsOnlyMode(t *testing.T) {
 	out = m.renderView()
 	if !strings.Contains(out, "abcdef123456") {
 		t.Errorf("sessions-only mode: sessions tab missing session ID prefix")
+	}
+}
+
+func newOverflowModel() *model {
+	m := newTestModel()
+	m.height = 10 // overviewViewportHeight = max(10-7,5) = 5; overview has many more lines
+	return m
+}
+
+func TestOverviewScrollFooterAppearsOnOverflow(t *testing.T) {
+	t.Parallel()
+	m := newOverflowModel()
+	out := m.renderBody()
+	if !strings.Contains(out, "more lines, ↓ to scroll") {
+		t.Errorf("expected scroll footer in overflow overview, got:\n%s", out)
+	}
+}
+
+func TestOverviewScrollNoFooterWhenFits(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.height = 200 // viewport = max(200-7,5) = 193; overview fits
+	out := m.renderBody()
+	if strings.Contains(out, "more lines, ↓ to scroll") {
+		t.Errorf("unexpected scroll footer when content fits:\n%s", out)
+	}
+}
+
+func TestOverviewScrollJKKeys(t *testing.T) {
+	t.Parallel()
+	m := newOverflowModel()
+	m = press(m, "j")
+	m = press(m, "j")
+	m = press(m, "j")
+	if m.overviewScroll != 3 {
+		t.Errorf("expected overviewScroll=3 after 3×j, got %d", m.overviewScroll)
+	}
+	m = press(m, "k")
+	if m.overviewScroll != 2 {
+		t.Errorf("expected overviewScroll=2 after k, got %d", m.overviewScroll)
+	}
+}
+
+func TestOverviewScrollGKeys(t *testing.T) {
+	t.Parallel()
+	m := newOverflowModel()
+	m = press(m, "j")
+	m = press(m, "j")
+	m = press(m, "g")
+	if m.overviewScroll != 0 {
+		t.Errorf("expected overviewScroll=0 after g, got %d", m.overviewScroll)
+	}
+	m = press(m, "G")
+	// renderBody lazy-clamps; trigger it
+	m.renderBody()
+	if m.overviewScroll <= 0 {
+		t.Errorf("expected overviewScroll>0 after G+renderBody, got %d", m.overviewScroll)
+	}
+}
+
+func TestOverviewScrollPersistsAcrossTabSwitch(t *testing.T) {
+	t.Parallel()
+	m := newOverflowModel()
+	m = press(m, "j")
+	m = press(m, "j")
+	m = press(m, "j")
+	m = press(m, "j")
+	m = press(m, "j")
+	if m.overviewScroll != 5 {
+		t.Errorf("expected overviewScroll=5, got %d", m.overviewScroll)
+	}
+	m = press(m, "2") // switch to Sessions
+	m = press(m, "1") // switch back to Overview
+	if m.overviewScroll != 5 {
+		t.Errorf("expected overviewScroll=5 after tab round-trip, got %d", m.overviewScroll)
+	}
+}
+
+func TestOverviewScrollKDoesNotGoNegative(t *testing.T) {
+	t.Parallel()
+	m := newOverflowModel()
+	m = press(m, "k")
+	if m.overviewScroll != 0 {
+		t.Errorf("expected overviewScroll=0 after k at top, got %d", m.overviewScroll)
 	}
 }

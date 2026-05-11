@@ -6,10 +6,7 @@ import (
 
 const tsLayout = "2006-01-02 15:04:05"
 
-const (
-	overviewTopN      = 10
-	maxRecentSessions = 10
-)
+const maxRecentSessions = 10
 
 // splitBoxWidths returns n outer-widths that sum to total, separated by gap
 // cells between boxes. Remainder is distributed to leftmost boxes.
@@ -55,6 +52,49 @@ func formatErrRate(r float64) string {
 		return warnStyle.Render(fmt.Sprintf("%5.1f%%", pct))
 	}
 	return mutedStyle.Render("  0.0%")
+}
+
+// overviewParams holds the display parameters for the Overview tab.
+type overviewParams struct {
+	topN         int
+	recentN      int
+	showActivity bool
+	showRow2     bool
+	columns      int
+}
+
+// overviewLayout computes overviewParams from the current terminal dimensions.
+func (m *model) overviewLayout() overviewParams {
+	avail := m.height - 6
+
+	var p overviewParams
+	switch {
+	case avail >= 44:
+		p = overviewParams{topN: 10, recentN: 10, showActivity: true, showRow2: true}
+	case avail >= 34:
+		p = overviewParams{topN: 5, recentN: 5, showActivity: true, showRow2: true}
+	case avail >= 24:
+		p = overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: true}
+	default: // < 24 (covers 18-23 and < 18)
+		p = overviewParams{topN: 5, recentN: 3, showActivity: false, showRow2: false}
+	}
+
+	switch {
+	case m.width >= 100:
+		p.columns = 3
+	case m.width >= 80:
+		p.columns = 2
+	default:
+		p.columns = 1
+		if p.topN > 3 {
+			p.topN = 3
+		}
+		if p.recentN > 3 {
+			p.recentN = 3
+		}
+	}
+
+	return p
 }
 
 func (m *model) contentWidth() int {

@@ -72,6 +72,7 @@ type model struct {
 	cursor           [5]int // per-tab selection
 	detail           bool   // true when drilled into a detail view
 	detailScroll     int    // top line of detail viewport
+	overviewScroll   int    // top line of overview viewport
 	cachedDetailMax   int      // cached result of detailMaxScroll computation
 	cachedDetailBody  string   // cached rendered detail view
 	cachedDetailLines []string // cached split lines of cachedDetailBody
@@ -219,25 +220,46 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 	case "5":
 		m.switchToTab(tabSkills)
 	case "up", "k":
-		if m.tab != tabOverview && m.cursor[m.tab] > 0 {
+		if m.tab == tabOverview {
+			if m.overviewScroll > 0 {
+				m.overviewScroll--
+			}
+		} else if m.cursor[m.tab] > 0 {
 			m.cursor[m.tab]--
 		}
 	case "down", "j":
-		if m.tab != tabOverview {
+		if m.tab == tabOverview {
+			m.overviewScroll++
+		} else {
 			n := m.listLen(m.tab)
 			if m.cursor[m.tab] < n-1 {
 				m.cursor[m.tab]++
 			}
 		}
 	case "g", "home":
-		if m.tab != tabOverview {
+		if m.tab == tabOverview {
+			m.overviewScroll = 0
+		} else {
 			m.cursor[m.tab] = 0
 		}
 	case "G", "end":
-		if m.tab != tabOverview {
+		if m.tab == tabOverview {
+			m.overviewScroll = 1<<31 - 1 // lazy clamp in renderBody
+		} else {
 			if n := m.listLen(m.tab); n > 0 {
 				m.cursor[m.tab] = n - 1
 			}
+		}
+	case "pgup":
+		if m.tab == tabOverview {
+			m.overviewScroll -= m.overviewViewportHeight() / 2
+			if m.overviewScroll < 0 {
+				m.overviewScroll = 0
+			}
+		}
+	case "pgdown":
+		if m.tab == tabOverview {
+			m.overviewScroll += m.overviewViewportHeight() / 2
 		}
 	case "enter":
 		if m.tab != tabOverview && m.listLen(m.tab) > 0 {
@@ -381,7 +403,26 @@ func (m *model) renderBody() string {
 	}
 	switch m.tab {
 	case tabOverview:
-		return m.renderOverview()
+		body := m.renderOverview()
+		lines := strings.Split(body, "\n")
+		total := len(lines)
+		vh := m.overviewViewportHeight()
+		// lazy clamp
+		if m.overviewScroll > total-vh {
+			m.overviewScroll = max(0, total-vh)
+		}
+		if m.overviewScroll < 0 {
+			m.overviewScroll = 0
+		}
+		if total <= vh {
+			return body
+		}
+		end := min(m.overviewScroll+vh, total)
+		out := strings.Join(lines[m.overviewScroll:end], "\n")
+		if remaining := total - end; remaining > 0 {
+			out += "\n" + mutedStyle.Render(fmt.Sprintf("(%d more lines, ↓ to scroll)", remaining))
+		}
+		return out
 	case tabSessions:
 		if m.detail {
 			return m.scrollDetail(m.cachedDetailBody)
@@ -441,6 +482,11 @@ func (m *model) scrollDetail(body string) string {
 func (m *model) viewportHeight() int {
 	n := max(m.height-8, 5)
 	return n
+}
+
+// overviewViewportHeight is the number of lines available for overview content.
+func (m *model) overviewViewportHeight() int {
+	return max(m.height-7, 5)
 }
 
 // detailMaxScroll returns the cached max scroll offset for the current detail view.

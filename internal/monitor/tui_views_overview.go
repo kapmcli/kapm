@@ -27,35 +27,57 @@ const (
 
 // renderOverview renders the overview tab.
 func (m *model) renderOverview() string {
+	p := m.overviewLayout()
 	full := m.contentWidth()
-	// Row 1: Summary (+ Activity if non-empty) side-by-side 50/50.
+
+	// Row 1: Summary (+ Activity if showActivity and non-empty) side-by-side.
 	var row1 string
-	if len(m.metrics.Overview.HourlyActivity) == 0 {
-		row1 = m.renderSummaryBox(full)
-	} else {
+	if p.showActivity && len(m.metrics.Overview.HourlyActivity) > 0 {
 		ws := splitBoxWidths(full, 2, 1)
 		row1 = lipgloss.JoinHorizontal(lipgloss.Top,
 			m.renderSummaryBox(ws[0]), " ", m.renderActivityBox(ws[1]))
+	} else {
+		row1 = m.renderSummaryBox(full)
 	}
 
-	// Row 2: Top tools + Top agents (+ Skills if non-empty) as 2 or 3 cols.
-	var row2 string
-	if len(m.metrics.Skills) == 0 {
-		ws := splitBoxWidths(full, 2, 1)
-		row2 = lipgloss.JoinHorizontal(lipgloss.Top,
-			m.renderTopTools(overviewTopN, ws[0]), " ", m.renderTopAgents(overviewTopN, ws[1]))
-	} else {
-		ws := splitBoxWidths(full, 3, 1)
-		row2 = lipgloss.JoinHorizontal(lipgloss.Top,
-			m.renderTopTools(overviewTopN, ws[0]), " ",
-			m.renderTopAgents(overviewTopN, ws[1]), " ",
-			m.renderTopSkills(overviewTopN, ws[2]))
+	// Row 2: Top tools + Top agents (+ Skills) based on columns param.
+	var parts []string
+	if p.showRow2 {
+		hasSkills := len(m.metrics.Skills) > 0
+		effectiveCols := p.columns
+		if effectiveCols == 3 && !hasSkills {
+			effectiveCols = 2
+		}
+		switch effectiveCols {
+		case 1:
+			parts = append(parts,
+				m.renderTopTools(p.topN, full),
+				m.renderTopAgents(p.topN, full),
+			)
+			if hasSkills {
+				parts = append(parts, m.renderTopSkills(p.topN, full))
+			}
+		case 2:
+			ws := splitBoxWidths(full, 2, 1)
+			parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Top,
+				m.renderTopTools(p.topN, ws[0]), " ", m.renderTopAgents(p.topN, ws[1])))
+		default: // 3
+			ws := splitBoxWidths(full, 3, 1)
+			parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Top,
+				m.renderTopTools(p.topN, ws[0]), " ",
+				m.renderTopAgents(p.topN, ws[1]), " ",
+				m.renderTopSkills(p.topN, ws[2])))
+		}
 	}
 
 	// Row 3: Recent active sessions full width.
-	row3 := m.renderRecentSessionsBox(full)
+	row3 := m.renderRecentSessionsBox(full, p.recentN)
 
-	return row1 + "\n" + row2 + "\n" + row3
+	result := row1
+	if len(parts) > 0 {
+		result += "\n" + strings.Join(parts, "\n")
+	}
+	return result + "\n" + row3
 }
 
 // renderSummaryBox draws the Summary panel with logs dir + counters, fitted to width.
@@ -214,10 +236,10 @@ func (m *model) renderTopSkills(limit, width int) string {
 
 // renderRecentSessionsBox renders a full-width box showing top N sessions
 // (already sorted by LastActivity desc) with a detailed row per session.
-func (m *model) renderRecentSessionsBox(width int) string {
+func (m *model) renderRecentSessionsBox(width, limit int) string {
 	sessions := m.metrics.Sessions
-	if len(sessions) > maxRecentSessions {
-		sessions = sessions[:maxRecentSessions]
+	if len(sessions) > limit {
+		sessions = sessions[:limit]
 	}
 	interior := interiorOf(width)
 

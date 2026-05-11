@@ -70,6 +70,45 @@ func assertGolden(t *testing.T, name, got string) {
 	}
 }
 
+// newSnapshotModelSize returns a *model with custom terminal dimensions.
+func newSnapshotModelSize(tab, width, height int) *model {
+	m := newTestModel()
+	m.tab = tab
+	m.width = width
+	m.height = height
+	return m
+}
+
+func TestSnapshotOverviewFull(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 120, 50)
+	assertGolden(t, "overview_full", m.renderOverview())
+}
+
+func TestSnapshotOverviewDefault(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 120, 40)
+	assertGolden(t, "overview_default", m.renderOverview())
+}
+
+func TestSnapshotOverviewCompact(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 120, 30)
+	assertGolden(t, "overview_compact", m.renderOverview())
+}
+
+func TestSnapshotOverviewMinimal(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 120, 24)
+	assertGolden(t, "overview_minimal", m.renderOverview())
+}
+
+func TestSnapshotOverviewNarrow(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 80, 40)
+	assertGolden(t, "overview_narrow", m.renderOverview())
+}
+
+func TestSnapshotOverviewNarrowShort(t *testing.T) {
+	m := newSnapshotModelSize(tabOverview, 60, 24)
+	assertGolden(t, "overview_narrow_short", m.renderOverview())
+}
+
 func TestSnapshotRenderAgentsList(t *testing.T) {
 	m := newSnapshotModel(tabAgents) // agents tab
 	got := m.renderAgentsList()
@@ -90,7 +129,7 @@ func TestSnapshotRenderSessionsList(t *testing.T) {
 
 func TestSnapshotRenderRecentSessionsBox(t *testing.T) {
 	m := newSnapshotModel(tabOverview)
-	got := m.renderRecentSessionsBox(m.contentWidth())
+	got := m.renderRecentSessionsBox(m.contentWidth(), maxRecentSessions)
 	assertGolden(t, "overview_recent_sessions", got)
 }
 
