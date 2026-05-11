@@ -1,11 +1,11 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/kapmcli/kapm/internal/kirocliusage"
@@ -198,7 +198,7 @@ func computeDashboardSessions(sessions []monitor.SessionMetric) []monitor.Sessio
 			if c := groupLast[b.ID].Compare(groupLast[a.ID]); c != 0 {
 				return c
 			}
-			return strings.Compare(a.ID, b.ID)
+			return cmp.Compare(a.ID, b.ID)
 		}
 		return b.LastActivity.Compare(a.LastActivity)
 	})

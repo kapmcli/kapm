@@ -1,6 +1,7 @@
 package power
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -123,10 +124,11 @@ func validateManifest(tempDir string) (*PowerManifest, bool, bool, []string, err
 	if err != nil {
 		return nil, false, false, nil, err
 	}
-	hasMCP, err := hasPowerMCP(tempDir)
-	if err != nil {
-		return nil, false, false, nil, err
+	mcpCfg, _, mcpErr := parseSourceMCP(tempDir)
+	if mcpErr != nil {
+		return nil, false, false, nil, mcpErr
 	}
+	hasMCP := len(mcpCfg.MCPServers) > 0
 	hasHooks, err := hasPowerHooks(tempDir)
 	if err != nil {
 		return nil, false, false, nil, err
@@ -273,7 +275,7 @@ func loadPowerSteering(srcDir string) ([]PowerSteeringDoc, []string, error) {
 		return nil, nil, err
 	}
 	slices.SortFunc(docs, func(a, b PowerSteeringDoc) int {
-		return strings.Compare(a.Name, b.Name)
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return docs, warnings, nil
 }
@@ -296,14 +298,6 @@ func parseSourceMCP(powerSrcDir string) (convert.MCPConfig, string, error) {
 		config.MCPServers = map[string]convert.MCPServerEntry{}
 	}
 	return config, path, nil
-}
-
-func hasPowerMCP(powerSrcDir string) (bool, error) {
-	config, _, err := parseSourceMCP(powerSrcDir)
-	if err != nil {
-		return false, err
-	}
-	return len(config.MCPServers) > 0, nil
 }
 
 func hasPowerHooks(powerSrcDir string) (bool, error) {

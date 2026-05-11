@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -165,14 +166,20 @@ func loadAllHookRecords(ctx context.Context, hookLogsDir string) ([]HookRecord, 
 	return dedupeHookRecords(append(cli, legacy...)), nil
 }
 
+type hookDedup struct {
+	ts                          time.Time
+	session, event, agent, tool string
+	cwd, shellExit              string
+}
+
 func dedupeHookRecords(records []HookRecord) []HookRecord {
 	if len(records) < 2 {
 		return records
 	}
-	seen := make(map[string]struct{}, len(records))
+	seen := make(map[hookDedup]struct{}, len(records))
 	out := records[:0]
 	for _, rec := range records {
-		key := hookRecordKey(rec)
+		key := hookDedup{rec.Ts, rec.Session, rec.Event, rec.Agent, rec.Tool, rec.Cwd, rec.ShellExitStatus}
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -186,30 +193,21 @@ func dedupeHookRecords(records []HookRecord) []HookRecord {
 func sortHookRecords(records []HookRecord) {
 	slices.SortStableFunc(records, func(a, b HookRecord) int {
 		if a.Session != b.Session {
-			return strings.Compare(a.Session, b.Session)
+			return cmp.Compare(a.Session, b.Session)
 		}
 		if c := a.Ts.Compare(b.Ts); c != 0 {
 			return c
 		}
 		if a.Event != b.Event {
-			return strings.Compare(a.Event, b.Event)
+			return cmp.Compare(a.Event, b.Event)
 		}
 		if a.Tool != b.Tool {
-			return strings.Compare(a.Tool, b.Tool)
+			return cmp.Compare(a.Tool, b.Tool)
 		}
-		return strings.Compare(a.Agent, b.Agent)
+		return cmp.Compare(a.Agent, b.Agent)
 	})
 }
 
-func hookRecordKey(rec HookRecord) string {
-	return rec.Ts.UTC().Format(time.RFC3339Nano) + "\x00" +
-		rec.Session + "\x00" +
-		rec.Event + "\x00" +
-		rec.Agent + "\x00" +
-		rec.Tool + "\x00" +
-		rec.Cwd + "\x00" +
-		rec.ShellExitStatus
-}
 
 func loadLegacyRootHookRecords(ctx context.Context, hookLogsDir string) ([]HookRecord, error) {
 	entries, err := os.ReadDir(hookLogsDir)

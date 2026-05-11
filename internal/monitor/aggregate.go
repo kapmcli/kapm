@@ -140,6 +140,9 @@ func processSessionMetaRecord(st *aggState, s *sessionState, r MergedRecord) {
 
 func processToolUseRecord(st *aggState, s *sessionState, r MergedRecord, toolName string, ts time.Time) {
 	s.toolCalls++
+	if toolName == apmconfig.ToolShell || strings.HasPrefix(toolName, "shell:") {
+		s.hasShell = true
+	}
 	summary := inputSummary(r.ToolInput, toolName, s.cwd)
 	entry := EventEntry{Ts: ts, Event: apmconfig.EventPreToolUse, Tool: toolName, InputSummary: summary, ToolInput: formatToolInput(r.ToolInput), toolUseID: r.ToolUseID}
 	s.timeline = append(s.timeline, entry)
@@ -435,6 +438,7 @@ func mergeFirstPromptOnlyState(dst, src *sessionState) {
 func buildSessionDetails(st *aggState) {
 	for _, s := range st.sessions {
 		base := newSessionMetric(s, st.now)
+		s.metric = base
 		prompts := slices.Clone(s.prompts)
 		if prompts == nil {
 			prompts = []string{}
@@ -444,16 +448,9 @@ func buildSessionDetails(st *aggState) {
 			changes = slices.Clone(s.changes)
 			slices.SortStableFunc(changes, func(a, b FileChange) int { return a.Ts.Compare(b.Ts) })
 		}
-		var hasShell bool
-		for _, ev := range s.timeline {
-			if ev.Tool == apmconfig.ToolShell || strings.HasPrefix(ev.Tool, "shell:") {
-				hasShell = true
-				break
-			}
-		}
 		st.sessionDetails = append(st.sessionDetails, SessionDetail{
 			SessionMetric:      base,
-			HasShell:           hasShell,
+			HasShell:           s.hasShell,
 			PromptHistory:      prompts,
 			Timeline:           s.timeline,
 			ToolSummary:        sessionToolSummary(s.timeline),
@@ -517,7 +514,7 @@ func foldSessionIntoAgents(st *aggState) {
 		a.TotalInputTokens += s.totalInputTokens
 		a.TotalOutputTokens += s.totalOutputTokens
 		a.TotalCredits += s.totalCredits
-		a.Sessions = append(a.Sessions, newSessionMetric(s, st.now))
+		a.Sessions = append(a.Sessions, s.metric)
 
 		tm := agentTools[s.agent]
 		if tm == nil {
@@ -838,7 +835,7 @@ func AggregateToolInputPatterns(calls []ToolCall, topN int) []PatternCount {
 			}
 			return 1
 		}
-		return strings.Compare(a.Summary, b.Summary)
+		return cmp.Compare(a.Summary, b.Summary)
 	})
 	if topN > 0 && len(pats) > topN {
 		pats = pats[:topN]

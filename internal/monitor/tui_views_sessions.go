@@ -244,6 +244,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 	}
 
 	groups := prepareSessionChanges(s.Changes)
+	interior := m.interiorWidth()
 
 	nFiles := s.FilesChanged
 	nEdits := len(s.Changes)
@@ -286,7 +287,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		}
 
 		lineWidth := 2 + len(shortPath) + 2 + len(editCountStr) + 2 + len("last 00:00:00")
-		if lineWidth > m.interiorWidth() {
+		if lineWidth > interior {
 			fmt.Fprintf(&b, "  %s  %s\n    %s\n", shortPath, fileCounts, metaStr)
 		} else {
 			fmt.Fprintf(&b, "  %s  %s  %s\n", shortPath, fileCounts, metaStr)
