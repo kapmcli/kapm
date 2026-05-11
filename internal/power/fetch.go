@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/kapmcli/kapm/internal/fileutil"
 )
 
 // Fetcher resolves a PowerSource to a local directory ready for installation.
@@ -93,6 +95,10 @@ func (gitFetcher) Fetch(ctx context.Context, src PowerSource) (string, string, f
 			return "", "", func() {}, fmt.Errorf("subpath %q not found in repository %q", src.PathInRepo, src.URL)
 		}
 		return "", "", func() {}, fmt.Errorf("stat fetched path %q: %w", localDir, err)
+	}
+	if err := fileutil.RefuseSymlinkPathUnder(tempDir, localDir); err != nil {
+		cleanup()
+		return "", "", func() {}, err
 	}
 
 	warnIfLargeRepo(repoDir)
