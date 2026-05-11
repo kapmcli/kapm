@@ -19,10 +19,12 @@ const (
 	colWidthRecentCredits = 7
 	colWidthRecentLastAct = 11
 	colWidthRecentTitle   = 40
-
-	// recentSessionsFixed = 2(indent) + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct
-	recentSessionsFixed = 2 + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct
 )
+
+var recentSessionsFixed = sumColWidths(2, 2,
+	colWidthRecentID, colWidthRecentDur, colWidthRecentStatus,
+	colWidthRecentTools, colWidthRecentPrompts, colWidthRecentCredits,
+	colWidthRecentLastAct)
 
 var activityBars = [...]rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
@@ -253,7 +255,6 @@ func (m *model) renderRecentSessionsBox(width, limit int) string {
 		return borderStyle.Width(width).Render(b.String())
 	}
 
-	// Fixed chars: 2(indent) + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct = recentSessionsFixed
 	remaining := interior - recentSessionsFixed - 2 // 2 spaces between ID and Agent
 	agentW := min(max(remaining-2-colWidthRecentTitle, 10), 16)
 

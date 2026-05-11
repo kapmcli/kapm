@@ -29,8 +29,10 @@ func (m *model) renderSessionsList() string {
 	sessions := m.metrics.Sessions
 	interior := m.interiorWidth()
 
-	// Fixed: 2(indent) + colWidthSessionID + 1 + agent + 1 + colWidthSessionTitle + 1 + colWidthSessionDur + 1 + colWidthSessionStatus + 1 + colWidthSessionTool + 1 + colWidthSessionPrompt + 1 + colWidthSessionFiles + 1 + colWidthSessionCredits + 1 + colWidthSessionLastAct
-	fixed := 2 + colWidthSessionID + 1 + 1 + colWidthSessionTitle + 1 + colWidthSessionDur + 1 + colWidthSessionStatus + 1 + colWidthSessionTool + 1 + colWidthSessionPrompt + 1 + colWidthSessionFiles + 1 + colWidthSessionCredits + 1 + colWidthSessionLastAct
+	fixed := sumColWidths(2, 1,
+		colWidthSessionID, 0, colWidthSessionTitle, colWidthSessionDur,
+		colWidthSessionStatus, colWidthSessionTool, colWidthSessionPrompt,
+		colWidthSessionFiles, colWidthSessionCredits, colWidthSessionLastAct)
 	agentW := min(max(interior-fixed, 10), 16)
 
 	cols := []Column{

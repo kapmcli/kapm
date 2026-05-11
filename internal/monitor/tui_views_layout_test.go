@@ -53,3 +53,24 @@ func TestSplitBoxWidthsSumsToTotal(t *testing.T) {
 		t.Errorf("splitBoxWidths(%d,%d,%d) sum = %d, want %d", total, n, gap, sum, want)
 	}
 }
+
+func TestSumColWidths(t *testing.T) {
+	cases := []struct {
+		indent, gap int
+		widths      []int
+		want        int
+	}{
+		{0, 0, nil, 0},
+		{2, 2, nil, 2},
+		{0, 1, []int{10}, 10},
+		{2, 2, []int{10}, 12},
+		{2, 2, []int{12, 8, 9, 5, 7, 7, 11}, 73},
+		{2, 1, []int{12, 0, 40, 8, 9, 4, 5, 5, 7, 11}, 112},
+	}
+	for _, c := range cases {
+		got := sumColWidths(c.indent, c.gap, c.widths...)
+		if got != c.want {
+			t.Errorf("sumColWidths(%d,%d,%v) = %d, want %d", c.indent, c.gap, c.widths, got, c.want)
+		}
+	}
+}

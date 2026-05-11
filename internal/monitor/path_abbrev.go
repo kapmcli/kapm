@@ -63,3 +63,16 @@ func truncateLeft(s string, n int) string {
 	}
 	return "…" + s[len(s)-(n-1):]
 }
+
+// sumColWidths returns the total fixed width of a row: indent + sum of column
+// widths + (len(widths)-1)*gap for inter-column spacing.
+func sumColWidths(indent, gap int, widths ...int) int {
+	if len(widths) == 0 {
+		return indent
+	}
+	total := indent + (len(widths)-1)*gap
+	for _, w := range widths {
+		total += w
+	}
+	return total
+}
