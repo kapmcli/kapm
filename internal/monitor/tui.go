@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -28,6 +29,10 @@ const (
 	defaultHeight       = 40
 	defaultKiroUsageTTL = 5 * time.Minute
 )
+
+// overviewScrollEnd is a sentinel that triggers lazy clamping in renderBody
+// to scroll the overview to its bottom. See renderBody, case tabOverview.
+const overviewScrollEnd = math.MaxInt
 
 var tabNames = []string{"Overview", "Sessions", "Agents", "Tools", "Skills"}
 
@@ -244,7 +249,7 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 		}
 	case "G", "end":
 		if m.tab == tabOverview {
-			m.overviewScroll = 1<<31 - 1 // lazy clamp in renderBody
+			m.overviewScroll = overviewScrollEnd
 		} else {
 			if n := m.listLen(m.tab); n > 0 {
 				m.cursor[m.tab] = n - 1
