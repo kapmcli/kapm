@@ -315,14 +315,17 @@ func parseHookRecords(path string) ([]HookRecord, error) {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
 	var parseFailed int
+	var lineNum int
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		lineNum++
 		if len(line) == 0 {
 			continue
 		}
 		var rec HookRecord
 		if err := json.Unmarshal(line, &rec); err != nil {
 			parseFailed++ // garbage JSON — will Warn
+			slog.Debug("malformed hook record", "path", path, "line", lineNum, "err", err)
 			continue
 		}
 		if rec.Ts.IsZero() {
@@ -339,12 +342,20 @@ func parseHookRecords(path string) ([]HookRecord, error) {
 	return recs, nil
 }
 
+// truncateRaw returns the first n bytes of raw JSON data as a string, safe for logging.
+func truncateRaw(data json.RawMessage, n int) string {
+	if len(data) <= n {
+		return string(data)
+	}
+	return string(data[:n])
+}
+
 // decodeOrSkip unmarshals data into T. On failure it logs a slog.Warn with
 // session context and returns the zero value of T plus false.
 func decodeOrSkip[T any](data json.RawMessage, kind, sessionID string) (T, bool) {
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
-		slog.Warn("skipped malformed merge record", "kind", kind, "session", sessionID, "err", err)
+		slog.Warn("skipped malformed merge record", "kind", kind, "session", sessionID, "err", err, "raw_prefix", truncateRaw(data, 128))
 		return v, false
 	}
 	return v, true
