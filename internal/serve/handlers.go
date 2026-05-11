@@ -377,10 +377,13 @@ func (s *Server) handleAPIMetrics(w http.ResponseWriter, r *http.Request) {
 		dm = filterByAgent(dm, ag)
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(dm); err != nil {
-		slog.Warn("serve encode metrics", "err", err)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(dm); err != nil {
+		s.handleError(w, r, err, http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = buf.WriteTo(w)
 }
 
 // handleError logs the full error via slog and writes a generic status response.
