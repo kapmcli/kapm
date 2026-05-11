@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -146,7 +147,9 @@ func (s *Server) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		// best-effort graceful shutdown; connection cleanup still happens on timeout
-		_ = srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown error", "err", err)
+		}
 		return nil
 	case err := <-errCh:
 		return err
