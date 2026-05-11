@@ -268,6 +268,8 @@ type sessionState struct {
 	totalOutputTokens  int
 	totalCredits       float64
 	subAgentCalls      []SubAgentCall
+	hasShell           bool
+	metric             SessionMetric // cached by buildSessionDetails, reused by foldSessionIntoAgents
 }
 
 // aggState holds the mutable accumulators shared by the three
