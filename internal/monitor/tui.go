@@ -231,47 +231,17 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 	case "5":
 		m.switchToTab(tabSkills)
 	case "up", "k":
-		if m.tab == tabOverview {
-			if m.overviewScroll > 0 {
-				m.overviewScroll--
-			}
-		} else if m.cursor[m.tab] > 0 {
-			m.cursor[m.tab]--
-		}
+		m.scrollUp()
 	case "down", "j":
-		if m.tab == tabOverview {
-			m.overviewScroll++
-		} else {
-			n := m.listLen(m.tab)
-			if m.cursor[m.tab] < n-1 {
-				m.cursor[m.tab]++
-			}
-		}
+		m.scrollDown()
 	case "g", "home":
-		if m.tab == tabOverview {
-			m.overviewScroll = 0
-		} else {
-			m.cursor[m.tab] = 0
-		}
+		m.scrollToTop()
 	case "G", "end":
-		if m.tab == tabOverview {
-			m.overviewScroll = overviewScrollEnd
-		} else {
-			if n := m.listLen(m.tab); n > 0 {
-				m.cursor[m.tab] = n - 1
-			}
-		}
+		m.scrollToBottom()
 	case "pgup":
-		if m.tab == tabOverview {
-			m.overviewScroll -= m.overviewViewportHeight() / 2
-			if m.overviewScroll < 0 {
-				m.overviewScroll = 0
-			}
-		}
+		m.scrollPageUp()
 	case "pgdown":
-		if m.tab == tabOverview {
-			m.overviewScroll += m.overviewViewportHeight() / 2
-		}
+		m.scrollPageDown()
 	case "enter":
 		if m.tab != tabOverview && m.listLen(m.tab) > 0 {
 			m.detail = true
@@ -280,6 +250,62 @@ func (m *model) handleListKey(key string) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m *model) scrollUp() {
+	if m.tab == tabOverview {
+		if m.overviewScroll > 0 {
+			m.overviewScroll--
+		}
+		return
+	}
+	if m.cursor[m.tab] > 0 {
+		m.cursor[m.tab]--
+	}
+}
+
+func (m *model) scrollDown() {
+	if m.tab == tabOverview {
+		m.overviewScroll++
+		return
+	}
+	n := m.listLen(m.tab)
+	if m.cursor[m.tab] < n-1 {
+		m.cursor[m.tab]++
+	}
+}
+
+func (m *model) scrollToTop() {
+	if m.tab == tabOverview {
+		m.overviewScroll = 0
+		return
+	}
+	m.cursor[m.tab] = 0
+}
+
+func (m *model) scrollToBottom() {
+	if m.tab == tabOverview {
+		m.overviewScroll = overviewScrollEnd
+		return
+	}
+	if n := m.listLen(m.tab); n > 0 {
+		m.cursor[m.tab] = n - 1
+	}
+}
+
+func (m *model) scrollPageUp() {
+	if m.tab == tabOverview {
+		m.overviewScroll -= m.overviewViewportHeight() / 2
+		if m.overviewScroll < 0 {
+			m.overviewScroll = 0
+		}
+	}
+}
+
+func (m *model) scrollPageDown() {
+	if m.tab == tabOverview {
+		m.overviewScroll += m.overviewViewportHeight() / 2
+	}
 }
 
 func (m *model) listLen(tab int) int {
