@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -72,5 +73,28 @@ func TestSumColWidths(t *testing.T) {
 		if got != c.want {
 			t.Errorf("sumColWidths(%d,%d,%v) = %d, want %d", c.indent, c.gap, c.widths, got, c.want)
 		}
+	}
+}
+
+func TestRenderTopBoxEmpty(t *testing.T) {
+	m := newTestModel()
+	emptyFn := func(b *strings.Builder) { b.WriteString("  nothing here") }
+	rowsFn := func(b *strings.Builder, _ int) {}
+	out := m.renderTopBox("Test", 60, 5, false, emptyFn, rowsFn)
+	if !strings.Contains(out, "╭") && !strings.Contains(out, "│") {
+		t.Error("expected border character in output")
+	}
+	if !strings.Contains(out, "nothing here") {
+		t.Error("expected empty message in output")
+	}
+}
+
+func TestRenderTopBoxRows(t *testing.T) {
+	m := newTestModel()
+	emptyFn := func(b *strings.Builder) { b.WriteString("  nothing here") }
+	rowsFn := func(b *strings.Builder, _ int) { b.WriteString("  test-row-content") }
+	out := m.renderTopBox("Test", 60, 5, true, emptyFn, rowsFn)
+	if !strings.Contains(out, "test-row-content") {
+		t.Error("expected row content in output")
 	}
 }

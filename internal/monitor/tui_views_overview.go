@@ -118,55 +118,71 @@ func (m *model) renderSummaryBox(width int) string {
 	return borderStyle.Width(width).Render(b.String())
 }
 
-func (m *model) renderTopTools(limit, width int) string {
+// renderTopBox renders a bordered panel with a section title and up to `limit`
+// rows. The caller supplies a row renderer that receives the interior width
+// and writes row content to the supplied *strings.Builder. empty(b) is called
+// when there are no rows to render.
+func (m *model) renderTopBox(
+	title string,
+	width, limit int,
+	haveData bool,
+	empty func(b *strings.Builder),
+	rows func(b *strings.Builder, interior int),
+) string {
 	var b strings.Builder
-	b.WriteString(sectionStyle.Render("▸ Top tools"))
+	b.WriteString(sectionStyle.Render("▸ " + title))
 	b.WriteString("\n")
-
-	tools := m.metrics.Overview.Tools
-	if len(tools) == 0 {
-		b.WriteString(mutedStyle.Render("  no tool usage"))
+	if !haveData {
+		empty(&b)
 		return borderStyle.Width(width).Render(b.String())
 	}
-	if len(tools) < limit {
-		limit = len(tools)
-	}
-	// Reserve: 2(indent) + 12(name) + 1 + bar + 1 + 4(count) + 5(" err:") + 6(err%) = 31 + bar
 	interior := interiorOf(width)
-	barW := min(max(interior-31, 3), 20)
-	maxCall := tools[0].CallCount
-	for i := range limit {
-		t := tools[i]
-		bar := barChart(t.CallCount, maxCall, barW)
-		fmt.Fprintf(&b, "  %-12s %s %4d err:%s\n",
-			truncate(t.Name, 12), barStyleOK.Render(bar), t.CallCount, formatErrRate(t.ErrorRate))
-	}
+	rows(&b, interior)
+	_ = limit // caller's rows closure caps itself; passed for optional use
 	return borderStyle.Width(width).Render(b.String())
 }
 
-func (m *model) renderTopAgents(limit, width int) string {
-	var b strings.Builder
-	b.WriteString(sectionStyle.Render("▸ Top agents"))
-	b.WriteString("\n")
+func (m *model) renderTopTools(limit, width int) string {
+	tools := m.metrics.Overview.Tools
+	return m.renderTopBox("Top tools", width, limit, len(tools) > 0,
+		func(b *strings.Builder) {
+			b.WriteString(mutedStyle.Render("  no tool usage"))
+		},
+		func(b *strings.Builder, interior int) {
+			if len(tools) < limit {
+				limit = len(tools)
+			}
+			// Reserve: 2(indent) + 12(name) + 1 + bar + 1 + 4(count) + 5(" err:") + 6(err%) = 31 + bar
+			barW := min(max(interior-31, 3), 20)
+			maxCall := tools[0].CallCount
+			for i := range limit {
+				t := tools[i]
+				bar := barChart(t.CallCount, maxCall, barW)
+				fmt.Fprintf(b, "  %-12s %s %4d err:%s\n",
+					truncate(t.Name, 12), barStyleOK.Render(bar), t.CallCount, formatErrRate(t.ErrorRate))
+			}
+		})
+}
 
+func (m *model) renderTopAgents(limit, width int) string {
 	agents := m.metrics.Overview.Agents
-	if len(agents) == 0 {
-		b.WriteString(mutedStyle.Render("  no agent activity"))
-		return borderStyle.Width(width).Render(b.String())
-	}
-	if len(agents) < limit {
-		limit = len(agents)
-	}
-	// Reserve 2(indent) + 1 + 6(Sess) + 1 + 5(Tool) + 1 + 6(Prompt) = 22
-	interior := interiorOf(width)
-	nameW := min(max(interior-22, 8), 30)
-	fmt.Fprintf(&b, "  %-*s %6s %5s %6s\n", nameW, "Name", "Sess", "Tools", "Prompt")
-	for i := range limit {
-		a := agents[i]
-		fmt.Fprintf(&b, "  %-*s %6d %5d %6d\n",
-			nameW, truncate(a.Name, nameW), a.SessionCount, a.ToolCalls, a.Prompts)
-	}
-	return borderStyle.Width(width).Render(b.String())
+	return m.renderTopBox("Top agents", width, limit, len(agents) > 0,
+		func(b *strings.Builder) {
+			b.WriteString(mutedStyle.Render("  no agent activity"))
+		},
+		func(b *strings.Builder, interior int) {
+			if len(agents) < limit {
+				limit = len(agents)
+			}
+			// Reserve 2(indent) + 1 + 6(Sess) + 1 + 5(Tool) + 1 + 6(Prompt) = 22
+			nameW := min(max(interior-22, 8), 30)
+			fmt.Fprintf(b, "  %-*s %6s %5s %6s\n", nameW, "Name", "Sess", "Tools", "Prompt")
+			for i := range limit {
+				a := agents[i]
+				fmt.Fprintf(b, "  %-*s %6d %5d %6d\n",
+					nameW, truncate(a.Name, nameW), a.SessionCount, a.ToolCalls, a.Prompts)
+			}
+		})
 }
 
 func (m *model) renderActivityBox(width int) string {
@@ -213,28 +229,25 @@ func (m *model) renderActivityBox(width int) string {
 }
 
 func (m *model) renderTopSkills(limit, width int) string {
-	var b strings.Builder
-	b.WriteString(sectionStyle.Render("▸ Skills (reads)"))
-	b.WriteString("\n")
 	skills := m.metrics.Skills
-	if len(skills) == 0 {
-		b.WriteString(mutedStyle.Render("  no skill reads"))
-		return borderStyle.Width(width).Render(b.String())
-	}
-	if len(skills) < limit {
-		limit = len(skills)
-	}
-	maxC := skills[0].ReadCount
-	// Reserve 2(indent) + 18(name) + 1 + bar + 1 + 4(count) = 26 + bar
-	interior := interiorOf(width)
-	barW := min(max(interior-26, 3), 20)
-	for i := range limit {
-		sk := skills[i]
-		bar := barChart(sk.ReadCount, maxC, barW)
-		fmt.Fprintf(&b, "  %-18s %s %4d\n",
-			truncate(sk.Name, 18), barStyleOK.Render(bar), sk.ReadCount)
-	}
-	return borderStyle.Width(width).Render(b.String())
+	return m.renderTopBox("Skills (reads)", width, limit, len(skills) > 0,
+		func(b *strings.Builder) {
+			b.WriteString(mutedStyle.Render("  no skill reads"))
+		},
+		func(b *strings.Builder, interior int) {
+			if len(skills) < limit {
+				limit = len(skills)
+			}
+			maxC := skills[0].ReadCount
+			// Reserve 2(indent) + 18(name) + 1 + bar + 1 + 4(count) = 26 + bar
+			barW := min(max(interior-26, 3), 20)
+			for i := range limit {
+				sk := skills[i]
+				bar := barChart(sk.ReadCount, maxC, barW)
+				fmt.Fprintf(b, "  %-18s %s %4d\n",
+					truncate(sk.Name, 18), barStyleOK.Render(bar), sk.ReadCount)
+			}
+		})
 }
 
 // renderRecentSessionsBox renders a full-width box showing top N sessions
