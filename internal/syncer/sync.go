@@ -177,11 +177,7 @@ func moduleAPMDirs(root string, manifest projectManifest) ([]string, error) {
 		return nil, nil
 	}
 
-	orderedSources, err := orderedModuleSources(manifest, packageSources)
-	if err != nil {
-		return nil, fmt.Errorf("sync module apm dirs: %w", err)
-	}
-	return orderedSources, nil
+	return orderedModuleSources(manifest, packageSources), nil
 }
 
 // discoverPackageSources returns packageKey -> selected source dir for every
@@ -217,7 +213,7 @@ func discoverPackageSources(modulesRoot string) (map[string]string, error) {
 	return out, nil
 }
 
-func orderedModuleSources(manifest projectManifest, packageSources map[string]string) ([]string, error) {
+func orderedModuleSources(manifest projectManifest, packageSources map[string]string) []string {
 	orderedKeys := slices.Sorted(maps.Keys(packageSources))
 
 	candidates := make([][]string, 0, len(manifest.Dependencies.APM))
@@ -245,7 +241,7 @@ func orderedModuleSources(manifest projectManifest, packageSources map[string]st
 		ordered = append(ordered, packageSources[key])
 	}
 
-	return ordered, nil
+	return ordered
 }
 
 func matchDependencyPackage(candidates []string, orderedKeys []string, used map[string]bool) (string, bool) {
