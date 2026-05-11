@@ -164,15 +164,15 @@ func readPower(dir string) (*PowerManifest, error) {
 		return nil, fmt.Errorf("parse %q: %w", path, err)
 	}
 
-	nameValue, _ := stringMetaField(doc.Meta, "name")
+	nameValue := stringMetaField(doc.Meta, "name")
 	name, err := apmconfig.ValidateIdentifier(nameValue)
 	if err != nil {
 		return nil, errors.New("POWER.md frontmatter must have a valid name")
 	}
 
-	description, _ := stringMetaField(doc.Meta, "description")
+	description := stringMetaField(doc.Meta, "description")
 	if strings.TrimSpace(description) == "" {
-		description, _ = stringMetaField(doc.Meta, "displayName")
+		description = stringMetaField(doc.Meta, "displayName")
 	}
 	if strings.TrimSpace(description) == "" {
 		return nil, errors.New("POWER.md frontmatter must have description or displayName")
@@ -388,16 +388,16 @@ func sourceLabel(src PowerSource) string {
 	}
 }
 
-func stringMetaField(meta map[string]any, key string) (string, bool) {
+func stringMetaField(meta map[string]any, key string) string {
 	value, ok := meta[key]
 	if !ok {
-		return "", false
+		return ""
 	}
 	text, ok := value.(string)
 	if !ok {
-		return "", false
+		return ""
 	}
-	return strings.TrimSpace(text), true
+	return strings.TrimSpace(text)
 }
 
 func steeringDocName(relativePath string) string {
