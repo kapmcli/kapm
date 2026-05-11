@@ -25,6 +25,8 @@ const (
 	recentSessionsFixed = 2 + colWidthRecentID + 2 + colWidthRecentDur + 2 + colWidthRecentStatus + 2 + colWidthRecentTools + 2 + colWidthRecentPrompts + 2 + colWidthRecentCredits + 2 + colWidthRecentLastAct
 )
 
+var activityBars = [...]rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
 // renderOverview renders the overview tab.
 func (m *model) renderOverview() string {
 	p := m.overviewLayout()
@@ -189,7 +191,7 @@ func (m *model) renderActivityBox(width int) string {
 		hours = hours[len(hours)-maxCols:]
 	}
 
-	bars := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	bars := activityBars[:]
 	var spark, labels strings.Builder
 	for i, h := range hours {
 		idx := 0
