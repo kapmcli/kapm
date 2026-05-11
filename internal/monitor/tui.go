@@ -413,23 +413,8 @@ func (m *model) renderBody() string {
 	case tabOverview:
 		body := m.renderOverview()
 		lines := strings.Split(body, "\n")
-		total := len(lines)
-		vh := m.overviewViewportHeight()
-		// lazy clamp
-		if m.overviewScroll > total-vh {
-			m.overviewScroll = max(0, total-vh)
-		}
-		if m.overviewScroll < 0 {
-			m.overviewScroll = 0
-		}
-		if total <= vh {
-			return body
-		}
-		end := min(m.overviewScroll+vh, total)
-		out := strings.Join(lines[m.overviewScroll:end], "\n")
-		if remaining := total - end; remaining > 0 {
-			out += "\n" + mutedStyle.Render(fmt.Sprintf("(%d more lines, ↓ to scroll)", remaining))
-		}
+		out, scroll := sliceWithScrollFooter(lines, m.overviewScroll, m.overviewViewportHeight())
+		m.overviewScroll = scroll
 		return out
 	case tabSessions:
 		return m.renderSessionsList()
@@ -450,28 +435,35 @@ func (m *model) scrollDetail(body string) string {
 	if body == "" {
 		return body
 	}
-	lines := m.cachedDetailLines
-	vh := m.viewportHeight()
-	total := len(lines)
-	var out string
-	if total <= vh {
-		out = body
-	} else {
-		start := m.detailScroll
-		maxStart := total - vh
-		if start > maxStart {
-			start = maxStart
-		}
-		if start < 0 {
-			start = 0
-		}
-		end := min(start+vh, total)
-		out = strings.Join(lines[start:end], "\n")
-		if remaining := total - end; remaining > 0 {
-			out += "\n" + mutedStyle.Render(fmt.Sprintf("(%d more lines, ↓ to scroll)", remaining))
-		}
-	}
+	out, scroll := sliceWithScrollFooter(m.cachedDetailLines, m.detailScroll, m.viewportHeight())
+	m.detailScroll = scroll
 	return borderStyle.Width(m.contentWidth()).Render(out)
+}
+
+const scrollFooterFormat = "(%d more lines, ↓ to scroll)"
+
+// sliceWithScrollFooter clamps scroll into [0, max(0, total-vh)] and
+// returns the viewport slice joined with newlines. If content extends
+// past the viewport, a "(%d more lines, ↓ to scroll)" footer is appended.
+// Returns the slice body and the clamped scroll offset the caller should
+// store back (so lazy-clamp sentinels still work).
+func sliceWithScrollFooter(lines []string, scroll, vh int) (body string, clamped int) {
+	total := len(lines)
+	if total <= vh {
+		return strings.Join(lines, "\n"), 0
+	}
+	if scroll > total-vh {
+		scroll = total - vh
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := min(scroll+vh, total)
+	out := strings.Join(lines[scroll:end], "\n")
+	if remaining := total - end; remaining > 0 {
+		out += "\n" + mutedStyle.Render(fmt.Sprintf(scrollFooterFormat, remaining))
+	}
+	return out, scroll
 }
 
 // viewportHeight is the number of lines available for detail content.
