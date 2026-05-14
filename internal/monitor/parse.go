@@ -28,8 +28,8 @@ func inputSummary(raw json.RawMessage, tool, cwd string) string {
 	if len(raw) == 0 {
 		return ""
 	}
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return ""
 	}
 	var in toolInput
@@ -48,11 +48,7 @@ func inputSummary(raw json.RawMessage, tool, cwd string) string {
 // formatter returns ok=false. It prefers typed fields, then alphabetical
 // first string key, then compact JSON.
 func genericSummary(raw json.RawMessage, in toolInput) string {
-	var extras map[string]any
-	_ = json.Unmarshal(raw, &extras)
-	if len(extras) == 0 {
-		return cleanSummary(string(raw))
-	}
+	// Check typed fields first (already decoded, zero cost).
 	for _, v := range []string{in.Command, in.Path, in.FilePath, in.Pattern, in.Prompt, in.Content, in.SymbolName, in.NewName, in.Query} {
 		if v != "" {
 			return cleanSummary(v)
@@ -69,6 +65,12 @@ func genericSummary(raw json.RawMessage, in toolInput) string {
 		if len(op.ImagePaths) > 0 && op.ImagePaths[0] != "" {
 			return cleanSummary(op.ImagePaths[0])
 		}
+	}
+	// Only unmarshal into map if typed fields didn't suffice.
+	var extras map[string]any
+	_ = json.Unmarshal(raw, &extras)
+	if len(extras) == 0 {
+		return cleanSummary(string(raw))
 	}
 	keys := make([]string, 0, len(extras))
 	for k := range extras {

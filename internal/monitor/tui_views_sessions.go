@@ -294,30 +294,7 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 		}
 
 		for _, fc := range g.Edits {
-			var purpose string
-			if fc.Purpose != "" {
-				purpose = `"` + fc.Purpose + `"`
-			} else {
-				purpose = mutedStyle.Render("(no purpose)")
-			}
-			if fc.Oversized {
-				fmt.Fprintf(&b, "    • [%s] %s %s\n",
-					mutedStyle.Render(fc.Command), purpose,
-					mutedStyle.Render("(oversized — diff unavailable)"))
-				continue
-			}
-			// Per-edit +/- counts.
-			var editCounts string
-			if a, d, ok := DiffLineCounts(fc); ok {
-				editCounts = " " + addStyle.Render(fmt.Sprintf("+%d", a)) + "/" + delStyle.Render(fmt.Sprintf("-%d", d))
-			}
-			fmt.Fprintf(&b, "    • [%s] %s%s\n", mutedStyle.Render(fc.Command), purpose, editCounts)
-			// Diff preview (gated behind changesExpanded toggle).
-			if m.changesExpanded {
-				if preview := renderEditPreview(fc, 32); preview != "" {
-					b.WriteString(preview)
-				}
-			}
+			renderEditEntry(&b, fc, m.changesExpanded)
 		}
 	}
 	b.WriteString("\n")
@@ -328,6 +305,32 @@ func (m *model) renderSessionChanges(s *SessionDetail) string {
 }
 
 const previewIndent = "         " // 9 spaces
+
+// renderEditEntry writes a single edit entry (bullet line + optional diff preview) to b.
+func renderEditEntry(b *strings.Builder, fc FileChange, expanded bool) {
+	var purpose string
+	if fc.Purpose != "" {
+		purpose = `"` + fc.Purpose + `"`
+	} else {
+		purpose = mutedStyle.Render("(no purpose)")
+	}
+	if fc.Oversized {
+		fmt.Fprintf(b, "    • [%s] %s %s\n",
+			mutedStyle.Render(fc.Command), purpose,
+			mutedStyle.Render("(oversized — diff unavailable)"))
+		return
+	}
+	var editCounts string
+	if a, d, ok := DiffLineCounts(fc); ok {
+		editCounts = " " + addStyle.Render(fmt.Sprintf("+%d", a)) + "/" + delStyle.Render(fmt.Sprintf("-%d", d))
+	}
+	fmt.Fprintf(b, "    • [%s] %s%s\n", mutedStyle.Render(fc.Command), purpose, editCounts)
+	if expanded {
+		if preview := renderEditPreview(fc, 32); preview != "" {
+			b.WriteString(preview)
+		}
+	}
+}
 
 // renderEditPreview returns a styled diff preview for fc, capped at maxLines output lines.
 // Returns empty string for oversized edits or when there is no diff.

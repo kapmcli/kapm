@@ -118,20 +118,20 @@ func fetchPowerPackage(ctx context.Context, opts InstallOptions) (tempDir, commi
 func validateManifest(tempDir string) (*PowerManifest, bool, bool, []string, error) {
 	manifest, err := readPower(tempDir)
 	if err != nil {
-		return nil, false, false, nil, err
+		return nil, false, false, nil, fmt.Errorf("read power manifest: %w", err)
 	}
 	_, warnings, err := loadPowerSteering(tempDir)
 	if err != nil {
-		return nil, false, false, nil, err
+		return nil, false, false, nil, fmt.Errorf("load steering config: %w", err)
 	}
 	mcpCfg, _, mcpErr := parseSourceMCP(tempDir)
 	if mcpErr != nil {
-		return nil, false, false, nil, mcpErr
+		return nil, false, false, nil, fmt.Errorf("parse MCP config: %w", mcpErr)
 	}
 	hasMCP := len(mcpCfg.MCPServers) > 0
 	hasHooks, err := hasPowerHooks(tempDir)
 	if err != nil {
-		return nil, false, false, nil, err
+		return nil, false, false, nil, fmt.Errorf("check power hooks: %w", err)
 	}
 	return manifest, hasMCP, hasHooks, warnings, nil
 }
