@@ -399,8 +399,8 @@ func TestTUIRenderEmpty(t *testing.T) {
 	m := NewModel(context.Background(), "", "/nowhere", "", "", time.Hour)
 	m.width, m.height = 100, 30
 	out := m.renderView()
-	if !strings.Contains(out, "Waiting for session data") {
-		t.Errorf("expected empty-state message, got: %s", out)
+	if !strings.Contains(out, "Loading sessions") {
+		t.Errorf("expected loading message, got: %s", out)
 	}
 }
 

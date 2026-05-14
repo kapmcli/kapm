@@ -439,7 +439,10 @@ func (m *model) renderTabs() string {
 
 func (m *model) renderBody() string {
 	if len(m.metrics.Overview.Sessions) == 0 {
-		return mutedStyle.Render("Waiting for session data in " + m.sessionsDir)
+		if m.updatedAt.IsZero() {
+			return mutedStyle.Render("Loading sessions…")
+		}
+		return mutedStyle.Render("No sessions found in " + m.sessionsDir)
 	}
 	if m.detail && m.tab != tabOverview {
 		return m.scrollDetail(m.cachedDetail.body)
