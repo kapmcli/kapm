@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -151,7 +150,7 @@ func Init(opts Options) error {
 		return remove(opts.Root, opts.Out)
 	}
 
-	executablePath, err := resolveExecutablePath(opts.Executable)
+	executablePath, err := paths.ResolveExecutablePath(opts.Executable)
 	if err != nil {
 		return fmt.Errorf("resolve hook executable: %w", err)
 	}
@@ -257,28 +256,3 @@ func renderHook(spec hookSpec, command string) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func resolveExecutablePath(executable string) (string, error) {
-	if executable == "" {
-		invokedPath := os.Args[0]
-		if invokedPath == "" {
-			detected, err := os.Executable()
-			if err != nil {
-				return "", fmt.Errorf("determine kapm executable: %w", err)
-			}
-			executable = detected
-		} else if strings.ContainsRune(invokedPath, os.PathSeparator) {
-			executable = invokedPath
-		} else {
-			lookedUp, err := exec.LookPath(invokedPath)
-			if err != nil {
-				return "", fmt.Errorf("resolve kapm executable %q: %w", invokedPath, err)
-			}
-			executable = lookedUp
-		}
-	}
-	absPath, err := filepath.Abs(executable)
-	if err != nil {
-		return "", fmt.Errorf("abs kapm executable %q: %w", executable, err)
-	}
-	return absPath, nil
-}

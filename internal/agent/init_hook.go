@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -31,38 +30,12 @@ func InitHook(opts InitHookOptions) error {
 	if opts.Err == nil {
 		opts.Err = os.Stderr
 	}
-	executablePath, err := resolveHookExecutablePath(opts.Executable)
+	executablePath, err := paths.ResolveExecutablePath(opts.Executable)
 	if err != nil {
 		return fmt.Errorf("resolve hook executable: %w", err)
 	}
 	opts.Executable = executablePath
 	return initHook(opts)
-}
-
-func resolveHookExecutablePath(executable string) (string, error) {
-	if executable == "" {
-		invokedPath := os.Args[0]
-		if invokedPath == "" {
-			detected, err := os.Executable()
-			if err != nil {
-				return "", fmt.Errorf("determine kapm executable: %w", err)
-			}
-			executable = detected
-		} else if strings.ContainsRune(invokedPath, os.PathSeparator) {
-			executable = invokedPath
-		} else {
-			lookedUp, err := exec.LookPath(invokedPath)
-			if err != nil {
-				return "", fmt.Errorf("resolve kapm executable %q: %w", invokedPath, err)
-			}
-			executable = lookedUp
-		}
-	}
-	absPath, err := filepath.Abs(executable)
-	if err != nil {
-		return "", fmt.Errorf("abs kapm executable %q: %w", executable, err)
-	}
-	return absPath, nil
 }
 
 func initHook(opts InitHookOptions) error {
