@@ -134,7 +134,10 @@ func (s *Server) refreshKiroUsage(ctx context.Context, now time.Time) *kiroclius
 	if err != nil {
 		return nil
 	}
-	usage, _ := v.(*kirocliusage.Usage)
+	usage, ok := v.(*kirocliusage.Usage)
+	if !ok {
+		return nil
+	}
 	return usage
 }
 

@@ -28,7 +28,10 @@ func (r *linkRelRenderer) renderAutoLink(w util.BufWriter, source []byte, n ast.
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	al := n.(*ast.AutoLink)
+	al, ok := n.(*ast.AutoLink)
+	if !ok {
+		return ast.WalkContinue, nil
+	}
 	u := util.EscapeHTML(util.URLEscape(al.URL(source), false))
 	_, _ = w.WriteString(`<a rel="noopener nofollow" href="`)
 	_, _ = w.Write(u)
@@ -58,7 +61,10 @@ func (r *linkRelRenderer) renderLink(w util.BufWriter, source []byte, n ast.Node
 		_, _ = w.WriteString("</a>")
 		return ast.WalkContinue, nil
 	}
-	link := n.(*ast.Link)
+	link, ok := n.(*ast.Link)
+	if !ok {
+		return ast.WalkContinue, nil
+	}
 	dest := string(link.Destination)
 	scheme, isRel := schemeOf(dest)
 	switch {
@@ -85,7 +91,10 @@ func (r *escapedRawHTMLRenderer) renderHTMLBlock(
 	node ast.Node,
 	entering bool,
 ) (ast.WalkStatus, error) {
-	n := node.(*ast.HTMLBlock)
+	n, ok := node.(*ast.HTMLBlock)
+	if !ok {
+		return ast.WalkContinue, nil
+	}
 	if entering {
 		for i := range n.Lines().Len() {
 			line := n.Lines().At(i)
@@ -109,7 +118,10 @@ func (r *escapedRawHTMLRenderer) renderRawHTML(
 	if !entering {
 		return ast.WalkSkipChildren, nil
 	}
-	n := node.(*ast.RawHTML)
+	n, ok := node.(*ast.RawHTML)
+	if !ok {
+		return ast.WalkContinue, nil
+	}
 	for i := range n.Segments.Len() {
 		segment := n.Segments.At(i)
 		_, _ = w.Write(util.EscapeHTML(segment.Value(source)))
