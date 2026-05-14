@@ -30,8 +30,9 @@ type SQLiteCache struct {
 func NewSQLiteCache() *SQLiteCache { return &SQLiteCache{} }
 
 // Load returns cached v1 sessions, re-reading only when the DB file mtime changes.
-// Returns ALL sessions (unfiltered). Caller applies since/cwdFilter post-cache.
-func (c *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession, error) {
+// since is passed to the SQL query to avoid loading ancient sessions on cold start.
+// Caller still applies cwdFilter post-cache for finer filtering.
+func (c *SQLiteCache) Load(ctx context.Context, dbPath string, since time.Time) ([]ParsedSession, error) {
 	if dbPath == "" {
 		return nil, nil
 	}
@@ -48,7 +49,7 @@ func (c *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession,
 	if info.ModTime().Equal(c.mtime) {
 		return c.sessions, nil
 	}
-	sessions, err := LoadSessionsSQLite(ctx, dbPath, time.Time{}, "")
+	sessions, err := LoadSessionsSQLite(ctx, dbPath, since, "")
 	if err != nil {
 		return nil, err
 	}
@@ -65,19 +66,64 @@ func (c *SQLiteCache) Load(ctx context.Context, dbPath string) ([]ParsedSession,
 // empty means no filter (global mode).
 // cache and sqliteCache may be nil (no caching). Returns a new cache for reuse.
 func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDBPath string, since time.Time, cwdFilter string, cache *SessionCache, sqliteCache *SQLiteCache) ([]MergedRecord, *SessionCache, error) {
-	v2Sessions, nextCache, err := LoadSessions(ctx, sessionsDir, since, cwdFilter, cache)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load sessions: %w", err)
+	t0 := time.Now()
+
+	// Load v2 sessions, v1 sqlite, and hook logs in parallel.
+	var (
+		v2Sessions []ParsedSession
+		nextCache  *SessionCache
+		v2Err      error
+
+		allV1 []ParsedSession
+		v1Err error
+
+		hookLogs []HookRecord
+		hookErr  error
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		v2Sessions, nextCache, v2Err = LoadSessions(ctx, sessionsDir, since, cwdFilter, cache)
+	}()
+
+	if sqliteDBPath != "" && sqliteCache != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			allV1, v1Err = sqliteCache.Load(ctx, sqliteDBPath, since)
+		}()
 	}
+
+	if hookLogsDir != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			hookLogs, hookErr = loadAllHookRecords(ctx, hookLogsDir)
+			if hookErr != nil && errors.Is(hookErr, fs.ErrNotExist) {
+				hookErr = nil
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if v2Err != nil {
+		return nil, nil, fmt.Errorf("load sessions: %w", v2Err)
+	}
+	if v1Err != nil {
+		return nil, nil, fmt.Errorf("load sqlite sessions: %w", v1Err)
+	}
+	if hookErr != nil {
+		return nil, nil, fmt.Errorf("load hook logs: %w", hookErr)
+	}
+	slog.Debug("LoadAll: parallel load done", "v2", len(v2Sessions), "v1", len(allV1), "hooks", len(hookLogs), "elapsed", time.Since(t0))
 
 	var allSessions []ParsedSession
 	allSessions = append(allSessions, v2Sessions...)
 
-	if sqliteDBPath != "" && sqliteCache != nil {
-		allV1, err := sqliteCache.Load(ctx, sqliteDBPath)
-		if err != nil {
-			return nil, nil, fmt.Errorf("load sqlite sessions: %w", err)
-		}
+	if len(allV1) > 0 {
 		var v1Filtered []ParsedSession
 		for _, s := range allV1 {
 			if !since.IsZero() && time.Time(s.Meta.UpdatedAt).Before(since) {
@@ -88,7 +134,7 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDB
 			}
 			v1Filtered = append(v1Filtered, s)
 		}
-		v2IDs := make(map[string]struct{})
+		v2IDs := make(map[string]struct{}, len(v2Sessions))
 		for _, s := range v2Sessions {
 			v2IDs[s.Meta.SessionID] = struct{}{}
 		}
@@ -97,31 +143,33 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDB
 				allSessions = append(allSessions, s)
 			}
 		}
+		slog.Debug("LoadAll: v1 sqlite", "total", len(allV1), "filtered", len(v1Filtered))
 	}
 
-	var hookLogs []HookRecord
-	if hookLogsDir != "" {
-		hookLogs, err = loadAllHookRecords(ctx, hookLogsDir)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, nil, fmt.Errorf("load hook logs: %w", err)
-		}
-	}
-
+	t3 := time.Now()
 	records := MergeSessions(allSessions, hookLogs)
 	if records == nil {
 		records = []MergedRecord{}
 	}
+	slog.Debug("LoadAll: merge", "sessions", len(allSessions), "records", len(records), "elapsed", time.Since(t3))
 
 	if ideBaseDir != "" {
+		t4 := time.Now()
 		ideSessions, ideErr := LoadIDESessions(ctx, ideBaseDir, since, cwdFilter)
 		if ideErr != nil {
 			slog.Warn("load ide sessions", "err", ideErr)
 		} else if len(ideSessions) > 0 {
+			slog.Debug("LoadAll: ide sessions", "count", len(ideSessions), "elapsed", time.Since(t4))
+
+			t5 := time.Now()
 			execIDs := collectExecutionIDs(ideSessions)
 			execResults, execErr := LoadIDEExecutions(ctx, ideBaseDir, execIDs)
 			if execErr != nil {
 				slog.Warn("load ide executions", "err", execErr)
 			}
+			slog.Debug("LoadAll: ide executions", "ids", len(execIDs), "elapsed", time.Since(t5))
+
+			t6 := time.Now()
 			ideRecords := BuildIDEMergedRecords(ideSessions, execResults)
 			if hookLogsDir != "" {
 				ideHooks, hookErr := loadAllIDEHookRecords(ctx, hookLogsDir)
@@ -132,9 +180,11 @@ func LoadAll(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, sqliteDB
 				}
 			}
 			records = append(records, ideRecords...)
+			slog.Debug("LoadAll: ide merge+hooks", "ideRecords", len(ideRecords), "elapsed", time.Since(t6))
 		}
 	}
 
+	slog.Debug("LoadAll: total", "records", len(records), "elapsed", time.Since(t0))
 	return records, nextCache, nil
 }
 
@@ -207,7 +257,6 @@ func sortHookRecords(records []HookRecord) {
 		return cmp.Compare(a.Agent, b.Agent)
 	})
 }
-
 
 func loadLegacyRootHookRecords(ctx context.Context, hookLogsDir string) ([]HookRecord, error) {
 	entries, err := os.ReadDir(hookLogsDir)

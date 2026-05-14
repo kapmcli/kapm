@@ -553,7 +553,7 @@ func TestSQLiteCache_MtimeHit(t *testing.T) {
 	_ = db.Close()
 
 	cache := NewSQLiteCache()
-	sessions1, err := cache.Load(context.Background(), dbPath)
+	sessions1, err := cache.Load(context.Background(), dbPath, time.Time{})
 	if err != nil {
 		t.Fatalf("first load: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestSQLiteCache_MtimeHit(t *testing.T) {
 	}
 
 	// Second load without changing the file — should return cached slice (same pointer).
-	sessions2, err := cache.Load(context.Background(), dbPath)
+	sessions2, err := cache.Load(context.Background(), dbPath, time.Time{})
 	if err != nil {
 		t.Fatalf("second load: %v", err)
 	}
@@ -583,7 +583,7 @@ func TestSQLiteCache_MtimeMiss(t *testing.T) {
 	_ = db.Close()
 
 	cache := NewSQLiteCache()
-	sessions1, err := cache.Load(context.Background(), dbPath)
+	sessions1, err := cache.Load(context.Background(), dbPath, time.Time{})
 	if err != nil {
 		t.Fatalf("first load: %v", err)
 	}
@@ -599,7 +599,7 @@ func TestSQLiteCache_MtimeMiss(t *testing.T) {
 	insertStoreRow(t, db2, "/project", "sess-2", now+1000)
 	_ = db2.Close()
 
-	sessions2, err := cache.Load(context.Background(), dbPath)
+	sessions2, err := cache.Load(context.Background(), dbPath, time.Time{})
 	if err != nil {
 		t.Fatalf("second load: %v", err)
 	}
