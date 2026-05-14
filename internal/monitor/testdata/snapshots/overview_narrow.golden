@@ -1,6 +1,6 @@
 ╭────────────────────────────────────╮ ╭───────────────────────────────────╮
 │ ▸ Summary                          │ │ ▸ Activity                        │
-│   logs dir: .kapm/logs             │ │   █                               │
+│   logs dir: ~/.kapm/logs           │ │   █                               │
 │   sessions:   2      active: 1     │ │   09                              │
 │   agents:     2      errors: 1     │ │   max: 6 events/hour              │
 │   tool calls: 2      prompts: 1    │ ╰───────────────────────────────────╯

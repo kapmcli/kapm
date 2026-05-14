@@ -135,7 +135,9 @@ func fixture() DetailedMetrics {
 }
 
 func newTestModel() *model {
-	m := NewModel(context.Background(), "", ".kapm/logs", "", "", 24*time.Hour)
+	m := NewModel(context.Background(), "", "", "", "", 24*time.Hour)
+	m.hookLogsDir = "/mock/home/.kapm/logs"
+	m.homeDir = "/mock/home"
 	m.metrics = fixture()
 	m.width = 140
 	m.height = 40

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -113,6 +114,11 @@ func NewModel(ctx context.Context, sessionsDir, hookLogsDir, ideBaseDir, cwdFilt
 	home, _ := os.UserHomeDir()
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if hookLogsDir != "" && !filepath.IsAbs(hookLogsDir) {
+		if abs, err := filepath.Abs(hookLogsDir); err == nil {
+			hookLogsDir = abs
+		}
 	}
 	return &model{ctx: ctx, sessionsDir: sessionsDir, hookLogsDir: hookLogsDir, ideBaseDir: ideBaseDir, cwdFilter: cwdFilter, homeDir: home, since: since, width: defaultWidth, height: defaultHeight, cache: NewSessionCache(), sqliteCache: NewSQLiteCache(), kiroUsageTTL: defaultKiroUsageTTL}
 }
